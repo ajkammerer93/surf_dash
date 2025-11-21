@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surf Forecast Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            background-color: #212529;
+            color: #f8f9fa;
+        }
+        .chart-container {
+            background-color: #343a40;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .map-wrapper {
+            background-color: #343a40;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .map-container {
+            height: 280px;
+            width: 100%;
+            border-radius: 4px;
+        }
+        .map-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 280px;
+            color: #6c757d;
+        }
+        .legend {
+            font-size: 11px;
+            background: rgba(52, 58, 64, 0.9);
+            padding: 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 12px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        .wind-arrow {
+            font-size: 14px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Surf Forecast</h1>
+        <h5 class="text-center text-muted mb-5">Surf City, North Carolina (Lat: 34.43, Lon: -77.54)</h5>
+
+        <!-- Ocean Basin Map -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="map-wrapper">
+                    <h5 class="mb-2">Atlantic Ocean Basin <small class="text-muted" id="basin-time">(Loading...)</small></h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-1">Wave Height (m)</h6>
+                            <div id="map-basin-height" class="map-container" style="height: 350px;">
+                                <div class="map-loading">Loading ocean data...</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-1">Wave Period (s)</h6>
+                            <div id="map-basin-period" class="map-container" style="height: 350px;">
+                                <div class="map-loading">Loading ocean data...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Map Plots -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="map-wrapper">
+                    <h6 class="mb-2">Wave Period (s)</h6>
+                    <div id="map-wave-period" class="map-container">
+                        <div class="map-loading">Loading map data...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="map-wrapper">
+                    <h6 class="mb-2">Significant Wave Height (m)</h6>
+                    <div id="map-wave-height" class="map-container">
+                        <div class="map-loading">Loading map data...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="map-wrapper">
+                    <h6 class="mb-2">Wind Speed & Direction</h6>
+                    <div id="map-wind" class="map-container">
+                        <div class="map-loading">Loading map data...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row justify-content-center mb-4">
+            <div class="col-8 text-center">
+                <label for="time-slider" class="form-label" id="time-label">Time: </label>
+                <input type="range" class="form-range" id="time-slider" min="0" max="0" step="1">
+            </div>
+        </div>
+
+        <!-- Primary Chart -->
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="chart-container">
+                    <canvas id="waveChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tide Chart -->
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="chart-container">
+                    <h5 class="mb-3">Tidal Predictions <small class="text-muted" id="tide-station-info">(Loading station...)</small></h5>
+                    <canvas id="tideChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Tables -->
+        <div class="row mt-4">
+             <div class="col-md-4">
+                <h4>Current Conditions</h4>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Wave Height
+                        <span id="current_wave_height" class="badge bg-primary rounded-pill">- m</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Wave Period
+                        <span id="current_wave_period" class="badge bg-primary rounded-pill">- s</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Wave Direction
+                        <span id="current_wave_direction" class="badge bg-primary rounded-pill">- °</span>
+                    </li>
+                </ul>
+            </div>
+            <div class="col-md-8">
+                <h4>Daylight Forecast</h4>
+                <p class="small text-muted mb-2">
+                    <span class="badge bg-success">✓</span> = Offshore/calm wind (NW ±45° or &lt;5 km/h) - good conditions
+                </p>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-striped table-sm">
+                        <thead class="sticky-top" style="background-color: #343a40;">
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Waves (m)</th>
+                                <th>Period (s)</th>
+                                <th>Wind (km/h)</th>
+                                <th>Wind Dir</th>
+                            </tr>
+                        </thead>
+                        <tbody id="forecast-table">
+                            <!-- Data will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <script>
+        // Point data and main chart script
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/forecast')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('API Error (Point Data):', data.error);
+                        return;
+                    }
+                    const current = data[0];
+                    document.getElementById('current_wave_height').textContent = `${current.wave_height.toFixed(2)} m`;
+                    document.getElementById('current_wave_period').textContent = `${current.wave_period.toFixed(2)} s`;
+                    document.getElementById('current_wave_direction').textContent = `${current.wave_direction.toFixed(0)} °`;
+                    const tableBody = document.getElementById('forecast-table');
+
+                    // Helper to convert wind direction to compass
+                    function degToCompass(deg) {
+                        if (deg === null || deg === undefined) return '-';
+                        const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+                        return dirs[Math.round(deg / 22.5) % 16];
+                    }
+
+                    // Check if wind is offshore (good for surfing)
+                    // For Surf City, NC: coastline runs NE-SW, ocean is to SE
+                    // Offshore wind comes from NW (~315°)
+                    const OFFSHORE_DIRECTION = 315; // Wind FROM this direction is offshore
+                    const OFFSHORE_TOLERANCE = 45;  // Degrees tolerance on either side
+                    const CALM_WIND_THRESHOLD = 5;  // km/h (about 3 mph)
+
+                    function isOffshoreWind(windDirection, windSpeed) {
+                        // Calm wind is always good
+                        if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD) {
+                            return true;
+                        }
+
+                        if (windDirection === null || windDirection === undefined) {
+                            return false;
+                        }
+
+                        // Calculate angular difference (handle wraparound at 360°)
+                        let diff = Math.abs(windDirection - OFFSHORE_DIRECTION);
+                        if (diff > 180) diff = 360 - diff;
+
+                        return diff <= OFFSHORE_TOLERANCE;
+                    }
+
+                    // Filter to 5am-9pm and sample every 3 hours
+                    let lastShownHour = -999;
+                    data.forEach((item, index) => {
+                        const itemTime = new Date(item.time);
+                        const hour = itemTime.getHours();
+
+                        // Skip if outside 5am-9pm window
+                        if (hour < 5 || hour > 21) {
+                            return;
+                        }
+
+                        // Show every 3 hours (6am, 9am, 12pm, 3pm, 6pm, 9pm)
+                        if (hour % 3 !== 0) {
+                            return;
+                        }
+
+                        // Skip if we already showed this hour slot today
+                        const dayHourKey = itemTime.toDateString() + '-' + hour;
+                        if (lastShownHour === dayHourKey) {
+                            return;
+                        }
+                        lastShownHour = dayHourKey;
+
+                        const dateStr = itemTime.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'});
+                        const timeStr = itemTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+                        const windDir = item.wind_direction !== null ? `${degToCompass(item.wind_direction)} (${item.wind_direction.toFixed(0)}°)` : '-';
+                        const windSpeed = item.wind_speed !== null ? item.wind_speed.toFixed(1) : '-';
+
+                        // Check for offshore/calm conditions
+                        const offshore = isOffshoreWind(item.wind_direction, item.wind_speed);
+                        const rowClass = offshore ? 'table-success' : '';
+                        const offshoreIndicator = offshore ? ' ✓' : '';
+
+                        const row = `<tr class="${rowClass}">
+                            <td>${dateStr}</td>
+                            <td>${timeStr}</td>
+                            <td>${item.wave_height.toFixed(2)}</td>
+                            <td>${item.wave_period.toFixed(1)}</td>
+                            <td>${windSpeed}</td>
+                            <td>${windDir}${offshoreIndicator}</td>
+                        </tr>`;
+                        tableBody.innerHTML += row;
+                    });
+                    const ctx = document.getElementById('waveChart').getContext('2d');
+
+                    // Store wind directions for the custom plugin
+                    const windDirections = data.map(item => item.wind_direction);
+
+                    // Custom plugin to draw wind direction arrows
+                    const windArrowPlugin = {
+                        id: 'windArrows',
+                        afterDatasetsDraw(chart) {
+                            const meta = chart.getDatasetMeta(2); // Wind speed dataset index
+                            if (!meta.visible) return;
+
+                            const ctx = chart.ctx;
+                            meta.data.forEach((point, index) => {
+                                const direction = windDirections[index];
+                                if (direction === null || direction === undefined) return;
+
+                                const x = point.x;
+                                const y = point.y;
+                                const size = 8;
+
+                                // Convert meteorological direction (from) to arrow direction (to)
+                                // and convert to radians (0° = North, clockwise)
+                                const radians = ((direction + 180) % 360) * Math.PI / 180;
+
+                                ctx.save();
+                                ctx.translate(x, y);
+                                ctx.rotate(radians);
+
+                                // Draw arrow
+                                ctx.beginPath();
+                                ctx.moveTo(0, -size);
+                                ctx.lineTo(-size * 0.5, size * 0.5);
+                                ctx.lineTo(0, size * 0.2);
+                                ctx.lineTo(size * 0.5, size * 0.5);
+                                ctx.closePath();
+
+                                ctx.fillStyle = 'rgba(255, 206, 86, 0.9)';
+                                ctx.fill();
+                                ctx.strokeStyle = 'rgba(200, 160, 60, 1)';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+
+                                ctx.restore();
+                            });
+                        }
+                    };
+
+                    const waveChart = new Chart(ctx, {
+                        type: 'line',
+                        plugins: [windArrowPlugin],
+                        data: {
+                            labels: data.map(item => {
+                                const d = new Date(item.time);
+                                return d.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' +
+                                       d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+                            }),
+                            datasets: [
+                                {
+                                    label: 'Total Wave Height (m)',
+                                    data: data.map(item => item.wave_height),
+                                    borderColor: 'rgb(75, 192, 192)',
+                                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                    tension: 0.1,
+                                    yAxisID: 'y',
+                                    pointRadius: 2
+                                },
+                                {
+                                    label: 'Wind Wave Height (m)',
+                                    data: data.map(item => item.wind_wave_height),
+                                    borderColor: 'rgb(255, 99, 132)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                    tension: 0.1,
+                                    yAxisID: 'y',
+                                    pointRadius: 2
+                                },
+                                {
+                                    label: 'Wind Speed (km/h)',
+                                    data: data.map(item => item.wind_speed),
+                                    borderColor: 'rgb(255, 206, 86)',
+                                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                                    tension: 0.1,
+                                    yAxisID: 'y1',
+                                    pointRadius: 0, // Hide default points, arrows drawn by plugin
+                                    borderWidth: 2
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        autoSkip: true,
+                                        maxTicksLimit: 24,
+                                        color: '#adb5bd'
+                                    },
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    position: 'left',
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Wave Height (m)',
+                                        color: 'rgb(75, 192, 192)'
+                                    },
+                                    ticks: {
+                                        color: 'rgb(75, 192, 192)'
+                                    },
+                                    grid: {
+                                        color: 'rgba(75, 192, 192, 0.2)'
+                                    }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    position: 'right',
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Wind Speed (km/h)',
+                                        color: 'rgb(255, 206, 86)'
+                                    },
+                                    ticks: {
+                                        color: 'rgb(255, 206, 86)'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false
+                                    }
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        afterBody: function(context) {
+                                            const index = context[0].dataIndex;
+                                            const dir = windDirections[index];
+                                            if (dir !== null && dir !== undefined) {
+                                                return `Wind Direction: ${dir.toFixed(0)}°`;
+                                            }
+                                            return '';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching point forecast data:', error));
+        });
+
+        // Ocean Basin map script
+        document.addEventListener('DOMContentLoaded', function() {
+            const basinContainers = ['map-basin-height', 'map-basin-period'];
+
+            fetch('/api/ocean-basin')
+                .then(response => response.json())
+                .then(basinData => {
+                    if (basinData.error) {
+                        console.error('API Error (Basin Data):', basinData.error);
+                        basinContainers.forEach(id => {
+                            document.getElementById(id).innerHTML = '<div class="map-loading text-danger">Error loading data</div>';
+                        });
+                        return;
+                    }
+
+                    const lats = basinData.lats;
+                    const lons = basinData.lons;
+                    const center = basinData.center;
+
+                    // Update time display
+                    document.getElementById('basin-time').textContent = `(${new Date(basinData.time).toLocaleString()})`;
+
+                    // Clear loading messages
+                    basinContainers.forEach(id => {
+                        document.getElementById(id).innerHTML = '';
+                    });
+
+                    // Initialize maps centered on the forecast location
+                    const mapHeight = L.map('map-basin-height').setView([center.lat, center.lon], 4);
+                    const mapPeriod = L.map('map-basin-period').setView([center.lat, center.lon], 4);
+
+                    const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+                    const tileLayerOptions = {
+                        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+                        maxZoom: 10
+                    };
+
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapHeight);
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapPeriod);
+
+                    // Add marker for forecast location
+                    const locationIcon = L.divIcon({
+                        html: '<div style="color: #ff0; font-size: 20px; text-shadow: 2px 2px 4px black;">★</div>',
+                        className: 'location-marker',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapHeight).bindPopup('Surf City, NC');
+                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapPeriod).bindPopup('Surf City, NC');
+
+                    setTimeout(() => {
+                        mapHeight.invalidateSize();
+                        mapPeriod.invalidateSize();
+                    }, 100);
+
+                    // Build heatmap data
+                    const heightData = [];
+                    const periodData = [];
+
+                    for (let i = 0; i < lats.length; i++) {
+                        for (let j = 0; j < lons.length; j++) {
+                            const wh = basinData.wave_height[i][j];
+                            const wp = basinData.wave_period[i][j];
+
+                            if (wh > 0) {
+                                heightData.push([lats[i], lons[j], wh]);
+                            }
+                            if (wp > 0) {
+                                periodData.push([lats[i], lons[j], wp]);
+                            }
+                        }
+                    }
+
+                    // Create heatmap layers with larger radius for basin view
+                    L.heatLayer(heightData, {
+                        radius: 40,
+                        blur: 30,
+                        maxZoom: 8,
+                        max: 6,
+                        gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
+                    }).addTo(mapHeight);
+
+                    L.heatLayer(periodData, {
+                        radius: 40,
+                        blur: 30,
+                        maxZoom: 8,
+                        max: 15,
+                        gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
+                    }).addTo(mapPeriod);
+
+                    // Add legends
+                    function addBasinLegend(map, title, minVal, maxVal) {
+                        const legend = L.control({position: 'bottomright'});
+                        legend.onAdd = function() {
+                            const div = L.DomUtil.create('div', 'legend');
+                            const colors = ['blue', 'cyan', 'lime', 'yellow', 'red'];
+                            div.innerHTML = `<strong>${title}</strong><br>`;
+                            colors.forEach((color, i) => {
+                                const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
+                                div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
+                            });
+                            return div;
+                        };
+                        legend.addTo(map);
+                    }
+
+                    addBasinLegend(mapHeight, 'Height (m)', 0, 6);
+                    addBasinLegend(mapPeriod, 'Period (s)', 0, 15);
+                })
+                .catch(error => {
+                    console.error('Error fetching ocean basin data:', error);
+                    basinContainers.forEach(id => {
+                        document.getElementById(id).innerHTML = '<div class="map-loading text-danger">Failed to load ocean data</div>';
+                    });
+                });
+        });
+
+        // Local map data and animation script
+        document.addEventListener('DOMContentLoaded', function() {
+            const mapContainers = ['map-wave-period', 'map-wave-height', 'map-wind'];
+
+            fetch('/api/map-forecast')
+                .then(response => response.json())
+                .then(gridData => {
+                    if (gridData.error) {
+                        console.error('API Error (Map Data):', gridData.error);
+                        mapContainers.forEach(id => {
+                            document.getElementById(id).innerHTML = '<div class="map-loading text-danger">Error loading data</div>';
+                        });
+                        return;
+                    }
+
+                    if (!gridData.lats || !gridData.lons || !gridData.times || !gridData.wave_height || !gridData.wave_period || !gridData.wind_speed || !gridData.wind_direction) {
+                        console.error("Invalid gridData structure:", gridData);
+                        mapContainers.forEach(id => {
+                            document.getElementById(id).innerHTML = '<div class="map-loading text-danger">Invalid data structure</div>';
+                        });
+                        return;
+                    }
+
+                    console.log('Grid data loaded successfully:', {
+                        lats: gridData.lats.length,
+                        lons: gridData.lons.length,
+                        times: gridData.times.length
+                    });
+
+                    const lats = gridData.lats;
+                    const lons = gridData.lons;
+                    const times = gridData.times;
+
+                    const centerLat = (lats[0] + lats[lats.length - 1]) / 2;
+                    const centerLon = (lons[0] + lons[lons.length - 1]) / 2;
+
+                    console.log('Map center:', centerLat, centerLon);
+
+                    // Clear loading messages
+                    mapContainers.forEach(id => {
+                        document.getElementById(id).innerHTML = '';
+                    });
+
+                    // Initialize maps
+                    let map1, map2, map3;
+                    try {
+                        map1 = L.map('map-wave-period').setView([centerLat, centerLon], 8);
+                        map2 = L.map('map-wave-height').setView([centerLat, centerLon], 8);
+                        map3 = L.map('map-wind').setView([centerLat, centerLon], 8);
+                        console.log('Maps initialized successfully');
+                    } catch (mapError) {
+                        console.error('Error initializing maps:', mapError);
+                        throw mapError;
+                    }
+
+                    const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+                    const tileLayerOptions = {
+                        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+                        maxZoom: 19
+                    };
+
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map1);
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map2);
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map3);
+
+                    // Invalidate size after a short delay to ensure containers are rendered
+                    setTimeout(() => {
+                        map1.invalidateSize();
+                        map2.invalidateSize();
+                        map3.invalidateSize();
+                    }, 100);
+
+                    let wavePeriodLayer, waveHeightLayer, windLayerGroup;
+
+                    // Add legends
+                    function addLegend(map, title, minVal, maxVal, colors) {
+                        const legend = L.control({position: 'bottomright'});
+                        legend.onAdd = function() {
+                            const div = L.DomUtil.create('div', 'legend');
+                            div.innerHTML = `<strong>${title}</strong><br>`;
+                            colors.forEach((color, i) => {
+                                const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
+                                div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
+                            });
+                            return div;
+                        };
+                        legend.addTo(map);
+                    }
+
+                    addLegend(map1, 'Period (s)', 0, 15, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
+                    addLegend(map2, 'Height (m)', 0, 3, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
+
+                    // Wind legend
+                    const windLegend = L.control({position: 'bottomright'});
+                    windLegend.onAdd = function() {
+                        const div = L.DomUtil.create('div', 'legend');
+                        div.innerHTML = '<strong>Wind (km/h)</strong><br>' +
+                            '<span style="color:#33ff88">→</span> 0-10<br>' +
+                            '<span style="color:#3388ff">→</span> 10-20<br>' +
+                            '<span style="color:#ffff33">→</span> 20-30<br>' +
+                            '<span style="color:#ff8833">→</span> 30+';
+                        return div;
+                    };
+                    windLegend.addTo(map3);
+
+                    // Slider setup
+                    const slider = document.getElementById('time-slider');
+                    const timeLabel = document.getElementById('time-label');
+                    slider.max = times.length - 1;
+
+                    // Get wind arrow color based on speed
+                    function getWindColor(speed) {
+                        if (speed < 10) return '#33ff88';  // green - light wind (good)
+                        if (speed < 20) return '#3388ff';  // blue - moderate
+                        if (speed < 30) return '#ffff33';  // yellow - strong
+                        return '#ff8833';                   // orange - very strong
+                    }
+
+                    // Get arrow rotation from meteorological direction (direction wind is coming FROM)
+                    function getArrowRotation(direction) {
+                        // Convert "from" direction to "to" direction and adjust for CSS rotation
+                        return (direction + 180) % 360;
+                    }
+
+                    function updateLayers(timeIndex) {
+                        // Remove existing layers
+                        if (wavePeriodLayer) map1.removeLayer(wavePeriodLayer);
+                        if (waveHeightLayer) map2.removeLayer(waveHeightLayer);
+                        if (windLayerGroup) map3.removeLayer(windLayerGroup);
+
+                        // Build heatmap data (filter out zero values which are land)
+                        const wavePeriodData = [];
+                        const waveHeightData = [];
+
+                        for (let i = 0; i < lats.length; i++) {
+                            for (let j = 0; j < lons.length; j++) {
+                                const period = gridData.wave_period[timeIndex][i][j];
+                                const height = gridData.wave_height[timeIndex][i][j];
+
+                                if (period > 0) {
+                                    wavePeriodData.push([lats[i], lons[j], period]);
+                                }
+                                if (height > 0) {
+                                    waveHeightData.push([lats[i], lons[j], height]);
+                                }
+                            }
+                        }
+
+                        // Create heatmap layers with better visibility settings
+                        wavePeriodLayer = L.heatLayer(wavePeriodData, {
+                            radius: 35,
+                            blur: 25,
+                            maxZoom: 10,
+                            max: 12,
+                            gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
+                        }).addTo(map1);
+
+                        waveHeightLayer = L.heatLayer(waveHeightData, {
+                            radius: 35,
+                            blur: 25,
+                            maxZoom: 10,
+                            max: 3,
+                            gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
+                        }).addTo(map2);
+
+                        // Create wind arrows using markers with DivIcons
+                        windLayerGroup = L.layerGroup();
+
+                        // Sample every other point for cleaner display
+                        const step = Math.max(1, Math.floor(lats.length / 5));
+
+                        for (let i = 0; i < lats.length; i += step) {
+                            for (let j = 0; j < lons.length; j += step) {
+                                const speed = gridData.wind_speed[timeIndex][i][j];
+                                const direction = gridData.wind_direction[timeIndex][i][j];
+
+                                if (speed > 0) {
+                                    const color = getWindColor(speed);
+                                    const rotation = getArrowRotation(direction);
+
+                                    const arrowIcon = L.divIcon({
+                                        html: `<div style="transform: rotate(${rotation}deg); color: ${color}; font-size: 18px; text-shadow: 1px 1px 2px black;">➤</div>`,
+                                        className: 'wind-arrow',
+                                        iconSize: [20, 20],
+                                        iconAnchor: [10, 10]
+                                    });
+
+                                    const marker = L.marker([lats[i], lons[j]], {icon: arrowIcon});
+                                    marker.bindPopup(`Wind: ${speed.toFixed(1)} km/h<br>Direction: ${direction.toFixed(0)}°`);
+                                    windLayerGroup.addLayer(marker);
+                                }
+                            }
+                        }
+
+                        windLayerGroup.addTo(map3);
+
+                        timeLabel.innerText = `Time: ${new Date(times[timeIndex]).toLocaleString()}`;
+                    }
+
+                    slider.addEventListener('input', (e) => {
+                        updateLayers(parseInt(e.target.value));
+                    });
+
+                    // Initial update
+                    updateLayers(0);
+                })
+                .catch(error => {
+                    console.error('Error fetching map forecast data:', error);
+                    console.error('Error stack:', error.stack);
+                    mapContainers.forEach(id => {
+                        document.getElementById(id).innerHTML = `<div class="map-loading text-danger">Error: ${error.message}</div>`;
+                    });
+                });
+        });
+
+        // Tide chart script
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/tides')
+                .then(response => response.json())
+                .then(tideData => {
+                    if (tideData.error) {
+                        console.error('API Error (Tide Data):', tideData.error);
+                        return;
+                    }
+
+                    const ctx = document.getElementById('tideChart').getContext('2d');
+
+                    // Update station info display
+                    if (tideData.station) {
+                        const stationInfo = document.getElementById('tide-station-info');
+                        stationInfo.textContent = `(${tideData.station.name} - ${tideData.station.distance_km} km away)`;
+                    }
+
+                    // Prepare hourly data
+                    const labels = tideData.hourly.map(item => {
+                        const d = new Date(item.time);
+                        return d.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' +
+                               d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+                    });
+                    const heights = tideData.hourly.map(item => item.height);
+
+                    // Prepare high/low annotations
+                    const highLowPoints = tideData.high_low.map(item => {
+                        const d = new Date(item.time);
+                        return {
+                            time: d,
+                            height: item.height,
+                            type: item.type,
+                            label: item.type === 'H' ? 'High' : 'Low'
+                        };
+                    });
+
+                    // Create datasets for high and low markers
+                    const highTides = [];
+                    const lowTides = [];
+
+                    tideData.hourly.forEach((item, index) => {
+                        const itemTime = new Date(item.time).getTime();
+
+                        // Check if this hour is close to a high/low tide
+                        const matchingHighLow = highLowPoints.find(hl =>
+                            Math.abs(hl.time.getTime() - itemTime) < 30 * 60 * 1000 // within 30 min
+                        );
+
+                        if (matchingHighLow) {
+                            if (matchingHighLow.type === 'H') {
+                                highTides.push(item.height);
+                                lowTides.push(null);
+                            } else {
+                                lowTides.push(item.height);
+                                highTides.push(null);
+                            }
+                        } else {
+                            highTides.push(null);
+                            lowTides.push(null);
+                        }
+                    });
+
+                    const tideChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Tide Height (m)',
+                                    data: heights,
+                                    borderColor: 'rgb(54, 162, 235)',
+                                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 0,
+                                    borderWidth: 2
+                                },
+                                {
+                                    label: 'High Tide',
+                                    data: highTides,
+                                    borderColor: 'transparent',
+                                    backgroundColor: 'rgb(255, 99, 132)',
+                                    pointRadius: 8,
+                                    pointStyle: 'triangle',
+                                    showLine: false
+                                },
+                                {
+                                    label: 'Low Tide',
+                                    data: lowTides,
+                                    borderColor: 'transparent',
+                                    backgroundColor: 'rgb(75, 192, 192)',
+                                    pointRadius: 8,
+                                    pointStyle: 'rectRot',
+                                    showLine: false
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        autoSkip: true,
+                                        maxTicksLimit: 24,
+                                        color: '#adb5bd'
+                                    },
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Height above MLLW (m)',
+                                        color: 'rgb(54, 162, 235)'
+                                    },
+                                    ticks: {
+                                        color: 'rgb(54, 162, 235)'
+                                    },
+                                    grid: {
+                                        color: 'rgba(54, 162, 235, 0.2)'
+                                    }
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        afterBody: function(context) {
+                                            const index = context[0].dataIndex;
+                                            if (highTides[index] !== null) return '▲ High Tide';
+                                            if (lowTides[index] !== null) return '▼ Low Tide';
+                                            return '';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching tide data:', error));
+        });
+    </script>
+</body>
+</html>
