@@ -188,7 +188,6 @@
     <!-- JS Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
     <script>
         // Point data and main chart script
@@ -495,40 +494,77 @@
                         mapPeriod.invalidateSize();
                     }, 100);
 
-                    // Build heatmap data
-                    const heightData = [];
-                    const periodData = [];
+                    // Helper function to interpolate color based on value
+                    function getColorForValue(value, minVal, maxVal) {
+                        const ratio = Math.min(1, Math.max(0, (value - minVal) / (maxVal - minVal)));
+                        // Color stops: blue -> cyan -> lime -> yellow -> red
+                        const stops = [
+                            {pos: 0, r: 0, g: 0, b: 255},      // blue
+                            {pos: 0.25, r: 0, g: 255, b: 255}, // cyan
+                            {pos: 0.5, r: 0, g: 255, b: 0},    // lime
+                            {pos: 0.75, r: 255, g: 255, b: 0}, // yellow
+                            {pos: 1, r: 255, g: 0, b: 0}       // red
+                        ];
+
+                        let lower = stops[0], upper = stops[stops.length - 1];
+                        for (let i = 0; i < stops.length - 1; i++) {
+                            if (ratio >= stops[i].pos && ratio <= stops[i + 1].pos) {
+                                lower = stops[i];
+                                upper = stops[i + 1];
+                                break;
+                            }
+                        }
+
+                        const range = upper.pos - lower.pos;
+                        const t = range === 0 ? 0 : (ratio - lower.pos) / range;
+                        const r = Math.round(lower.r + t * (upper.r - lower.r));
+                        const g = Math.round(lower.g + t * (upper.g - lower.g));
+                        const b = Math.round(lower.b + t * (upper.b - lower.b));
+
+                        return `rgb(${r}, ${g}, ${b})`;
+                    }
+
+                    // Calculate grid cell size (half the resolution in each direction)
+                    const basinResolution = lats.length > 1 ? Math.abs(lats[1] - lats[0]) : 6;
+                    const halfRes = basinResolution / 2;
+
+                    // Create rectangle layers for each grid cell
+                    const heightLayerGroup = L.layerGroup();
+                    const periodLayerGroup = L.layerGroup();
 
                     for (let i = 0; i < lats.length; i++) {
                         for (let j = 0; j < lons.length; j++) {
                             const wh = basinData.wave_height[i][j];
                             const wp = basinData.wave_period[i][j];
+                            const lat = lats[i];
+                            const lon = lons[j];
+
+                            // Define cell bounds
+                            const bounds = [[lat - halfRes, lon - halfRes], [lat + halfRes, lon + halfRes]];
 
                             if (wh > 0) {
-                                heightData.push([lats[i], lons[j], wh]);
+                                const color = getColorForValue(wh, 0, 6);
+                                L.rectangle(bounds, {
+                                    color: color,
+                                    weight: 0,
+                                    fillColor: color,
+                                    fillOpacity: 0.7
+                                }).bindPopup(`Wave Height: ${wh.toFixed(1)} m`).addTo(heightLayerGroup);
                             }
                             if (wp > 0) {
-                                periodData.push([lats[i], lons[j], wp]);
+                                const color = getColorForValue(wp, 0, 15);
+                                L.rectangle(bounds, {
+                                    color: color,
+                                    weight: 0,
+                                    fillColor: color,
+                                    fillOpacity: 0.7
+                                }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(periodLayerGroup);
                             }
                         }
                     }
 
-                    // Create heatmap layers with larger radius for basin view
-                    L.heatLayer(heightData, {
-                        radius: 40,
-                        blur: 30,
-                        maxZoom: 8,
-                        max: 6,
-                        gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
-                    }).addTo(mapHeight);
-
-                    L.heatLayer(periodData, {
-                        radius: 40,
-                        blur: 30,
-                        maxZoom: 8,
-                        max: 15,
-                        gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
-                    }).addTo(mapPeriod);
+                    heightLayerGroup.addTo(mapHeight);
+                    periodLayerGroup.addTo(mapPeriod);
 
                     // Add legends
                     function addBasinLegend(map, title, minVal, maxVal) {
@@ -681,46 +717,83 @@
                         return (direction + 180) % 360;
                     }
 
+                    // Helper function to interpolate color based on value
+                    function getColorForValue(value, minVal, maxVal) {
+                        const ratio = Math.min(1, Math.max(0, (value - minVal) / (maxVal - minVal)));
+                        // Color stops: blue -> cyan -> lime -> yellow -> red
+                        const stops = [
+                            {pos: 0, r: 0, g: 0, b: 255},      // blue
+                            {pos: 0.25, r: 0, g: 255, b: 255}, // cyan
+                            {pos: 0.5, r: 0, g: 255, b: 0},    // lime
+                            {pos: 0.75, r: 255, g: 255, b: 0}, // yellow
+                            {pos: 1, r: 255, g: 0, b: 0}       // red
+                        ];
+
+                        let lower = stops[0], upper = stops[stops.length - 1];
+                        for (let i = 0; i < stops.length - 1; i++) {
+                            if (ratio >= stops[i].pos && ratio <= stops[i + 1].pos) {
+                                lower = stops[i];
+                                upper = stops[i + 1];
+                                break;
+                            }
+                        }
+
+                        const range = upper.pos - lower.pos;
+                        const t = range === 0 ? 0 : (ratio - lower.pos) / range;
+                        const r = Math.round(lower.r + t * (upper.r - lower.r));
+                        const g = Math.round(lower.g + t * (upper.g - lower.g));
+                        const b = Math.round(lower.b + t * (upper.b - lower.b));
+
+                        return `rgb(${r}, ${g}, ${b})`;
+                    }
+
+                    // Calculate grid cell size (half the resolution in each direction)
+                    const localResolution = lats.length > 1 ? Math.abs(lats[1] - lats[0]) : 0.25;
+                    const halfRes = localResolution / 2;
+
                     function updateLayers(timeIndex) {
                         // Remove existing layers
                         if (wavePeriodLayer) map1.removeLayer(wavePeriodLayer);
                         if (waveHeightLayer) map2.removeLayer(waveHeightLayer);
                         if (windLayerGroup) map3.removeLayer(windLayerGroup);
 
-                        // Build heatmap data (filter out zero values which are land)
-                        const wavePeriodData = [];
-                        const waveHeightData = [];
+                        // Create rectangle layers for each grid cell
+                        wavePeriodLayer = L.layerGroup();
+                        waveHeightLayer = L.layerGroup();
 
                         for (let i = 0; i < lats.length; i++) {
                             for (let j = 0; j < lons.length; j++) {
                                 const period = gridData.wave_period[timeIndex][i][j];
                                 const height = gridData.wave_height[timeIndex][i][j];
+                                const lat = lats[i];
+                                const lon = lons[j];
+
+                                // Define cell bounds
+                                const bounds = [[lat - halfRes, lon - halfRes], [lat + halfRes, lon + halfRes]];
 
                                 if (period > 0) {
-                                    wavePeriodData.push([lats[i], lons[j], period]);
+                                    const color = getColorForValue(period, 0, 12);
+                                    L.rectangle(bounds, {
+                                        color: color,
+                                        weight: 0,
+                                        fillColor: color,
+                                        fillOpacity: 0.7
+                                    }).bindPopup(`Wave Period: ${period.toFixed(1)} s`).addTo(wavePeriodLayer);
                                 }
                                 if (height > 0) {
-                                    waveHeightData.push([lats[i], lons[j], height]);
+                                    const color = getColorForValue(height, 0, 3);
+                                    L.rectangle(bounds, {
+                                        color: color,
+                                        weight: 0,
+                                        fillColor: color,
+                                        fillOpacity: 0.7
+                                    }).bindPopup(`Wave Height: ${height.toFixed(1)} m`).addTo(waveHeightLayer);
                                 }
                             }
                         }
 
-                        // Create heatmap layers with better visibility settings
-                        wavePeriodLayer = L.heatLayer(wavePeriodData, {
-                            radius: 35,
-                            blur: 25,
-                            maxZoom: 10,
-                            max: 12,
-                            gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
-                        }).addTo(map1);
-
-                        waveHeightLayer = L.heatLayer(waveHeightData, {
-                            radius: 35,
-                            blur: 25,
-                            maxZoom: 10,
-                            max: 3,
-                            gradient: {0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1: 'red'}
-                        }).addTo(map2);
+                        wavePeriodLayer.addTo(map1);
+                        waveHeightLayer.addTo(map2);
 
                         // Create wind arrows using markers with DivIcons
                         windLayerGroup = L.layerGroup();

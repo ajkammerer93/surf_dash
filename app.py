@@ -88,12 +88,13 @@ def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution):
     Fetches gridded wave data from Marine API and wind data from Weather API.
     """
     try:
-        lats = np.arange(lat_min, lat_max + resolution, resolution)
-        lons = np.arange(lon_min, lon_max + resolution, resolution)
+        # Round to avoid floating point precision issues in URL
+        lats = np.round(np.arange(lat_min, lat_max + 0.001, resolution), 2)
+        lons = np.round(np.arange(lon_min, lon_max + 0.001, resolution), 2)
 
         all_coords = list(product(lats, lons))
-        all_lats = [coord[0] for coord in all_coords]
-        all_lons = [coord[1] for coord in all_coords]
+        all_lats = [float(coord[0]) for coord in all_coords]
+        all_lons = [float(coord[1]) for coord in all_coords]
 
         # Fetch marine data (wave height, wave period)
         marine_url = "https://marine-api.open-meteo.com/v1/marine"
@@ -216,10 +217,10 @@ def map_forecast():
     """
     Provides gridded weather forecast data as JSON for a specified bounding box.
     """
-    # Extended bounding box around Surf City, North Carolina for zoom-out capability
-    lat_min, lat_max = 33.5, 35.5
-    lon_min, lon_max = -78.5, -76.0
-    resolution = 0.25 # degrees
+    # Tighter bounding box around Surf City, North Carolina
+    lat_min, lat_max = 34.0, 35.0
+    lon_min, lon_max = -78.0, -76.5
+    resolution = 0.25 # degrees (~28 km cells) - gives 5x7=35 points
 
     data = get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution)
 
@@ -253,8 +254,8 @@ def get_ocean_basin_data(center_lat, center_lon):
         lon_min = -82
         lon_max = -40
 
-        # Use 6 degree resolution to keep URL size manageable (6 lats x 7 lons = 42 points)
-        resolution = 6.0
+        # Use 3 degree resolution for better coverage (~330 km cells, ~195 points)
+        resolution = 3.0
         lats = np.arange(lat_min, lat_max + resolution, resolution)
         lons = np.arange(lon_min, lon_max + resolution, resolution)
 
