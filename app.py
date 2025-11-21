@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import requests
 import pandas as pd
 import numpy as np
@@ -199,11 +199,12 @@ def index():
 def forecast():
     """
     Provides weather forecast data for a single point as JSON.
+    Accepts optional lat/lon query parameters.
     """
-    # Default to Surf City, North Carolina
-    lat = 34.42711
-    lon = -77.54608
-    
+    # Get lat/lon from query params, default to Surf City, North Carolina
+    lat = request.args.get('lat', 34.42711, type=float)
+    lon = request.args.get('lon', -77.54608, type=float)
+
     data = get_point_weather_data(lat, lon)
     
     if data:
@@ -216,11 +217,16 @@ def forecast():
 def map_forecast():
     """
     Provides gridded weather forecast data as JSON for a specified bounding box.
+    Accepts optional lat/lon query parameters to center the bounding box.
     """
-    # Tighter bounding box around Surf City, North Carolina
-    lat_min, lat_max = 34.0, 35.0
-    lon_min, lon_max = -78.0, -76.5
-    resolution = 0.25 # degrees (~28 km cells) - gives 5x7=35 points
+    # Get center lat/lon from query params, default to Surf City, North Carolina
+    center_lat = request.args.get('lat', 34.42711, type=float)
+    center_lon = request.args.get('lon', -77.54608, type=float)
+
+    # Create bounding box around center point (±0.5° lat, ±0.75° lon)
+    lat_min, lat_max = center_lat - 0.5, center_lat + 0.5
+    lon_min, lon_max = center_lon - 0.75, center_lon + 0.75
+    resolution = 0.25  # degrees (~28 km cells) - gives 5x7=35 points
 
     data = get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution)
 
@@ -245,17 +251,22 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 def get_ocean_basin_data(center_lat, center_lon):
     """
     Fetches wave data for a large ocean basin area (coarse resolution).
+    Dynamically calculates bounding box based on center location.
     """
     try:
-        # Define a large bounding box for the Atlantic Ocean
-        # Extended bounds for zoom-out capability
-        lat_min = 15
-        lat_max = 50
-        lon_min = -82
-        lon_max = -40
+        # Round center coordinates to reduce URL length
+        center_lat = round(center_lat, 2)
+        center_lon = round(center_lon, 2)
 
-        # Use 3 degree resolution for better coverage (~330 km cells, ~195 points)
-        resolution = 3.0
+        # Define a large bounding box centered on the location
+        # ±15° latitude, ±20° longitude for ocean basin view
+        lat_min = round(center_lat - 15, 0)
+        lat_max = round(center_lat + 15, 0)
+        lon_min = round(center_lon - 20, 0)
+        lon_max = round(center_lon + 20, 0)
+
+        # Use 5 degree resolution to keep URL size manageable (~7x9=63 points max)
+        resolution = 5.0
         lats = np.arange(lat_min, lat_max + resolution, resolution)
         lons = np.arange(lon_min, lon_max + resolution, resolution)
 
@@ -326,10 +337,11 @@ def get_ocean_basin_data(center_lat, center_lon):
 def ocean_basin():
     """
     Provides wave data for the ocean basin around the forecast location.
+    Accepts optional lat/lon query parameters.
     """
-    # Center on Surf City, NC
-    center_lat = 34.42711
-    center_lon = -77.54608
+    # Get center lat/lon from query params, default to Surf City, North Carolina
+    center_lat = request.args.get('lat', 34.42711, type=float)
+    center_lon = request.args.get('lon', -77.54608, type=float)
 
     data = get_ocean_basin_data(center_lat, center_lon)
 
@@ -463,10 +475,11 @@ def get_tide_data(station_id):
 def tides():
     """
     Provides tide prediction data as JSON for the nearest station to the forecast location.
+    Accepts optional lat/lon query parameters.
     """
-    # Surf City, NC coordinates (same as forecast location)
-    target_lat = 34.42711
-    target_lon = -77.54608
+    # Get lat/lon from query params, default to Surf City, North Carolina
+    target_lat = request.args.get('lat', 34.42711, type=float)
+    target_lon = request.args.get('lon', -77.54608, type=float)
 
     # Find nearest tide station
     station = find_nearest_tide_station(target_lat, target_lon)
