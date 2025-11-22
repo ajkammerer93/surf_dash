@@ -223,10 +223,14 @@ def map_forecast():
     center_lat = request.args.get('lat', 34.42711, type=float)
     center_lon = request.args.get('lon', -77.54608, type=float)
 
+    # Round to reduce URL length
+    center_lat = round(center_lat, 2)
+    center_lon = round(center_lon, 2)
+
     # Create bounding box around center point (±0.5° lat, ±0.75° lon)
     lat_min, lat_max = center_lat - 0.5, center_lat + 0.5
     lon_min, lon_max = center_lon - 0.75, center_lon + 0.75
-    resolution = 0.25  # degrees (~28 km cells) - gives 5x7=35 points
+    resolution = 0.1  # degrees (~11 km cells) - gives 11x16=176 points
 
     data = get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution)
 
@@ -265,8 +269,8 @@ def get_ocean_basin_data(center_lat, center_lon):
         lon_min = round(center_lon - 20, 0)
         lon_max = round(center_lon + 20, 0)
 
-        # Use 5 degree resolution to keep URL size manageable (~7x9=63 points max)
-        resolution = 5.0
+        # Use 3 degree resolution for better detail (~11x15=165 points max)
+        resolution = 3.0
         lats = np.arange(lat_min, lat_max + resolution, resolution)
         lons = np.arange(lon_min, lon_max + resolution, resolution)
 
