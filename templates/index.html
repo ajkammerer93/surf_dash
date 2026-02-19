@@ -351,6 +351,16 @@
             white-space: nowrap;
         }
 
+        .chart-unavailable {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--status-warning);
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
         /* === Leaflet Legend === */
         .legend {
             font-family: var(--font-body);
@@ -705,8 +715,8 @@
                         <span class="panel-title">Current Conditions</span>
                         <span class="panel-badge">Live</span>
                     </div>
-                    <div class="panel-content">
-                        <ul class="stat-list">
+                    <div class="panel-content" id="current-conditions-content">
+                        <ul class="stat-list" id="current-conditions-stats">
                             <li class="stat-item">
                                 <span class="stat-label">Wave Height</span>
                                 <span class="stat-value" id="current_wave_height">- ft</span>
@@ -720,6 +730,7 @@
                                 <span class="stat-value" id="current_wave_direction">- &deg;</span>
                             </li>
                         </ul>
+                        <div class="chart-unavailable" id="current-conditions-error" style="display:none">Conditions data unavailable</div>
                     </div>
                 </div>
             </div>
@@ -1153,6 +1164,27 @@
             ctrl.addTo(map);
         }
 
+        function showChartUnavailable(canvasId, message) {
+            const canvas = document.getElementById(canvasId);
+            const wrap = canvas.parentElement;
+            canvas.style.display = 'none';
+            let overlay = wrap.querySelector('.chart-unavailable');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'chart-unavailable';
+                wrap.appendChild(overlay);
+            }
+            overlay.textContent = message;
+        }
+
+        function clearChartUnavailable(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const wrap = canvas.parentElement;
+            canvas.style.display = '';
+            const overlay = wrap.querySelector('.chart-unavailable');
+            if (overlay) overlay.remove();
+        }
+
         function initEmptyMap(containerId, center, zoom, errorMessage) {
             const el = document.getElementById(containerId);
             el.innerHTML = '';
@@ -1364,8 +1396,14 @@
                 .then(data => {
                     if (data.error) {
                         console.error('API Error (Point Data):', data.error);
+                        showChartUnavailable('waveChart', 'Forecast data unavailable');
+                        document.getElementById('current-conditions-stats').style.display = 'none';
+                        document.getElementById('current-conditions-error').style.display = '';
                         return;
                     }
+                    clearChartUnavailable('waveChart');
+                    document.getElementById('current-conditions-stats').style.display = '';
+                    document.getElementById('current-conditions-error').style.display = 'none';
                     const current = data[0];
                     document.getElementById('current_wave_height').textContent = `${(current.wave_height * M_TO_FT).toFixed(1)} ft`;
                     document.getElementById('current_wave_period').textContent = `${current.wave_period.toFixed(2)} s`;
@@ -1609,7 +1647,12 @@
 
                     syncChartTimeAxes();
                 })
-                .catch(error => console.error('Error fetching point forecast data:', error));
+                .catch(error => {
+                    console.error('Error fetching point forecast data:', error);
+                    showChartUnavailable('waveChart', 'Forecast data unavailable');
+                    document.getElementById('current-conditions-stats').style.display = 'none';
+                    document.getElementById('current-conditions-error').style.display = '';
+                });
         }
 
         // Initial load
@@ -2077,8 +2120,11 @@
                 .then(tideData => {
                     if (tideData.error) {
                         console.error('API Error (Tide Data):', tideData.error);
+                        showChartUnavailable('tideChart', 'Tide data unavailable');
+                        document.getElementById('tide-station-info').textContent = 'Unavailable';
                         return;
                     }
+                    clearChartUnavailable('tideChart');
 
                     const ctx = document.getElementById('tideChart').getContext('2d');
 
@@ -2230,7 +2276,11 @@
 
                     syncChartTimeAxes();
                 })
-                .catch(error => console.error('Error fetching tide data:', error));
+                .catch(error => {
+                    console.error('Error fetching tide data:', error);
+                    showChartUnavailable('tideChart', 'Tide data unavailable');
+                    document.getElementById('tide-station-info').textContent = 'Unavailable';
+                });
         }
 
         // Initial load for tide data
