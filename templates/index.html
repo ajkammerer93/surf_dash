@@ -339,6 +339,18 @@
             font-size: 11px;
         }
 
+        .map-data-error {
+            font-family: var(--font-body);
+            font-size: 10px;
+            background: rgba(20, 20, 20, 0.85);
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            color: var(--status-warning);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
         /* === Leaflet Legend === */
         .legend {
             font-family: var(--font-body);
@@ -1108,6 +1120,54 @@
         let basinGridData = null;
         let localGridData = null;
 
+        // === Land Mask GeoJSON (fetched once, overlaid on all maps) ===
+        let landGeoJSONPromise = fetch('https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_land.geojson')
+            .then(r => r.json())
+            .catch(err => { console.warn('Land mask fetch failed:', err); return null; });
+
+        function addLandMask(map) {
+            landGeoJSONPromise.then(geojson => {
+                if (!geojson) return;
+                map.createPane('landMask');
+                map.getPane('landMask').style.zIndex = 450;
+                map.getPane('landMask').style.pointerEvents = 'none';
+                L.geoJSON(geojson, {
+                    pane: 'landMask',
+                    style: {
+                        fillColor: '#0a0a0a',
+                        fillOpacity: 1,
+                        color: '#2a2a2a',
+                        weight: 0.5
+                    }
+                }).addTo(map);
+            });
+        }
+
+        function addMapDataError(map, message) {
+            const ctrl = L.control({ position: 'topright' });
+            ctrl.onAdd = function() {
+                const div = L.DomUtil.create('div', 'map-data-error');
+                div.textContent = message;
+                return div;
+            };
+            ctrl.addTo(map);
+        }
+
+        function initEmptyMap(containerId, center, zoom, errorMessage) {
+            const el = document.getElementById(containerId);
+            el.innerHTML = '';
+            const map = L.map(containerId).setView(center, zoom);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+                maxZoom: 19
+            }).addTo(map);
+            addHomeButton(map, center, zoom);
+            addLandMask(map);
+            addMapDataError(map, errorMessage);
+            setTimeout(() => map.invalidateSize(), 100);
+            return map;
+        }
+
         // === Shared Time Axis ===
         let waveTimeRange = null;   // { min: Date, max: Date }
         let tideTimeRange = null;
@@ -1593,9 +1653,9 @@
                 .then(data => {
                     if (data.error) {
                         console.error('API Error (Basin Data):', data.error);
-                        basinContainers.forEach(id => {
-                            document.getElementById(id).innerHTML = '<div class="map-loading" style="color:var(--status-error)">Error loading data</div>';
-                        });
+                        const center = [currentLocation.lat, currentLocation.lon];
+                        mapBasinHeight = initEmptyMap('map-basin-height', center, 4, 'Ocean data unavailable');
+                        mapBasinPeriod = initEmptyMap('map-basin-period', center, 4, 'Ocean data unavailable');
                         return;
                     }
 
@@ -1635,6 +1695,10 @@
                     L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinHeight).bindPopup(currentLocation.name);
                     L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinPeriod).bindPopup(currentLocation.name);
 
+                    // Add land mask overlay for sharp coastlines
+                    addLandMask(mapBasinHeight);
+                    addLandMask(mapBasinPeriod);
+
                     setTimeout(() => {
                         mapBasinHeight.invalidateSize();
                         mapBasinPeriod.invalidateSize();
@@ -1664,9 +1728,9 @@
                 })
                 .catch(error => {
                     console.error('Error fetching ocean basin data:', error);
-                    ['map-basin-height', 'map-basin-period'].forEach(id => {
-                        document.getElementById(id).innerHTML = '<div class="map-loading" style="color:var(--status-error)">Failed to load ocean data</div>';
-                    });
+                    const center = [currentLocation.lat, currentLocation.lon];
+                    mapBasinHeight = initEmptyMap('map-basin-height', center, 4, 'Ocean data unavailable');
+                    mapBasinPeriod = initEmptyMap('map-basin-period', center, 4, 'Ocean data unavailable');
                 });
         }
 
@@ -1705,17 +1769,19 @@
                 .then(gridData => {
                     if (gridData.error) {
                         console.error('API Error (Map Data):', gridData.error);
-                        mapContainers.forEach(id => {
-                            document.getElementById(id).innerHTML = '<div class="map-loading" style="color:var(--status-error)">Error loading data</div>';
-                        });
+                        const center = [currentLocation.lat, currentLocation.lon];
+                        map1 = initEmptyMap('map-wave-period', center, 8, 'Forecast data unavailable');
+                        map2 = initEmptyMap('map-wave-height', center, 8, 'Forecast data unavailable');
+                        map3 = initEmptyMap('map-wind', center, 8, 'Forecast data unavailable');
                         return;
                     }
 
                     if (!gridData.lats || !gridData.lons || !gridData.times || !gridData.wave_height || !gridData.wave_period || !gridData.wind_speed || !gridData.wind_direction) {
                         console.error("Invalid gridData structure:", gridData);
-                        mapContainers.forEach(id => {
-                            document.getElementById(id).innerHTML = '<div class="map-loading" style="color:var(--status-error)">Invalid data structure</div>';
-                        });
+                        const center = [currentLocation.lat, currentLocation.lon];
+                        map1 = initEmptyMap('map-wave-period', center, 8, 'Invalid data structure');
+                        map2 = initEmptyMap('map-wave-height', center, 8, 'Invalid data structure');
+                        map3 = initEmptyMap('map-wind', center, 8, 'Invalid data structure');
                         return;
                     }
 
@@ -1751,6 +1817,11 @@
                     L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map1);
                     L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map2);
                     L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map3);
+
+                    // Add land mask overlay for sharp coastlines
+                    addLandMask(map1);
+                    addLandMask(map2);
+                    addLandMask(map3);
 
                     setTimeout(() => {
                         map1.invalidateSize();
@@ -1794,9 +1865,10 @@
                 })
                 .catch(error => {
                     console.error('Error fetching map forecast data:', error);
-                    ['map-wave-period', 'map-wave-height', 'map-wind'].forEach(id => {
-                        document.getElementById(id).innerHTML = `<div class="map-loading" style="color:var(--status-error)">Error: ${error.message}</div>`;
-                    });
+                    const center = [currentLocation.lat, currentLocation.lon];
+                    map1 = initEmptyMap('map-wave-period', center, 8, 'Forecast data unavailable');
+                    map2 = initEmptyMap('map-wave-height', center, 8, 'Forecast data unavailable');
+                    map3 = initEmptyMap('map-wind', center, 8, 'Forecast data unavailable');
                 });
         }
 
@@ -1865,6 +1937,9 @@
                 basinHeightLayer = L.layerGroup();
                 basinPeriodLayer = L.layerGroup();
 
+                const basinHeightRenderer = L.canvas({ padding: 0.5 });
+                const basinPeriodRenderer = L.canvas({ padding: 0.5 });
+
                 const bLats = basinGridData.lats;
                 const bLons = basinGridData.lons;
                 const basinRes = bLats.length > 1 ? Math.abs(bLats[1] - bLats[0]) : 6;
@@ -1884,13 +1959,13 @@
                         if (wh > 0) {
                             const color = getColorForValue(wh, 0, 6);
                             L.rectangle(bounds, {
-                                color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                renderer: basinHeightRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
                             }).bindPopup(`Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`).addTo(basinHeightLayer);
                         }
                         if (wp > 0) {
                             const color = getColorForValue(wp, 0, 15);
                             L.rectangle(bounds, {
-                                color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                renderer: basinPeriodRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
                             }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(basinPeriodLayer);
                         }
                     }
@@ -1909,6 +1984,9 @@
                 localWavePeriodLayer = L.layerGroup();
                 localWaveHeightLayer = L.layerGroup();
                 localWindLayer = L.layerGroup();
+
+                const localPeriodRenderer = L.canvas({ padding: 0.5 });
+                const localHeightRenderer = L.canvas({ padding: 0.5 });
 
                 const lLats = localGridData.lats;
                 const lLons = localGridData.lons;
@@ -1929,13 +2007,13 @@
                         if (period > 0) {
                             const color = getColorForValue(period, 0, 12);
                             L.rectangle(bounds, {
-                                color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                renderer: localPeriodRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
                             }).bindPopup(`Wave Period: ${period.toFixed(1)} s`).addTo(localWavePeriodLayer);
                         }
                         if (height > 0) {
                             const color = getColorForValue(height, 0, 3);
                             L.rectangle(bounds, {
-                                color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                renderer: localHeightRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
                             }).bindPopup(`Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`).addTo(localWaveHeightLayer);
                         }
                     }

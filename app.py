@@ -96,6 +96,29 @@ def get_point_weather_data(latitude, longitude):
 import traceback
 from itertools import product
 
+def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
+    """
+    Fetches data from Open-Meteo API in batches to avoid URL length limits.
+    Returns a flat list of per-point JSON results.
+    """
+    all_results = []
+    for start in range(0, len(all_lats), batch_size):
+        end = start + batch_size
+        batch_lats = all_lats[start:end]
+        batch_lons = all_lons[start:end]
+        params = dict(base_params)
+        params["latitude"] = batch_lats
+        params["longitude"] = batch_lons
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        # Single-point responses are a dict, multi-point are a list
+        if isinstance(data, list):
+            all_results.extend(data)
+        else:
+            all_results.append(data)
+    return all_results
+
 def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution):
     """
     Fetches gridded wave data from Marine API and wind data from Weather API.
@@ -109,31 +132,22 @@ def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution):
         all_lats = [float(coord[0]) for coord in all_coords]
         all_lons = [float(coord[1]) for coord in all_coords]
 
-        # Fetch marine data (wave height, wave period)
+        # Fetch marine data in batches (wave height, wave period)
         marine_url = "https://marine-api.open-meteo.com/v1/marine"
-        marine_params = {
-            "latitude": all_lats,
-            "longitude": all_lons,
+        marine_base_params = {
             "hourly": "wave_height,wave_period,wave_direction",
             "timezone": "auto"
         }
 
-        # Fetch weather data (wind speed, wind direction)
+        # Fetch weather data in batches (wind speed, wind direction)
         weather_url = "https://api.open-meteo.com/v1/forecast"
-        weather_params = {
-            "latitude": all_lats,
-            "longitude": all_lons,
+        weather_base_params = {
             "hourly": "wind_speed_10m,wind_direction_10m",
             "timezone": "auto"
         }
 
-        marine_response = requests.get(marine_url, params=marine_params)
-        marine_response.raise_for_status()
-        marine_data = marine_response.json()
-
-        weather_response = requests.get(weather_url, params=weather_params)
-        weather_response.raise_for_status()
-        weather_data = weather_response.json()
+        marine_data = fetch_batched(marine_url, marine_base_params, all_lats, all_lons)
+        weather_data = fetch_batched(weather_url, weather_base_params, all_lats, all_lons)
 
         num_lats = len(lats)
         num_lons = len(lons)
@@ -243,7 +257,7 @@ def map_forecast():
     # Create bounding box around center point (±0.5° lat, ±0.75° lon)
     lat_min, lat_max = center_lat - 0.5, center_lat + 0.5
     lon_min, lon_max = center_lon - 0.75, center_lon + 0.75
-    resolution = 0.1  # degrees (~11 km cells) - gives 11x16=176 points
+    resolution = 0.05  # degrees (~5.5 km cells) - gives 21x31=651 points
 
     data = get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution)
 
@@ -282,27 +296,23 @@ def get_ocean_basin_data(center_lat, center_lon):
         lon_min = round(center_lon - 20, 0)
         lon_max = round(center_lon + 20, 0)
 
-        # Use 3 degree resolution for better detail (~11x15=165 points max)
-        resolution = 3.0
+        # Use 1.5 degree resolution for better detail (~21x28=588 points max)
+        resolution = 1.5
         lats = np.arange(lat_min, lat_max + resolution, resolution)
         lons = np.arange(lon_min, lon_max + resolution, resolution)
 
         all_coords = list(product(lats, lons))
-        all_lats = [coord[0] for coord in all_coords]
-        all_lons = [coord[1] for coord in all_coords]
+        all_lats = [float(coord[0]) for coord in all_coords]
+        all_lons = [float(coord[1]) for coord in all_coords]
 
-        # Fetch marine data
+        # Fetch marine data in batches
         marine_url = "https://marine-api.open-meteo.com/v1/marine"
-        marine_params = {
-            "latitude": all_lats,
-            "longitude": all_lons,
+        marine_base_params = {
             "hourly": "wave_height,wave_period,wave_direction",
             "timezone": "auto"
         }
 
-        response = requests.get(marine_url, params=marine_params)
-        response.raise_for_status()
-        data = response.json()
+        data = fetch_batched(marine_url, marine_base_params, all_lats, all_lons)
 
         num_lats = len(lats)
         num_lons = len(lons)
