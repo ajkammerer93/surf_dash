@@ -201,6 +201,91 @@
             border: 1px solid rgba(68, 255, 136, 0.2);
         }
 
+        .panel-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .panel-btn {
+            font-family: var(--font-body);
+            font-size: 12px;
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+
+        .panel-btn:hover {
+            color: var(--text);
+        }
+
+        /* Fullscreen panel */
+        .panel.panel-fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 1500;
+            grid-column: unset;
+            border: none;
+        }
+
+        .panel.panel-fullscreen .panel-content {
+            flex: 1;
+            overflow: auto;
+        }
+
+        .panel.panel-fullscreen .map-container {
+            height: 100%;
+        }
+
+        .panel.panel-fullscreen .chart-wrap {
+            height: calc(100vh - 40px);
+        }
+
+        .panel.panel-fullscreen .panel-content {
+            max-height: none !important;
+        }
+
+        /* Share button tooltip */
+        .share-btn {
+            font-family: var(--font-body);
+            font-size: 12px;
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            padding: 2px 4px;
+            line-height: 1;
+            transition: color 0.15s;
+            position: relative;
+        }
+
+        .share-btn:hover { color: var(--text); }
+
+        .share-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 14px;
+            font-size: 11px;
+            font-family: var(--font-body);
+            z-index: 3000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .share-toast.show {
+            opacity: 1;
+        }
+
         .panel-badge.warning {
             background: rgba(255, 170, 0, 0.1);
             color: var(--status-warning);
@@ -538,6 +623,7 @@
     <div class="header">
         <div class="header-left">
             <a href="https://freesurfforecast.com/" class="header-title" style="text-decoration:none;color:inherit;">Free Surf Forecast</a>
+            <button class="share-btn" onclick="copyShareLink()" title="Copy link">&#x1F517;</button>
         </div>
         <div class="header-center" onclick="openModal()">
             <span class="header-location" id="location-name">Surf City, North Carolina</span>
@@ -548,8 +634,11 @@
         <div class="header-right">
             <span class="header-clock" id="header-clock"></span>
             <button class="header-btn" onclick="openModal()">Change Location</button>
+            <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen">&#x26F6;</button>
         </div>
     </div>
+
+    <div class="share-toast" id="share-toast">Link copied to clipboard</div>
 
     <!-- Location Modal -->
     <div class="modal-overlay" id="locationModal">
@@ -760,6 +849,97 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
     <script>
+        // === Share Link ===
+        function copyShareLink() {
+            navigator.clipboard.writeText('https://freesurfforecast.com').then(function() {
+                const toast = document.getElementById('share-toast');
+                toast.classList.add('show');
+                setTimeout(function() { toast.classList.remove('show'); }, 2000);
+            });
+        }
+
+        // === Panel Fullscreen ===
+        function toggleFullscreen(btn) {
+            const panel = btn.closest('.panel');
+            const isFullscreen = panel.classList.toggle('panel-fullscreen');
+            btn.textContent = isFullscreen ? '\u2716' : '\u26F6';
+            btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+
+            // Invalidate Leaflet maps inside this panel
+            setTimeout(function() {
+                panel.querySelectorAll('.map-container').forEach(function(container) {
+                    const mapId = container.id;
+                    const mapInstance = getMapById(mapId);
+                    if (mapInstance) mapInstance.invalidateSize();
+                });
+                // Resize Chart.js canvases
+                panel.querySelectorAll('canvas').forEach(function(canvas) {
+                    const chart = Chart.getChart(canvas);
+                    if (chart) chart.resize();
+                });
+            }, 100);
+        }
+
+        function getMapById(id) {
+            const mapLookup = {
+                'map-basin-height': () => mapBasinHeight,
+                'map-basin-period': () => mapBasinPeriod,
+                'map-wave-period': () => map1,
+                'map-wave-height': () => map2,
+                'map-wind': () => map3,
+            };
+            return mapLookup[id] ? mapLookup[id]() : null;
+        }
+
+        // Inject fullscreen buttons into all panel headers
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.panel > .panel-header').forEach(function(header) {
+                // Wrap existing badge(s) and add fullscreen button
+                const actions = document.createElement('div');
+                actions.className = 'panel-header-actions';
+
+                // Move existing badges into actions container
+                header.querySelectorAll('.panel-badge').forEach(function(badge) {
+                    actions.appendChild(badge);
+                });
+
+                const btn = document.createElement('button');
+                btn.className = 'panel-btn';
+                btn.textContent = '\u26F6';
+                btn.title = 'Fullscreen';
+                btn.onclick = function() { toggleFullscreen(this); };
+                actions.appendChild(btn);
+
+                header.appendChild(actions);
+            });
+        });
+
+        // ESC to exit fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const fs = document.querySelector('.panel-fullscreen');
+                if (fs) {
+                    const btn = fs.querySelector('.panel-btn');
+                    if (btn) toggleFullscreen(btn);
+                }
+            }
+        });
+
+        // === Page Fullscreen ===
+        function togglePageFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('fullscreenchange', function() {
+            const btn = document.getElementById('page-fullscreen-btn');
+            btn.textContent = document.fullscreenElement ? '\u2716' : '\u26F6';
+            btn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+        });
+
         // === Unit Conversions ===
         const M_TO_FT = 3.28084;
         const KMH_TO_MPH = 0.621371;
