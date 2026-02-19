@@ -2,10 +2,23 @@ from flask import Flask, render_template, jsonify, request
 import requests
 import pandas as pd
 import numpy as np
+import subprocess
 from datetime import datetime, timedelta
 
 # Initialize Flask app
 app = Flask(__name__)
+
+def get_version():
+    """Read version from git tags via git describe."""
+    try:
+        return subprocess.check_output(
+            ['git', 'describe', '--tags', '--always'],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return 'v0.1.0'
+
+APP_VERSION = get_version()
 
 def get_point_weather_data(latitude, longitude):
     """
@@ -192,7 +205,7 @@ def index():
     """
     Renders the main dashboard page.
     """
-    return render_template('index.html')
+    return render_template('index.html', version=APP_VERSION)
 
 # Route for the API to get point forecast data
 @app.route('/api/forecast')
