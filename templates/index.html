@@ -157,6 +157,20 @@
             grid-column: 1 / -1;
         }
 
+        .panel-half {
+            grid-column: span 1;
+        }
+
+        /* Force basin panels onto their own row */
+        @media (min-width: 700px) {
+            .panel-basin-row {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 4px;
+            }
+        }
+
         .panel-header {
             padding: 6px 10px;
             background: rgba(255,255,255,0.02);
@@ -561,80 +575,6 @@
     <!-- Panels Grid -->
     <div class="panels-grid">
 
-        <!-- Ocean Basin: Wave Height -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Ocean Basin &mdash; Wave Height</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-basin-height" class="map-container">
-                    <div class="map-loading">Loading ocean data...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Ocean Basin: Wave Period -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Ocean Basin &mdash; Wave Period</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-basin-period" class="map-container">
-                    <div class="map-loading">Loading ocean data...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Local Wave Period -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wave Period (s)</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wave-period" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Local Wave Height -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wave Height (ft)</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wave-height" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Local Wind Speed -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wind Speed &amp; Direction</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wind" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Unified Map Time Slider -->
-        <div class="panel panel-full">
-            <div class="panel-header">
-                <span class="panel-title">Map Time</span>
-                <span class="panel-badge" id="map-time-badge">Loading</span>
-            </div>
-            <div class="panel-content" style="padding: 0;">
-                <div class="slider-row">
-                    <span class="slider-label" id="time-label">Time:</span>
-                    <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
-                </div>
-            </div>
-        </div>
-
         <!-- Current Conditions -->
         <div class="panel">
             <div class="panel-header">
@@ -683,6 +623,80 @@
                 <video id="surf-cam-2" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
                 <div id="surf-cam-2-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
                     Stream unavailable
+                </div>
+            </div>
+        </div>
+
+        <!-- Ocean Basin Row -->
+        <div class="panel-basin-row">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Ocean Basin &mdash; Wave Height</span>
+                </div>
+                <div class="panel-content">
+                    <div id="map-basin-height" class="map-container">
+                        <div class="map-loading">Loading ocean data...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Ocean Basin &mdash; Wave Period</span>
+                </div>
+                <div class="panel-content">
+                    <div id="map-basin-period" class="map-container">
+                        <div class="map-loading">Loading ocean data...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Wave Height -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Local Wave Height (ft)</span>
+            </div>
+            <div class="panel-content">
+                <div id="map-wave-height" class="map-container">
+                    <div class="map-loading">Loading map data...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Wind Speed -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Local Wind Speed &amp; Direction</span>
+            </div>
+            <div class="panel-content">
+                <div id="map-wind" class="map-container">
+                    <div class="map-loading">Loading map data...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Wave Period -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Local Wave Period (s)</span>
+            </div>
+            <div class="panel-content">
+                <div id="map-wave-period" class="map-container">
+                    <div class="map-loading">Loading map data...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unified Map Time Slider -->
+        <div class="panel panel-full">
+            <div class="panel-header">
+                <span class="panel-title">Map Time</span>
+                <span class="panel-badge" id="map-time-badge">Loading</span>
+            </div>
+            <div class="panel-content" style="padding: 0;">
+                <div class="slider-row">
+                    <span class="slider-label" id="time-label">Time:</span>
+                    <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
                 </div>
             </div>
         </div>
