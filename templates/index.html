@@ -7,6 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- GridStack CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack.min.css" />
     <style>
         /* === Design Tokens === */
         :root {
@@ -135,40 +137,67 @@
             background: rgba(255,255,255,0.03);
         }
 
-        /* === Panels Grid === */
-        .panels-grid {
+        /* === GridStack Dashboard === */
+        .grid-stack {
             margin-top: 40px;
-            padding: 4px;
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 4px;
-            min-height: calc(100vh - 40px);
         }
 
-        .panel {
+        .grid-stack-item-content {
             background: var(--surface);
             border: 1px solid var(--border);
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+
+        .grid-stack-item-content .panel {
+            display: flex;
+            flex-direction: column;
             min-width: 0;
+            height: 100%;
+            overflow: hidden;
         }
 
-        .panel-full {
-            grid-column: 1 / -1;
+        /* Keep dragging widgets below the header */
+        .grid-stack-item.ui-draggable-dragging {
+            z-index: 900 !important;
         }
 
-        .panel-half {
-            grid-column: span 1;
+        /* Placeholder styling for dark theme */
+        .grid-stack-placeholder > .placeholder-content {
+            background: rgba(255, 255, 255, 0.03) !important;
+            border: 1px dashed var(--text-muted) !important;
         }
 
-        /* Force basin panels onto their own row */
-        @media (min-width: 700px) {
-            .panel-basin-row {
-                grid-column: 1 / -1;
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 4px;
-            }
+        /* Resize handle styling */
+        .grid-stack-item > .ui-resizable-se {
+            filter: invert(1) brightness(0.5);
+        }
+
+        /* Fullscreen wrapper on grid-stack-item */
+        .grid-stack-item.panel-fullscreen-wrapper {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 1500 !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .grid-stack-item.panel-fullscreen-wrapper .panel-content {
+            flex: 1;
+            overflow: auto;
+        }
+
+        .grid-stack-item.panel-fullscreen-wrapper .map-container {
+            height: 100% !important;
+        }
+
+        .grid-stack-item.panel-fullscreen-wrapper .chart-wrap {
+            height: calc(100vh - 40px);
+        }
+
+        .grid-stack-item.panel-fullscreen-wrapper .panel-content {
+            max-height: none !important;
         }
 
         .panel-header {
@@ -179,6 +208,11 @@
             align-items: center;
             justify-content: space-between;
             flex-shrink: 0;
+            cursor: grab;
+        }
+
+        .panel-header:active {
+            cursor: grabbing;
         }
 
         .panel-title {
@@ -223,31 +257,6 @@
             color: var(--text);
         }
 
-        /* Fullscreen panel */
-        .panel.panel-fullscreen {
-            position: fixed;
-            inset: 0;
-            z-index: 1500;
-            grid-column: unset;
-            border: none;
-        }
-
-        .panel.panel-fullscreen .panel-content {
-            flex: 1;
-            overflow: auto;
-        }
-
-        .panel.panel-fullscreen .map-container {
-            height: 100%;
-        }
-
-        .panel.panel-fullscreen .chart-wrap {
-            height: calc(100vh - 40px);
-        }
-
-        .panel.panel-fullscreen .panel-content {
-            max-height: none !important;
-        }
 
         /* Share button tooltip */
         .share-btn {
@@ -306,7 +315,8 @@
 
         /* === Map Containers === */
         .map-container {
-            height: 300px;
+            height: 100%;
+            min-height: 200px;
             width: 100%;
         }
 
@@ -314,7 +324,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 300px;
+            height: 100%;
+            min-height: 200px;
             color: var(--text-muted);
             font-size: 11px;
         }
@@ -489,6 +500,7 @@
         .chart-wrap {
             position: relative;
             width: 100%;
+            height: 100%;
         }
 
         /* === Modal (custom, no Bootstrap) === */
@@ -610,9 +622,6 @@
 
         /* === Responsive === */
         @media (max-width: 700px) {
-            .panels-grid {
-                grid-template-columns: 1fr;
-            }
             .header-center { display: none; }
         }
     </style>
@@ -662,182 +671,230 @@
         </div>
     </div>
 
-    <!-- Panels Grid -->
-    <div class="panels-grid">
+    <!-- Dashboard Grid -->
+    <div class="grid-stack" id="dashboard-grid">
 
         <!-- Current Conditions -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Current Conditions</span>
-                <span class="panel-badge">Live</span>
-            </div>
-            <div class="panel-content">
-                <ul class="stat-list">
-                    <li class="stat-item">
-                        <span class="stat-label">Wave Height</span>
-                        <span class="stat-value" id="current_wave_height">- ft</span>
-                    </li>
-                    <li class="stat-item">
-                        <span class="stat-label">Wave Period</span>
-                        <span class="stat-value" id="current_wave_period">- s</span>
-                    </li>
-                    <li class="stat-item">
-                        <span class="stat-label">Wave Direction</span>
-                        <span class="stat-value" id="current_wave_direction">- &deg;</span>
-                    </li>
-                </ul>
+        <div class="grid-stack-item" gs-x="0" gs-y="0" gs-w="4" gs-h="4">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Current Conditions</span>
+                        <span class="panel-badge">Live</span>
+                    </div>
+                    <div class="panel-content">
+                        <ul class="stat-list">
+                            <li class="stat-item">
+                                <span class="stat-label">Wave Height</span>
+                                <span class="stat-value" id="current_wave_height">- ft</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Wave Period</span>
+                                <span class="stat-value" id="current_wave_period">- s</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Wave Direction</span>
+                                <span class="stat-value" id="current_wave_direction">- &deg;</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Surf Cam -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Surf City Pier &mdash; Live Cam</span>
-                <span class="panel-badge">Live</span>
-            </div>
-            <div class="panel-content" style="padding: 0;">
-                <video id="surf-cam" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
-                <div id="surf-cam-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
-                    Stream unavailable
+        <div class="grid-stack-item" gs-x="4" gs-y="0" gs-w="4" gs-h="4">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Surf City Pier &mdash; Live Cam</span>
+                        <span class="panel-badge">Live</span>
+                    </div>
+                    <div class="panel-content" style="padding: 0;">
+                        <video id="surf-cam" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
+                        <div id="surf-cam-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
+                            Stream unavailable
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Surf Cam 2 -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Topsail Beach &mdash; Live Cam</span>
-                <span class="panel-badge">Live</span>
-            </div>
-            <div class="panel-content" style="padding: 0;">
-                <video id="surf-cam-2" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
-                <div id="surf-cam-2-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
-                    Stream unavailable
+        <div class="grid-stack-item" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Topsail Beach &mdash; Live Cam</span>
+                        <span class="panel-badge">Live</span>
+                    </div>
+                    <div class="panel-content" style="padding: 0;">
+                        <video id="surf-cam-2" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
+                        <div id="surf-cam-2-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
+                            Stream unavailable
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Ocean Basin Row -->
-        <div class="panel-basin-row">
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title">Ocean Basin &mdash; Wave Height</span>
-                </div>
-                <div class="panel-content">
-                    <div id="map-basin-height" class="map-container">
-                        <div class="map-loading">Loading ocean data...</div>
+        <!-- Ocean Basin — Wave Height -->
+        <div class="grid-stack-item" gs-x="0" gs-y="4" gs-w="6" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Ocean Basin &mdash; Wave Height</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="map-basin-height" class="map-container">
+                            <div class="map-loading">Loading ocean data...</div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title">Ocean Basin &mdash; Wave Period</span>
-                </div>
-                <div class="panel-content">
-                    <div id="map-basin-period" class="map-container">
-                        <div class="map-loading">Loading ocean data...</div>
+        </div>
+
+        <!-- Ocean Basin — Wave Period -->
+        <div class="grid-stack-item" gs-x="6" gs-y="4" gs-w="6" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Ocean Basin &mdash; Wave Period</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="map-basin-period" class="map-container">
+                            <div class="map-loading">Loading ocean data...</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Local Wave Height -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wave Height (ft)</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wave-height" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
+        <div class="grid-stack-item" gs-x="0" gs-y="9" gs-w="4" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Local Wave Height (ft)</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="map-wave-height" class="map-container">
+                            <div class="map-loading">Loading map data...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Local Wind Speed -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wind Speed &amp; Direction</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wind" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
+        <div class="grid-stack-item" gs-x="4" gs-y="9" gs-w="4" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Local Wind Speed &amp; Direction</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="map-wind" class="map-container">
+                            <div class="map-loading">Loading map data...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Local Wave Period -->
-        <div class="panel">
-            <div class="panel-header">
-                <span class="panel-title">Local Wave Period (s)</span>
-            </div>
-            <div class="panel-content">
-                <div id="map-wave-period" class="map-container">
-                    <div class="map-loading">Loading map data...</div>
+        <div class="grid-stack-item" gs-x="8" gs-y="9" gs-w="4" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Local Wave Period (s)</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="map-wave-period" class="map-container">
+                            <div class="map-loading">Loading map data...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Unified Map Time Slider -->
-        <div class="panel panel-full">
-            <div class="panel-header">
-                <span class="panel-title">Map Time</span>
-                <span class="panel-badge" id="map-time-badge">Loading</span>
-            </div>
-            <div class="panel-content" style="padding: 0;">
-                <div class="slider-row">
-                    <span class="slider-label" id="time-label">Time:</span>
-                    <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
+        <div class="grid-stack-item" gs-x="0" gs-y="14" gs-w="12" gs-h="1" gs-no-resize="true">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Map Time</span>
+                        <span class="panel-badge" id="map-time-badge">Loading</span>
+                    </div>
+                    <div class="panel-content" style="padding: 0;">
+                        <div class="slider-row">
+                            <span class="slider-label" id="time-label">Time:</span>
+                            <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Wave & Wind Chart -->
-        <div class="panel panel-full">
-            <div class="panel-header">
-                <span class="panel-title">Wave &amp; Wind Forecast</span>
-            </div>
-            <div class="panel-content">
-                <div class="chart-wrap">
-                    <canvas id="waveChart"></canvas>
+        <div class="grid-stack-item" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Wave &amp; Wind Forecast</span>
+                    </div>
+                    <div class="panel-content">
+                        <div class="chart-wrap">
+                            <canvas id="waveChart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Tidal Predictions -->
-        <div class="panel panel-full">
-            <div class="panel-header">
-                <span class="panel-title">Tidal Predictions</span>
-                <span class="panel-badge" id="tide-station-info">Loading station</span>
-            </div>
-            <div class="panel-content">
-                <div class="chart-wrap">
-                    <canvas id="tideChart"></canvas>
+        <div class="grid-stack-item" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Tidal Predictions</span>
+                        <span class="panel-badge" id="tide-station-info">Loading station</span>
+                    </div>
+                    <div class="panel-content">
+                        <div class="chart-wrap">
+                            <canvas id="tideChart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Daylight Forecast -->
-        <div class="panel panel-full">
-            <div class="panel-header">
-                <span class="panel-title">Daylight Forecast</span>
-            </div>
-            <div class="panel-content" style="max-height: 400px;">
-                <p class="conditions-hint">
-                    <span class="good">&#10003;</span> = Offshore/calm wind (NW &plusmn;45&deg; or &lt;3 mph) &mdash; good conditions
-                </p>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Waves (ft)</th>
-                            <th>Period (s)</th>
-                            <th>Wind (mph)</th>
-                            <th>Wind Dir</th>
-                        </tr>
-                    </thead>
-                    <tbody id="forecast-table"></tbody>
-                </table>
+        <div class="grid-stack-item" gs-x="0" gs-y="25" gs-w="12" gs-h="6">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Daylight Forecast</span>
+                    </div>
+                    <div class="panel-content">
+                        <p class="conditions-hint">
+                            <span class="good">&#10003;</span> = Offshore/calm wind (NW &plusmn;45&deg; or &lt;3 mph) &mdash; good conditions
+                        </p>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Waves (ft)</th>
+                                    <th>Period (s)</th>
+                                    <th>Wind (mph)</th>
+                                    <th>Wind Dir</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecast-table"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -848,6 +905,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- GridStack JS -->
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
 
     <script>
         // === Share Link ===
@@ -859,22 +918,99 @@
             });
         }
 
+        // === GridStack Init ===
+        let dashboardGrid = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Restore saved layout if available
+            const savedLayout = localStorage.getItem('dashboard-layout');
+
+            dashboardGrid = GridStack.init({
+                cellHeight: 70,
+                margin: 2,
+                column: 12,
+                float: false,
+                handle: '.panel-header',
+                oneColumnSize: 700,
+                acceptWidgets: false
+            }, '#dashboard-grid');
+
+            if (savedLayout) {
+                try {
+                    const items = JSON.parse(savedLayout);
+                    dashboardGrid.load(items, false);
+                } catch (e) {
+                    console.warn('Failed to restore layout:', e);
+                }
+            }
+
+            // Save layout on change
+            dashboardGrid.on('change', function(event, items) {
+                saveLayout();
+                invalidateAllMapsAndCharts();
+            });
+
+            // Invalidate maps/charts after resize
+            dashboardGrid.on('resizestop', function(event, el) {
+                setTimeout(function() {
+                    el.querySelectorAll('.map-container').forEach(function(container) {
+                        const mapInstance = getMapById(container.id);
+                        if (mapInstance) mapInstance.invalidateSize();
+                    });
+                    el.querySelectorAll('canvas').forEach(function(canvas) {
+                        const chart = Chart.getChart(canvas);
+                        if (chart) chart.resize();
+                    });
+                }, 100);
+            });
+        });
+
+        function saveLayout() {
+            if (!dashboardGrid) return;
+            const items = dashboardGrid.save(false);
+            localStorage.setItem('dashboard-layout', JSON.stringify(items));
+        }
+
+        function invalidateAllMapsAndCharts() {
+            setTimeout(function() {
+                document.querySelectorAll('.map-container').forEach(function(container) {
+                    const mapInstance = getMapById(container.id);
+                    if (mapInstance) mapInstance.invalidateSize();
+                });
+                document.querySelectorAll('.chart-wrap canvas').forEach(function(canvas) {
+                    const chart = Chart.getChart(canvas);
+                    if (chart) chart.resize();
+                });
+            }, 100);
+        }
+
         // === Panel Fullscreen ===
         function toggleFullscreen(btn) {
-            const panel = btn.closest('.panel');
-            const isFullscreen = panel.classList.toggle('panel-fullscreen');
+            const gsItem = btn.closest('.grid-stack-item');
+            const isFullscreen = gsItem.classList.toggle('panel-fullscreen-wrapper');
             btn.textContent = isFullscreen ? '\u2716' : '\u26F6';
             btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
 
-            // Invalidate Leaflet maps inside this panel
+            // Disable/enable GridStack drag+resize while fullscreen
+            if (dashboardGrid) {
+                if (isFullscreen) {
+                    dashboardGrid.movable(gsItem, false);
+                    dashboardGrid.resizable(gsItem, false);
+                } else {
+                    dashboardGrid.movable(gsItem, true);
+                    dashboardGrid.resizable(gsItem, true);
+                }
+            }
+
+            // Invalidate Leaflet maps inside this widget
             setTimeout(function() {
-                panel.querySelectorAll('.map-container').forEach(function(container) {
+                gsItem.querySelectorAll('.map-container').forEach(function(container) {
                     const mapId = container.id;
                     const mapInstance = getMapById(mapId);
                     if (mapInstance) mapInstance.invalidateSize();
                 });
                 // Resize Chart.js canvases
-                panel.querySelectorAll('canvas').forEach(function(canvas) {
+                gsItem.querySelectorAll('canvas').forEach(function(canvas) {
                     const chart = Chart.getChart(canvas);
                     if (chart) chart.resize();
                 });
@@ -894,7 +1030,7 @@
 
         // Inject fullscreen buttons into all panel headers
         document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.panel > .panel-header').forEach(function(header) {
+            document.querySelectorAll('.grid-stack-item-content .panel > .panel-header').forEach(function(header) {
                 // Wrap existing badge(s) and add fullscreen button
                 const actions = document.createElement('div');
                 actions.className = 'panel-header-actions';
@@ -918,7 +1054,7 @@
         // ESC to exit fullscreen
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
-                const fs = document.querySelector('.panel-fullscreen');
+                const fs = document.querySelector('.panel-fullscreen-wrapper');
                 if (fs) {
                     const btn = fs.querySelector('.panel-btn');
                     if (btn) toggleFullscreen(btn);
