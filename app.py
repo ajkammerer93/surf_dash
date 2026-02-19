@@ -3,7 +3,11 @@ import requests
 import pandas as pd
 import numpy as np
 import subprocess
+import os
+import time
+import traceback
 from datetime import datetime, timedelta
+from itertools import product
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -20,6 +24,19 @@ def get_version():
 
 APP_VERSION = get_version()
 
+# Simple time-based response cache
+_cache = {}
+CACHE_TTL = 900  # 15 minutes
+
+def cached(key, fn):
+    """Return cached result if fresh, otherwise call fn() and cache it."""
+    now = time.time()
+    if key in _cache and now - _cache[key]['time'] < CACHE_TTL:
+        return _cache[key]['data']
+    result = fn()
+    _cache[key] = {'data': result, 'time': now}
+    return result
+
 def get_point_weather_data(latitude, longitude):
     """
     Fetches wave data from Marine API and wind data from Weather API for a single point.
@@ -33,6 +50,7 @@ def get_point_weather_data(latitude, longitude):
             "hourly": "wave_height,wave_period,wave_direction,wind_wave_height,wind_wave_period",
             "timezone": "auto"
         }
+        marine_url, marine_params = _apply_api_key(marine_url, marine_params)
         marine_response = requests.get(marine_url, params=marine_params)
         marine_response.raise_for_status()
         marine_data = marine_response.json()
@@ -46,6 +64,7 @@ def get_point_weather_data(latitude, longitude):
             "daily": "sunrise,sunset",
             "timezone": "auto"
         }
+        weather_url, weather_params = _apply_api_key(weather_url, weather_params)
         weather_response = requests.get(weather_url, params=weather_params)
         weather_response.raise_for_status()
         weather_data = weather_response.json()
@@ -93,8 +112,13 @@ def get_point_weather_data(latitude, longitude):
         print(f"Error processing point data: {e}")
         return None
 
-import traceback
-from itertools import product
+def _apply_api_key(url, params):
+    """If OPEN_METEO_API_KEY is set, switch to the commercial endpoint."""
+    api_key = os.environ.get('OPEN_METEO_API_KEY')
+    if api_key:
+        url = url.replace('open-meteo.com', 'customer-open-meteo.com')
+        params['apikey'] = api_key
+    return url, params
 
 def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
     """
@@ -109,7 +133,8 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
         params = dict(base_params)
         params["latitude"] = batch_lats
         params["longitude"] = batch_lons
-        response = requests.get(url, params=params)
+        req_url, params = _apply_api_key(url, params)
+        response = requests.get(req_url, params=params)
         response.raise_for_status()
         data = response.json()
         # Single-point responses are a dict, multi-point are a list
@@ -232,8 +257,9 @@ def forecast():
     lat = request.args.get('lat', 34.42711, type=float)
     lon = request.args.get('lon', -77.54608, type=float)
 
-    data = get_point_weather_data(lat, lon)
-    
+    cache_key = f"forecast:{lat:.4f},{lon:.4f}"
+    data = cached(cache_key, lambda: get_point_weather_data(lat, lon))
+
     if data:
         return jsonify(data)
     else:
@@ -259,7 +285,8 @@ def map_forecast():
     lon_min, lon_max = center_lon - 0.75, center_lon + 0.75
     resolution = 0.05  # degrees (~5.5 km cells) - gives 21x31=651 points
 
-    data = get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution)
+    cache_key = f"map:{center_lat},{center_lon}"
+    data = cached(cache_key, lambda: get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution))
 
     if data:
         return jsonify(data)
@@ -372,7 +399,8 @@ def ocean_basin():
     center_lat = request.args.get('lat', 34.42711, type=float)
     center_lon = request.args.get('lon', -77.54608, type=float)
 
-    data = get_ocean_basin_data(center_lat, center_lon)
+    cache_key = f"basin:{round(center_lat, 2)},{round(center_lon, 2)}"
+    data = cached(cache_key, lambda: get_ocean_basin_data(center_lat, center_lon))
 
     if data:
         return jsonify(data)
@@ -510,21 +538,23 @@ def tides():
     target_lat = request.args.get('lat', 34.42711, type=float)
     target_lon = request.args.get('lon', -77.54608, type=float)
 
-    # Find nearest tide station
-    station = find_nearest_tide_station(target_lat, target_lon)
+    cache_key = f"tides:{target_lat:.4f},{target_lon:.4f}"
 
-    if not station:
-        return jsonify({"error": "Could not find a nearby tide station."}), 500
+    def fetch_tides():
+        station = find_nearest_tide_station(target_lat, target_lon)
+        if not station:
+            return None
+        data = get_tide_data(station["id"])
+        if data:
+            data["station"] = station
+        return data
 
-    # Get tide data for that station
-    data = get_tide_data(station["id"])
+    data = cached(cache_key, fetch_tides)
 
     if data:
-        # Include station info in response
-        data["station"] = station
         return jsonify(data)
     else:
-        return jsonify({"error": f"Could not retrieve tide data for station {station['name']}."}), 500
+        return jsonify({"error": "Could not retrieve tide data."}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
