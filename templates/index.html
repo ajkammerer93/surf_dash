@@ -936,6 +936,8 @@
             // Restore saved layout if available
             const savedLayout = localStorage.getItem('dashboard-layout');
 
+            var isMobile = window.innerWidth <= 700;
+
             dashboardGrid = GridStack.init({
                 cellHeight: 70,
                 margin: 2,
@@ -943,7 +945,9 @@
                 float: false,
                 handle: '.panel-header',
                 oneColumnSize: 700,
-                acceptWidgets: false
+                acceptWidgets: false,
+                disableDrag: isMobile,
+                disableResize: isMobile
             }, '#dashboard-grid');
 
             if (savedLayout) {
@@ -973,6 +977,13 @@
                         if (chart) chart.resize();
                     });
                 }, 100);
+            });
+
+            // Toggle drag/resize on window resize (e.g. phone rotation)
+            window.addEventListener('resize', function() {
+                var mobile = window.innerWidth <= 700;
+                dashboardGrid.enableMove(!mobile);
+                dashboardGrid.enableResize(!mobile);
             });
         });
 
