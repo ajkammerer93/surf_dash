@@ -294,27 +294,29 @@ def get_ocean_basin_data(center_lat, center_lon):
         num_lats = len(lats)
         num_lons = len(lons)
 
-        # Just get first time point for the basin overview
-        time_point = pd.to_datetime(data[0]['hourly']['time'][0])
+        # Get all time points for animation
+        time_points = pd.to_datetime(data[0]['hourly']['time'])
+        num_times = len(time_points)
 
-        wave_height_grid = np.full((num_lats, num_lons), np.nan)
-        wave_period_grid = np.full((num_lats, num_lons), np.nan)
-        wave_direction_grid = np.full((num_lats, num_lons), np.nan)
+        wave_height_grid = np.full((num_times, num_lats, num_lons), np.nan)
+        wave_period_grid = np.full((num_times, num_lats, num_lons), np.nan)
+        wave_direction_grid = np.full((num_times, num_lats, num_lons), np.nan)
 
         for i, point_data in enumerate(data):
             lat_index = i // num_lons
             lon_index = i % num_lons
 
-            wh = point_data['hourly'].get('wave_height', [None])[0]
-            wp = point_data['hourly'].get('wave_period', [None])[0]
-            wd = point_data['hourly'].get('wave_direction', [None])[0]
+            wave_heights = point_data['hourly'].get('wave_height', [None] * num_times)
+            wave_periods = point_data['hourly'].get('wave_period', [None] * num_times)
+            wave_dirs = point_data['hourly'].get('wave_direction', [None] * num_times)
 
-            if wh is not None:
-                wave_height_grid[lat_index, lon_index] = wh
-            if wp is not None:
-                wave_period_grid[lat_index, lon_index] = wp
-            if wd is not None:
-                wave_direction_grid[lat_index, lon_index] = wd
+            for t in range(min(num_times, len(wave_heights))):
+                if wave_heights[t] is not None:
+                    wave_height_grid[t, lat_index, lon_index] = wave_heights[t]
+                if wave_periods[t] is not None:
+                    wave_period_grid[t, lat_index, lon_index] = wave_periods[t]
+                if wave_dirs[t] is not None:
+                    wave_direction_grid[t, lat_index, lon_index] = wave_dirs[t]
 
         # Replace NaN with 0 for JSON
         wave_height_grid = np.nan_to_num(wave_height_grid, nan=0.0)
@@ -324,7 +326,7 @@ def get_ocean_basin_data(center_lat, center_lon):
         return {
             "lats": lats.tolist(),
             "lons": lons.tolist(),
-            "time": time_point.strftime('%Y-%m-%d %H:%M'),
+            "times": [t.strftime('%Y-%m-%d %H:%M') for t in time_points],
             "wave_height": wave_height_grid.tolist(),
             "wave_period": wave_period_grid.tolist(),
             "wave_direction": wave_direction_grid.tolist(),
