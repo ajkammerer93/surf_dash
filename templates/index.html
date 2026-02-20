@@ -877,6 +877,10 @@
                                         Wave Period
                                     </label>
                                     <label class="basin-layer-item">
+                                        <input type="checkbox" id="basin-layer-direction" onchange="onBasinLayerToggle('direction')">
+                                        Wave Direction
+                                    </label>
+                                    <label class="basin-layer-item">
                                         <input type="checkbox" id="basin-layer-wind" checked onchange="onBasinLayerToggle('wind')">
                                         Wind Animation
                                     </label>
@@ -1850,6 +1854,7 @@
             return {
                 height: document.getElementById('basin-layer-height').checked,
                 period: document.getElementById('basin-layer-period').checked,
+                direction: document.getElementById('basin-layer-direction').checked,
                 wind: document.getElementById('basin-layer-wind').checked
             };
         }
@@ -1857,18 +1862,34 @@
         function onBasinLayerToggle(source) {
             const heightCb = document.getElementById('basin-layer-height');
             const periodCb = document.getElementById('basin-layer-period');
+            const directionCb = document.getElementById('basin-layer-direction');
 
-            // Wave height and wave period are mutually exclusive
+            // Wave height, period, and direction are mutually exclusive colored grids
             if (source === 'height' && heightCb.checked) {
                 periodCb.checked = false;
+                directionCb.checked = false;
             } else if (source === 'period' && periodCb.checked) {
                 heightCb.checked = false;
+                directionCb.checked = false;
+            } else if (source === 'direction' && directionCb.checked) {
+                heightCb.checked = false;
+                periodCb.checked = false;
             }
 
             // Re-render with current slider time
             const slider = document.getElementById('time-slider');
             const timeIndex = parseInt(slider.value) || 0;
             updateBasinMap(timeIndex);
+        }
+
+        function getColorForDirection(deg) {
+            // Map compass bearing to HSL hue wheel — gives intuitive directional coloring
+            return `hsl(${deg % 360}, 75%, 50%)`;
+        }
+
+        function compassLabel(deg) {
+            const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+            return dirs[Math.round(deg / 45) % 8];
         }
 
         function updateBasinLegend() {
@@ -1878,14 +1899,35 @@
                 basinLegendControl = null;
             }
             const state = getBasinLayerState();
-            // Show legend for whichever grid layer is active (height takes priority if both)
+
+            if (state.direction) {
+                // Compass direction legend
+                basinLegendControl = L.control({position: 'bottomright'});
+                basinLegendControl.onAdd = function() {
+                    const div = L.DomUtil.create('div', 'legend');
+                    div.innerHTML = '<strong>Direction (from)</strong><br>';
+                    const entries = [
+                        {deg: 0, label: 'N'}, {deg: 45, label: 'NE'},
+                        {deg: 90, label: 'E'}, {deg: 135, label: 'SE'},
+                        {deg: 180, label: 'S'}, {deg: 225, label: 'SW'},
+                        {deg: 270, label: 'W'}, {deg: 315, label: 'NW'}
+                    ];
+                    entries.forEach(e => {
+                        div.innerHTML += `<span class="legend-color" style="background:${getColorForDirection(e.deg)}"></span>${e.label}<br>`;
+                    });
+                    return div;
+                };
+                basinLegendControl.addTo(mapBasin);
+                return;
+            }
+
             let title, minVal, maxVal;
             if (state.height) {
                 title = 'Height (ft)'; minVal = 0; maxVal = 20;
             } else if (state.period) {
                 title = 'Period (s)'; minVal = 0; maxVal = 15;
             } else {
-                return; // No grid layer active
+                return;
             }
             basinLegendControl = L.control({position: 'bottomright'});
             basinLegendControl.onAdd = function() {
@@ -1997,7 +2039,7 @@
                 basinGridLayer = null;
             }
 
-            if (state.height || state.period) {
+            if (state.height || state.period || state.direction) {
                 basinGridLayer = L.layerGroup();
                 const basinRenderer = L.canvas({ padding: 0.5, oceanClip: true });
 
@@ -2028,6 +2070,15 @@
                                 L.rectangle(bounds, {
                                     renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
                                 }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(basinGridLayer);
+                            }
+                        } else if (state.direction) {
+                            const dir = basinGridData.wave_direction[bTimeIndex][i][j];
+                            const wh = basinGridData.wave_height[bTimeIndex][i][j];
+                            if (dir > 0 || wh > 0) {
+                                const color = getColorForDirection(dir);
+                                L.rectangle(bounds, {
+                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                }).bindPopup(`Wave Direction: ${dir.toFixed(0)}° (${compassLabel(dir)})`).addTo(basinGridLayer);
                             }
                         }
                     }
@@ -2067,7 +2118,7 @@
                     if (data.error) {
                         console.error('API Error (Basin Data):', data.error);
                         const center = [currentLocation.lat, currentLocation.lon];
-                        mapBasin = initEmptyMap('map-basin', center, 4, 'Ocean data unavailable');
+                        mapBasin = initEmptyMap('map-basin', center, 3, 'Ocean data unavailable');
                         return;
                     }
 
@@ -2079,10 +2130,10 @@
                     // Clear loading message
                     document.getElementById('map-basin').innerHTML = '';
 
-                    // Initialize map centered on the forecast location
-                    mapBasin = L.map('map-basin').setView([center.lat, center.lon], 4);
+                    // Initialize map centered on the forecast location (zoom 3 for global view)
+                    mapBasin = L.map('map-basin', {worldCopyJump: true}).setView([center.lat, center.lon], 3);
 
-                    addHomeButton(mapBasin, [center.lat, center.lon], 4);
+                    addHomeButton(mapBasin, [center.lat, center.lon], 3);
 
                     const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
                     const tileLayerOptions = {
@@ -2111,7 +2162,7 @@
                 .catch(error => {
                     console.error('Error fetching ocean basin data:', error);
                     const center = [currentLocation.lat, currentLocation.lon];
-                    mapBasin = initEmptyMap('map-basin', center, 4, 'Ocean data unavailable');
+                    mapBasin = initEmptyMap('map-basin', center, 3, 'Ocean data unavailable');
                 });
         }
 
