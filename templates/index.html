@@ -1334,15 +1334,20 @@
         let waveTimeRange = null;   // { min: Date, max: Date }
         let tideTimeRange = null;
         function syncChartTimeAxes() {
-            if (!waveTimeRange || !tideTimeRange || !waveChart || !tideChart) return;
-            const sharedMin = new Date(Math.min(waveTimeRange.min, tideTimeRange.min));
-            const sharedMax = new Date(Math.max(waveTimeRange.max, tideTimeRange.max));
-            waveChart.options.scales.x.min = sharedMin;
-            waveChart.options.scales.x.max = sharedMax;
-            tideChart.options.scales.x.min = sharedMin;
-            tideChart.options.scales.x.max = sharedMax;
-            waveChart.update('none');
-            tideChart.update('none');
+            if (!waveTimeRange || !tideTimeRange) return;
+            // Use the intersection so both charts cover the same time window
+            const sharedMin = new Date(Math.max(waveTimeRange.min, tideTimeRange.min));
+            const sharedMax = new Date(Math.min(waveTimeRange.max, tideTimeRange.max));
+            if (waveChart && waveChart.canvas) {
+                waveChart.options.scales.x.min = sharedMin;
+                waveChart.options.scales.x.max = sharedMax;
+                waveChart.update('none');
+            }
+            if (tideChart && tideChart.canvas) {
+                tideChart.options.scales.x.min = sharedMin;
+                tideChart.options.scales.x.max = sharedMax;
+                tideChart.update('none');
+            }
         }
 
         function resetWaveChart() {
@@ -1714,6 +1719,7 @@
                         },
                         options: {
                             responsive: true,
+                            maintainAspectRatio: false,
                             interaction: {
                                 mode: 'index',
                                 intersect: false
@@ -2503,6 +2509,7 @@
                         },
                         options: {
                             responsive: true,
+                            maintainAspectRatio: false,
                             interaction: {
                                 mode: 'index',
                                 intersect: false
@@ -2538,6 +2545,22 @@
                                     },
                                     grid: {
                                         color: 'rgba(54, 162, 235, 0.15)'
+                                    }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    position: 'right',
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Wind Speed (mph)',
+                                        color: 'transparent'
+                                    },
+                                    ticks: {
+                                        color: 'transparent'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false
                                     }
                                 }
                             },
