@@ -28,6 +28,20 @@ APP_VERSION = get_version()
 _cache = {}
 CACHE_TTL = 900  # 15 minutes
 
+# Rate limit cooldown — stop hitting the API for a while after 429s
+_rate_limit_until = 0  # timestamp when cooldown expires
+RATE_LIMIT_COOLDOWN = 300  # 5 minutes
+
+def is_rate_limited():
+    """Check if we're in a rate limit cooldown period."""
+    return time.time() < _rate_limit_until
+
+def set_rate_limited():
+    """Enter rate limit cooldown mode."""
+    global _rate_limit_until
+    _rate_limit_until = time.time() + RATE_LIMIT_COOLDOWN
+    print(f"Rate limit cooldown active for {RATE_LIMIT_COOLDOWN}s — skipping API calls until {time.strftime('%H:%M:%S', time.localtime(_rate_limit_until))}")
+
 def cached(key, fn):
     """Return cached result if fresh, otherwise call fn() and cache it."""
     now = time.time()
@@ -127,16 +141,22 @@ def _short_sleep(seconds):
 
 def _request_with_retry(url, params, label='', max_retries=4):
     """Make a GET request with 429 retry logic using short sleeps."""
+    if is_rate_limited():
+        raise requests.exceptions.ConnectionError(f"Skipping {label} — rate limit cooldown active")
     for attempt in range(max_retries):
         response = requests.get(url, params=params)
         if response.status_code == 429:
-            wait = [5, 15, 30, 45][attempt]  # Escalating waits to outlast rate limit window
-            print(f"Rate limited ({label}), retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
-            _short_sleep(wait)
-            continue
+            if attempt < max_retries - 1:
+                wait = [5, 15, 30, 45][attempt]
+                print(f"Rate limited ({label}), retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
+                _short_sleep(wait)
+                continue
+            else:
+                # All retries exhausted — enter cooldown to stop hammering the API
+                set_rate_limited()
+                response.raise_for_status()
         response.raise_for_status()
         return response
-    response.raise_for_status()  # All retries exhausted
     return response
 
 def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
