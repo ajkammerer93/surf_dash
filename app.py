@@ -351,7 +351,15 @@ def get_ocean_basin_data(center_lat, center_lon):
             "timezone": "auto"
         }
 
+        # Fetch weather data in batches (wind speed, wind direction)
+        weather_url = "https://api.open-meteo.com/v1/forecast"
+        weather_base_params = {
+            "hourly": "wind_speed_10m,wind_direction_10m",
+            "timezone": "auto"
+        }
+
         data = fetch_batched(marine_url, marine_base_params, all_lats, all_lons)
+        weather_data = fetch_batched(weather_url, weather_base_params, all_lats, all_lons)
 
         num_lats = len(lats)
         num_lons = len(lons)
@@ -363,6 +371,8 @@ def get_ocean_basin_data(center_lat, center_lon):
         wave_height_grid = np.full((num_times, num_lats, num_lons), np.nan)
         wave_period_grid = np.full((num_times, num_lats, num_lons), np.nan)
         wave_direction_grid = np.full((num_times, num_lats, num_lons), np.nan)
+        wind_speed_grid = np.full((num_times, num_lats, num_lons), np.nan)
+        wind_direction_grid = np.full((num_times, num_lats, num_lons), np.nan)
 
         for i, point_data in enumerate(data):
             lat_index = i // num_lons
@@ -380,10 +390,22 @@ def get_ocean_basin_data(center_lat, center_lon):
                 if wave_dirs[t] is not None:
                     wave_direction_grid[t, lat_index, lon_index] = wave_dirs[t]
 
+            # Wind data from weather API
+            if i < len(weather_data):
+                wind_speeds = weather_data[i]['hourly'].get('wind_speed_10m', [None] * num_times)
+                wind_dirs_w = weather_data[i]['hourly'].get('wind_direction_10m', [None] * num_times)
+                for t in range(min(num_times, len(wind_speeds))):
+                    if wind_speeds[t] is not None:
+                        wind_speed_grid[t, lat_index, lon_index] = wind_speeds[t]
+                    if wind_dirs_w[t] is not None:
+                        wind_direction_grid[t, lat_index, lon_index] = wind_dirs_w[t]
+
         # Replace NaN with 0 for JSON
         wave_height_grid = np.nan_to_num(wave_height_grid, nan=0.0)
         wave_period_grid = np.nan_to_num(wave_period_grid, nan=0.0)
         wave_direction_grid = np.nan_to_num(wave_direction_grid, nan=0.0)
+        wind_speed_grid = np.nan_to_num(wind_speed_grid, nan=0.0)
+        wind_direction_grid = np.nan_to_num(wind_direction_grid, nan=0.0)
 
         return {
             "lats": lats.tolist(),
@@ -392,6 +414,8 @@ def get_ocean_basin_data(center_lat, center_lon):
             "wave_height": wave_height_grid.tolist(),
             "wave_period": wave_period_grid.tolist(),
             "wave_direction": wave_direction_grid.tolist(),
+            "wind_speed": wind_speed_grid.tolist(),
+            "wind_direction": wind_direction_grid.tolist(),
             "center": {"lat": center_lat, "lon": center_lon}
         }
 

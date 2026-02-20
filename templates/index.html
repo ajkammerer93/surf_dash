@@ -7,6 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- Leaflet Velocity CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-velocity@2.1.4/dist/leaflet-velocity.css" />
     <!-- GridStack CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack.min.css" />
     <style>
@@ -218,6 +220,8 @@
             justify-content: space-between;
             flex-shrink: 0;
             cursor: grab;
+            position: relative;
+            z-index: 1000;
         }
 
         .panel-header:active {
@@ -388,6 +392,72 @@
         .wind-arrow {
             font-size: 14px;
             font-weight: bold;
+        }
+
+        /* === Basin Layer Dropdown === */
+        .basin-layer-menu {
+            position: relative;
+            display: inline-block;
+        }
+
+        .basin-layer-btn {
+            font-family: var(--font-body);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 3px 8px;
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .basin-layer-btn:hover {
+            color: var(--text);
+            border-color: var(--text-muted);
+            background: rgba(255,255,255,0.03);
+        }
+
+        .basin-layer-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 0;
+            z-index: 1100;
+            min-width: 160px;
+        }
+
+        .basin-layer-dropdown.open {
+            display: block;
+        }
+
+        .basin-layer-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--text-dim);
+            transition: background 0.1s;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .basin-layer-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+        }
+
+        .basin-layer-item input[type="checkbox"] {
+            accent-color: var(--status-live);
+            cursor: pointer;
         }
 
         /* === Map Home Button === */
@@ -788,31 +858,34 @@
             </div>
         </div>
 
-        <!-- Ocean Basin — Wave Height -->
-        <div class="grid-stack-item" gs-x="0" gs-y="4" gs-w="6" gs-h="5">
+        <!-- Ocean Basin -->
+        <div class="grid-stack-item" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
-                        <span class="panel-title">Ocean Basin &mdash; Wave Height</span>
-                    </div>
-                    <div class="panel-content">
-                        <div id="map-basin-height" class="map-container">
-                            <div class="map-loading">Loading ocean data...</div>
+                        <span class="panel-title">Ocean Basin</span>
+                        <div class="panel-header-actions">
+                            <div class="basin-layer-menu">
+                                <button class="basin-layer-btn" onclick="toggleBasinLayerMenu(event)">Layers &#9662;</button>
+                                <div class="basin-layer-dropdown" id="basin-layer-dropdown">
+                                    <label class="basin-layer-item">
+                                        <input type="checkbox" id="basin-layer-height" checked onchange="onBasinLayerToggle('height')">
+                                        Wave Height
+                                    </label>
+                                    <label class="basin-layer-item">
+                                        <input type="checkbox" id="basin-layer-period" onchange="onBasinLayerToggle('period')">
+                                        Wave Period
+                                    </label>
+                                    <label class="basin-layer-item">
+                                        <input type="checkbox" id="basin-layer-wind" checked onchange="onBasinLayerToggle('wind')">
+                                        Wind Animation
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Ocean Basin — Wave Period -->
-        <div class="grid-stack-item" gs-x="6" gs-y="4" gs-w="6" gs-h="5">
-            <div class="grid-stack-item-content">
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Ocean Basin &mdash; Wave Period</span>
-                    </div>
                     <div class="panel-content">
-                        <div id="map-basin-period" class="map-container">
+                        <div id="map-basin" class="map-container">
                             <div class="map-loading">Loading ocean data...</div>
                         </div>
                     </div>
@@ -957,6 +1030,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-velocity@2.1.4/dist/leaflet-velocity.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
     <!-- GridStack JS -->
@@ -1084,8 +1158,7 @@
 
         function getMapById(id) {
             const mapLookup = {
-                'map-basin-height': () => mapBasinHeight,
-                'map-basin-period': () => mapBasinPeriod,
+                'map-basin': () => mapBasin,
                 'map-wave-period': () => map1,
                 'map-wave-height': () => map2,
                 'map-wind': () => map3,
@@ -1746,30 +1819,235 @@
         });
 
         // Ocean Basin map script
-        let mapBasinHeight = null;
-        let mapBasinPeriod = null;
-        let basinHeightLayer = null;
-        let basinPeriodLayer = null;
+        let mapBasin = null;
+        let basinGridLayer = null;
+        let basinVelocityLayer = null;
+        let basinLegendControl = null;
+
+        // Basin layer dropdown menu
+        function toggleBasinLayerMenu(e) {
+            e.stopPropagation();
+            const dropdown = document.getElementById('basin-layer-dropdown');
+            dropdown.classList.toggle('open');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('basin-layer-dropdown');
+            if (dropdown && !e.target.closest('.basin-layer-menu')) {
+                dropdown.classList.remove('open');
+            }
+        });
+
+        function getBasinLayerState() {
+            return {
+                height: document.getElementById('basin-layer-height').checked,
+                period: document.getElementById('basin-layer-period').checked,
+                wind: document.getElementById('basin-layer-wind').checked
+            };
+        }
+
+        function onBasinLayerToggle(source) {
+            const heightCb = document.getElementById('basin-layer-height');
+            const periodCb = document.getElementById('basin-layer-period');
+
+            // Wave height and wave period are mutually exclusive
+            if (source === 'height' && heightCb.checked) {
+                periodCb.checked = false;
+            } else if (source === 'period' && periodCb.checked) {
+                heightCb.checked = false;
+            }
+
+            // Re-render with current slider time
+            const slider = document.getElementById('time-slider');
+            const timeIndex = parseInt(slider.value) || 0;
+            updateBasinMap(timeIndex);
+        }
+
+        function updateBasinLegend() {
+            if (!mapBasin) return;
+            if (basinLegendControl) {
+                mapBasin.removeControl(basinLegendControl);
+                basinLegendControl = null;
+            }
+            const state = getBasinLayerState();
+            // Show legend for whichever grid layer is active (height takes priority if both)
+            let title, minVal, maxVal;
+            if (state.height) {
+                title = 'Height (ft)'; minVal = 0; maxVal = 20;
+            } else if (state.period) {
+                title = 'Period (s)'; minVal = 0; maxVal = 15;
+            } else {
+                return; // No grid layer active
+            }
+            basinLegendControl = L.control({position: 'bottomright'});
+            basinLegendControl.onAdd = function() {
+                const div = L.DomUtil.create('div', 'legend');
+                const colors = ['blue', 'cyan', 'lime', 'yellow', 'red'];
+                div.innerHTML = `<strong>${title}</strong><br>`;
+                colors.forEach((color, i) => {
+                    const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
+                    div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
+                });
+                return div;
+            };
+            basinLegendControl.addTo(mapBasin);
+        }
+
+        function buildVelocityData(timeIndex) {
+            if (!basinGridData || !basinGridData.wind_speed) return null;
+            const lats = basinGridData.lats;
+            const lons = basinGridData.lons;
+            const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
+            const nx = lons.length;
+            const ny = lats.length;
+            const lo1 = lons[0];
+            const lo2 = lons[lons.length - 1];
+            const la1 = lats[lats.length - 1]; // north (data north-to-south for velocity)
+            const la2 = lats[0]; // south
+            const dx = lons.length > 1 ? Math.abs(lons[1] - lons[0]) : 1.5;
+            const dy = lats.length > 1 ? Math.abs(lats[1] - lats[0]) : 1.5;
+
+            const uData = [];
+            const vData = [];
+            // leaflet-velocity expects north-to-south row order; our lats are south-to-north
+            for (let i = lats.length - 1; i >= 0; i--) {
+                for (let j = 0; j < lons.length; j++) {
+                    const speedKmh = basinGridData.wind_speed[bTimeIndex][i][j];
+                    const dir = basinGridData.wind_direction[bTimeIndex][i][j];
+                    const speedMs = speedKmh / 3.6;
+                    const dirRad = dir * Math.PI / 180;
+                    uData.push(-speedMs * Math.sin(dirRad));
+                    vData.push(-speedMs * Math.cos(dirRad));
+                }
+            }
+
+            const header = {
+                parameterCategory: 2,
+                parameterNumber: 2,
+                lo1: lo1, lo2: lo2, la1: la1, la2: la2,
+                dx: dx, dy: dy, nx: nx, ny: ny
+            };
+
+            return [
+                { header: Object.assign({}, header, { parameterNumber: 2 }), data: uData },
+                { header: Object.assign({}, header, { parameterNumber: 3 }), data: vData }
+            ];
+        }
+
+        function updateBasinVelocityLayer(timeIndex) {
+            if (!mapBasin) return;
+            const state = getBasinLayerState();
+
+            if (!state.wind) {
+                if (basinVelocityLayer) {
+                    mapBasin.removeLayer(basinVelocityLayer);
+                    basinVelocityLayer = null;
+                }
+                return;
+            }
+
+            const velocityData = buildVelocityData(timeIndex);
+            if (!velocityData) return;
+
+            if (basinVelocityLayer) {
+                basinVelocityLayer.setData(velocityData);
+            } else {
+                basinVelocityLayer = L.velocityLayer({
+                    displayValues: true,
+                    displayOptions: {
+                        velocityType: 'Wind',
+                        displayPosition: 'bottomleft',
+                        displayEmptyString: 'No wind data'
+                    },
+                    data: velocityData,
+                    maxVelocity: 25,
+                    velocityScale: 0.01,
+                    particleAge: 60,
+                    lineWidth: 1.5,
+                    particleMultiplier: 1/200,
+                    colorScale: [
+                        'rgba(255,255,255,0.2)',
+                        'rgba(255,255,255,0.35)',
+                        'rgba(255,255,255,0.5)',
+                        'rgba(200,200,255,0.6)',
+                        'rgba(150,200,255,0.7)',
+                        'rgba(100,180,255,0.8)'
+                    ]
+                });
+                basinVelocityLayer.addTo(mapBasin);
+            }
+        }
+
+        function updateBasinMap(timeIndex) {
+            if (!basinGridData || !mapBasin) return;
+
+            const state = getBasinLayerState();
+
+            // Update grid layer
+            if (basinGridLayer) {
+                mapBasin.removeLayer(basinGridLayer);
+                basinGridLayer = null;
+            }
+
+            if (state.height || state.period) {
+                basinGridLayer = L.layerGroup();
+                const basinRenderer = L.canvas({ padding: 0.5, oceanClip: true });
+
+                const bLats = basinGridData.lats;
+                const bLons = basinGridData.lons;
+                const basinRes = bLats.length > 1 ? Math.abs(bLats[1] - bLats[0]) : 6;
+                const bHalfRes = basinRes / 2;
+                const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
+
+                for (let i = 0; i < bLats.length; i++) {
+                    for (let j = 0; j < bLons.length; j++) {
+                        const lat = bLats[i];
+                        const lon = bLons[j];
+                        const bounds = [[lat - bHalfRes, lon - bHalfRes], [lat + bHalfRes, lon + bHalfRes]];
+
+                        if (state.height) {
+                            const wh = basinGridData.wave_height[bTimeIndex][i][j];
+                            if (wh > 0) {
+                                const color = getColorForValue(wh, 0, 6);
+                                L.rectangle(bounds, {
+                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                }).bindPopup(`Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`).addTo(basinGridLayer);
+                            }
+                        } else if (state.period) {
+                            const wp = basinGridData.wave_period[bTimeIndex][i][j];
+                            if (wp > 0) {
+                                const color = getColorForValue(wp, 0, 15);
+                                L.rectangle(bounds, {
+                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
+                                }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(basinGridLayer);
+                            }
+                        }
+                    }
+                }
+
+                basinGridLayer.addTo(mapBasin);
+            }
+
+            // Update legend
+            updateBasinLegend();
+
+            // Update velocity layer
+            updateBasinVelocityLayer(timeIndex);
+        }
 
         function loadOceanBasinMaps() {
-            const basinContainers = ['map-basin-height', 'map-basin-period'];
-
-            // Clear existing maps
-            if (mapBasinHeight) {
-                mapBasinHeight.remove();
-                mapBasinHeight = null;
+            // Clear existing map
+            if (mapBasin) {
+                mapBasin.remove();
+                mapBasin = null;
             }
-            if (mapBasinPeriod) {
-                mapBasinPeriod.remove();
-                mapBasinPeriod = null;
-            }
-            basinHeightLayer = null;
-            basinPeriodLayer = null;
+            basinGridLayer = null;
+            basinVelocityLayer = null;
+            basinLegendControl = null;
 
             // Reset container HTML
-            basinContainers.forEach(id => {
-                document.getElementById(id).innerHTML = '<div class="map-loading">Loading ocean data...</div>';
-            });
+            document.getElementById('map-basin').innerHTML = '<div class="map-loading">Loading ocean data...</div>';
 
             const params = new URLSearchParams({
                 lat: currentLocation.lat,
@@ -1782,8 +2060,7 @@
                     if (data.error) {
                         console.error('API Error (Basin Data):', data.error);
                         const center = [currentLocation.lat, currentLocation.lon];
-                        mapBasinHeight = initEmptyMap('map-basin-height', center, 4, 'Ocean data unavailable');
-                        mapBasinPeriod = initEmptyMap('map-basin-period', center, 4, 'Ocean data unavailable');
+                        mapBasin = initEmptyMap('map-basin', center, 4, 'Ocean data unavailable');
                         return;
                     }
 
@@ -1792,17 +2069,13 @@
 
                     const center = data.center;
 
-                    // Clear loading messages
-                    basinContainers.forEach(id => {
-                        document.getElementById(id).innerHTML = '';
-                    });
+                    // Clear loading message
+                    document.getElementById('map-basin').innerHTML = '';
 
-                    // Initialize maps centered on the forecast location
-                    mapBasinHeight = L.map('map-basin-height').setView([center.lat, center.lon], 4);
-                    mapBasinPeriod = L.map('map-basin-period').setView([center.lat, center.lon], 4);
+                    // Initialize map centered on the forecast location
+                    mapBasin = L.map('map-basin').setView([center.lat, center.lon], 4);
 
-                    addHomeButton(mapBasinHeight, [center.lat, center.lon], 4);
-                    addHomeButton(mapBasinPeriod, [center.lat, center.lon], 4);
+                    addHomeButton(mapBasin, [center.lat, center.lon], 4);
 
                     const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
                     const tileLayerOptions = {
@@ -1810,8 +2083,7 @@
                         maxZoom: 10
                     };
 
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapBasinHeight);
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapBasinPeriod);
+                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapBasin);
 
                     // Add marker for forecast location
                     const locationIcon = L.divIcon({
@@ -1820,32 +2092,11 @@
                         iconSize: [20, 20],
                         iconAnchor: [10, 10]
                     });
-                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinHeight).bindPopup(currentLocation.name);
-                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinPeriod).bindPopup(currentLocation.name);
+                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasin).bindPopup(currentLocation.name);
 
                     setTimeout(() => {
-                        mapBasinHeight.invalidateSize();
-                        mapBasinPeriod.invalidateSize();
+                        mapBasin.invalidateSize();
                     }, 100);
-
-                    // Add legends
-                    function addBasinLegend(map, title, minVal, maxVal) {
-                        const legend = L.control({position: 'bottomright'});
-                        legend.onAdd = function() {
-                            const div = L.DomUtil.create('div', 'legend');
-                            const colors = ['blue', 'cyan', 'lime', 'yellow', 'red'];
-                            div.innerHTML = `<strong>${title}</strong><br>`;
-                            colors.forEach((color, i) => {
-                                const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
-                                div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
-                            });
-                            return div;
-                        };
-                        legend.addTo(map);
-                    }
-
-                    addBasinLegend(mapBasinHeight, 'Height (ft)', 0, 20);
-                    addBasinLegend(mapBasinPeriod, 'Period (s)', 0, 15);
 
                     // Notify unified slider
                     onMapDataReady();
@@ -1853,8 +2104,7 @@
                 .catch(error => {
                     console.error('Error fetching ocean basin data:', error);
                     const center = [currentLocation.lat, currentLocation.lon];
-                    mapBasinHeight = initEmptyMap('map-basin-height', center, 4, 'Ocean data unavailable');
-                    mapBasinPeriod = initEmptyMap('map-basin-period', center, 4, 'Ocean data unavailable');
+                    mapBasin = initEmptyMap('map-basin', center, 4, 'Ocean data unavailable');
                 });
         }
 
@@ -2048,50 +2298,9 @@
             document.getElementById('map-time-badge').textContent = timeStr;
             document.getElementById('time-label').textContent = 'Time: ' + timeStr;
 
-            // === Update basin maps ===
-            if (basinGridData && mapBasinHeight && mapBasinPeriod) {
-                if (basinHeightLayer) mapBasinHeight.removeLayer(basinHeightLayer);
-                if (basinPeriodLayer) mapBasinPeriod.removeLayer(basinPeriodLayer);
-
-                basinHeightLayer = L.layerGroup();
-                basinPeriodLayer = L.layerGroup();
-
-                const basinHeightRenderer = L.canvas({ padding: 0.5, oceanClip: true });
-                const basinPeriodRenderer = L.canvas({ padding: 0.5, oceanClip: true });
-
-                const bLats = basinGridData.lats;
-                const bLons = basinGridData.lons;
-                const basinRes = bLats.length > 1 ? Math.abs(bLats[1] - bLats[0]) : 6;
-                const bHalfRes = basinRes / 2;
-
-                // Clamp timeIndex to basin data range
-                const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
-
-                for (let i = 0; i < bLats.length; i++) {
-                    for (let j = 0; j < bLons.length; j++) {
-                        const wh = basinGridData.wave_height[bTimeIndex][i][j];
-                        const wp = basinGridData.wave_period[bTimeIndex][i][j];
-                        const lat = bLats[i];
-                        const lon = bLons[j];
-                        const bounds = [[lat - bHalfRes, lon - bHalfRes], [lat + bHalfRes, lon + bHalfRes]];
-
-                        if (wh > 0) {
-                            const color = getColorForValue(wh, 0, 6);
-                            L.rectangle(bounds, {
-                                renderer: basinHeightRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                            }).bindPopup(`Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`).addTo(basinHeightLayer);
-                        }
-                        if (wp > 0) {
-                            const color = getColorForValue(wp, 0, 15);
-                            L.rectangle(bounds, {
-                                renderer: basinPeriodRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                            }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(basinPeriodLayer);
-                        }
-                    }
-                }
-
-                basinHeightLayer.addTo(mapBasinHeight);
-                basinPeriodLayer.addTo(mapBasinPeriod);
+            // === Update basin map ===
+            if (basinGridData && mapBasin) {
+                updateBasinMap(timeIndex);
             }
 
             // === Update local maps ===
