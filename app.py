@@ -1,13 +1,11 @@
 from flask import Flask, render_template, jsonify, request
 import requests
-import pandas as pd
 import numpy as np
+import math
 import subprocess
-import os
 import time
 import traceback
 from datetime import datetime, timedelta
-from itertools import product
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -29,20 +27,6 @@ _cache = {}
 CACHE_TTL = 900  # 15 minutes
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
 
-# Rate limit cooldown — stop hitting the API for a while after 429s
-_rate_limit_until = 0  # timestamp when cooldown expires
-RATE_LIMIT_COOLDOWN = 300  # 5 minutes
-
-def is_rate_limited():
-    """Check if we're in a rate limit cooldown period."""
-    return time.time() < _rate_limit_until
-
-def set_rate_limited():
-    """Enter rate limit cooldown mode."""
-    global _rate_limit_until
-    _rate_limit_until = time.time() + RATE_LIMIT_COOLDOWN
-    print(f"Rate limit cooldown active for {RATE_LIMIT_COOLDOWN}s — skipping API calls until {time.strftime('%H:%M:%S', time.localtime(_rate_limit_until))}")
-
 def cached(key, fn, ttl=CACHE_TTL):
     """Return cached result if fresh, otherwise call fn() and cache it."""
     now = time.time()
@@ -55,135 +39,135 @@ def cached(key, fn, ttl=CACHE_TTL):
 
 def get_point_weather_data(latitude, longitude):
     """
-    Fetches wave data from Marine API and wind data from Weather API for a single point.
+    Fetches wave and wind forecast for a single point using ERDDAP.
+    WW3 for waves, GFS for wind, local computation for sunrise/sunset.
     """
     try:
-        # Fetch marine data
-        marine_url = "https://marine-api.open-meteo.com/v1/marine"
-        marine_params = {
-            "latitude": latitude,
-            "longitude": longitude,
-            "hourly": "wave_height,wave_period,wave_direction,wind_wave_height,wind_wave_period",
-            "timezone": "auto"
-        }
-        marine_url, marine_params = _apply_api_key(marine_url, marine_params)
-        marine_response = _request_with_retry(marine_url, marine_params, label='point marine')
-        marine_data = marine_response.json()
+        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        t_start = now.isoformat() + "Z"
+        time_range = f"({t_start}):(last)"
 
-        # Fetch weather data (for wind and sunrise/sunset)
-        weather_url = "https://api.open-meteo.com/v1/forecast"
-        weather_params = {
-            "latitude": latitude,
-            "longitude": longitude,
-            "hourly": "wind_speed_10m,wind_direction_10m",
-            "daily": "sunrise,sunset",
-            "timezone": "auto"
-        }
-        weather_url, weather_params = _apply_api_key(weather_url, weather_params)
-        weather_response = _request_with_retry(weather_url, weather_params, label='point weather')
-        weather_data = weather_response.json()
+        # Convert longitude to 0-360 for ERDDAP
+        lon_360 = longitude % 360
 
-        # Parse sunrise/sunset times into a dict by date
-        daily_data = weather_data.get('daily', {})
-        sunrise_times = {}
-        sunset_times = {}
-        if 'sunrise' in daily_data and 'sunset' in daily_data:
-            for i, date in enumerate(daily_data.get('time', [])):
-                sunrise_times[date] = daily_data['sunrise'][i]
-                sunset_times[date] = daily_data['sunset'][i]
+        # ±1° bounding box to find nearest ocean point (WW3 has land masking)
+        lat_range = f"({latitude - 1}):({latitude + 1})"
+        lon_range = f"({lon_360 - 1}):({lon_360 + 1})"
 
-        # Process the data
-        marine_hourly = marine_data['hourly']
-        weather_hourly = weather_data['hourly']
-        time_points = pd.to_datetime(marine_hourly['time'])
+        # Fetch WW3 wave data
+        print(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude})...")
+        wave_json = _fetch_erddap_grid(
+            server="pae-paha.pacioos.hawaii.edu",
+            dataset="ww3_global",
+            variables=["Thgt", "Tper", "Tdir", "whgt", "wper"],
+            time_range=time_range,
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=0
+        )
+        wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir", "whgt", "wper"])
 
-        # Create a structured forecast
+        # Find nearest non-NaN ocean grid point
+        wave_lats = np.array(wave['lats'])
+        wave_lons = np.array(wave['lons'])
+        best_dist = float('inf')
+        best_lat_i, best_lon_i = 0, 0
+        for li, la in enumerate(wave_lats):
+            for loi, lo in enumerate(wave_lons):
+                if not np.isnan(wave['grids']['Thgt'][0, li, loi]):
+                    lo_180 = lo - 360 if lo > 180 else lo
+                    d = haversine_distance(latitude, longitude, la, lo_180)
+                    if d < best_dist:
+                        best_dist = d
+                        best_lat_i, best_lon_i = li, loi
+        print(f"  Nearest ocean point: ({wave_lats[best_lat_i]}, {wave_lons[best_lon_i]}), distance: {best_dist:.1f} km")
+
+        # Extract time series for the nearest ocean point
+        wave_times = wave['times']
+        wave_dts = [_parse_erddap_time(t) for t in wave_times]
+        thgt = wave['grids']['Thgt'][:, best_lat_i, best_lon_i]
+        tper = wave['grids']['Tper'][:, best_lat_i, best_lon_i]
+        tdir = wave['grids']['Tdir'][:, best_lat_i, best_lon_i]
+        whgt = wave['grids']['whgt'][:, best_lat_i, best_lon_i]
+        wper = wave['grids']['wper'][:, best_lat_i, best_lon_i]
+
+        # Fetch GFS wind data
+        print(f"Point forecast: fetching GFS wind...")
+        wind_json = _fetch_erddap_grid(
+            server="coastwatch.pfeg.noaa.gov",
+            dataset="NCEP_Global_Best",
+            variables=["ugrd10m", "vgrd10m"],
+            time_range=time_range,
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=None
+        )
+        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
+
+        # Find nearest wind grid point
+        wind_lats = np.array(wind['lats'])
+        wind_lons = np.array(wind['lons'])
+        wlat_i = int(np.argmin(np.abs(wind_lats - latitude)))
+        wlon_i = int(np.argmin(np.abs(wind_lons - lon_360)))
+
+        # Interpolate 3-hourly wind to hourly wave time steps
+        wind_dts = [_parse_erddap_time(t) for t in wind['times']]
+        wind_u = wind['grids']['ugrd10m'][:, wlat_i, wlon_i]
+        wind_v = wind['grids']['vgrd10m'][:, wlat_i, wlon_i]
+
+        wind_secs = np.array([(wdt - wind_dts[0]).total_seconds() for wdt in wind_dts])
+        wind_speed_hourly = []
+        wind_dir_hourly = []
+        for wdt in wave_dts:
+            t_sec = (wdt - wind_dts[0]).total_seconds()
+            if t_sec <= wind_secs[0]:
+                u, v = float(wind_u[0]), float(wind_v[0])
+            elif t_sec >= wind_secs[-1]:
+                u, v = float(wind_u[-1]), float(wind_v[-1])
+            else:
+                idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
+                dt = wind_secs[idx + 1] - wind_secs[idx]
+                w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
+                u = float(wind_u[idx] * (1 - w) + wind_u[idx + 1] * w)
+                v = float(wind_v[idx] * (1 - w) + wind_v[idx + 1] * w)
+            speed = math.sqrt(u**2 + v**2) * 3.6  # m/s to km/h
+            direction = (270 - math.degrees(math.atan2(v, u))) % 360
+            wind_speed_hourly.append(round(speed, 1))
+            wind_dir_hourly.append(round(direction, 1))
+
+        # Compute sunrise/sunset for each day in forecast
+        sunrise_map = {}
+        sunset_map = {}
+        for wdt in wave_dts:
+            date_key = wdt.strftime('%Y-%m-%d')
+            if date_key not in sunrise_map:
+                sr, ss = _sunrise_sunset(latitude, longitude, wdt.date())
+                sunrise_map[date_key] = sr
+                sunset_map[date_key] = ss
+
+        # Build output in same format frontend expects
         forecast = []
-        for i, time in enumerate(time_points):
-            date_str = time.strftime('%Y-%m-%d')
-            sunrise = sunrise_times.get(date_str)
-            sunset = sunset_times.get(date_str)
-
+        for i, wdt in enumerate(wave_dts):
+            date_key = wdt.strftime('%Y-%m-%d')
             forecast.append({
-                "time": time.strftime('%Y-%m-%d %H:%M'),
-                "wave_height": marine_hourly['wave_height'][i],
-                "wave_period": marine_hourly['wave_period'][i],
-                "wave_direction": marine_hourly['wave_direction'][i],
-                "wind_wave_height": marine_hourly['wind_wave_height'][i],
-                "wind_wave_period": marine_hourly['wind_wave_period'][i],
-                "wind_speed": weather_hourly['wind_speed_10m'][i] if i < len(weather_hourly['wind_speed_10m']) else None,
-                "wind_direction": weather_hourly['wind_direction_10m'][i] if i < len(weather_hourly['wind_direction_10m']) else None,
-                "sunrise": sunrise,
-                "sunset": sunset,
+                "time": wdt.strftime('%Y-%m-%d %H:%M'),
+                "wave_height": float(thgt[i]) if not np.isnan(thgt[i]) else None,
+                "wave_period": float(tper[i]) if not np.isnan(tper[i]) else None,
+                "wave_direction": float(tdir[i]) if not np.isnan(tdir[i]) else None,
+                "wind_wave_height": float(whgt[i]) if not np.isnan(whgt[i]) else None,
+                "wind_wave_period": float(wper[i]) if not np.isnan(wper[i]) else None,
+                "wind_speed": wind_speed_hourly[i],
+                "wind_direction": wind_dir_hourly[i],
+                "sunrise": sunrise_map.get(date_key),
+                "sunset": sunset_map.get(date_key),
             })
 
         return forecast
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching point data: {e}")
+    except Exception as e:
+        print(f"Error fetching point forecast from ERDDAP: {e}")
+        traceback.print_exc()
         return None
-    except (KeyError, TypeError) as e:
-        print(f"Error processing point data: {e}")
-        return None
-
-def _apply_api_key(url, params):
-    """If OPEN_METEO_API_KEY is set, switch to the commercial endpoint."""
-    api_key = os.environ.get('OPEN_METEO_API_KEY')
-    if api_key:
-        url = url.replace('open-meteo.com', 'customer-open-meteo.com')
-        params['apikey'] = api_key
-    return url, params
-
-def _short_sleep(seconds):
-    """Sleep in 1-second intervals so Gunicorn sync workers can still heartbeat."""
-    end = time.time() + seconds
-    while time.time() < end:
-        time.sleep(min(1, end - time.time()))
-
-def _request_with_retry(url, params, label='', max_retries=4):
-    """Make a GET request with 429 retry logic using short sleeps."""
-    if is_rate_limited():
-        raise requests.exceptions.ConnectionError(f"Skipping {label} — rate limit cooldown active")
-    for attempt in range(max_retries):
-        response = requests.get(url, params=params)
-        if response.status_code == 429:
-            if attempt < max_retries - 1:
-                wait = [5, 15, 30, 45][attempt]
-                print(f"Rate limited ({label}), retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
-                _short_sleep(wait)
-                continue
-            else:
-                # All retries exhausted — enter cooldown to stop hammering the API
-                set_rate_limited()
-                response.raise_for_status()
-        response.raise_for_status()
-        return response
-    return response
-
-def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
-    """
-    Fetches data from Open-Meteo API in batches to avoid URL length limits.
-    Returns a flat list of per-point JSON results.
-    """
-    all_results = []
-    for i, start in enumerate(range(0, len(all_lats), batch_size)):
-        if i > 0:
-            _short_sleep(3)  # Pause between batches to respect rate limits
-        end = start + batch_size
-        batch_lats = all_lats[start:end]
-        batch_lons = all_lons[start:end]
-        params = dict(base_params)
-        params["latitude"] = batch_lats
-        params["longitude"] = batch_lons
-        req_url, params = _apply_api_key(url, params)
-        response = _request_with_retry(req_url, params, label=f'batch {i}')
-        data = response.json()
-        # Single-point responses are a dict, multi-point are a list
-        if isinstance(data, list):
-            all_results.extend(data)
-        else:
-            all_results.append(data)
-    return all_results
 
 def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_range, depth=None):
     """
@@ -245,97 +229,190 @@ def _parse_erddap_to_grids(erddap_json, variable_names):
 
     return {'times': times, 'lats': lats, 'lons': lons, 'grids': grids}
 
-def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution):
+def _parse_erddap_time(t):
+    """Parse ERDDAP timestamp (may or may not have trailing Z, fractional seconds, etc.)."""
+    for fmt in ('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S'):
+        try:
+            return datetime.strptime(t, fmt)
+        except ValueError:
+            continue
+    return datetime.fromisoformat(t.replace('Z', '+00:00').replace('+00:00', ''))
+
+def _sunrise_sunset(lat, lon, date):
     """
-    Fetches gridded wave data from Marine API and wind data from Weather API.
+    Compute sunrise and sunset times using NOAA solar equations.
+    Returns (sunrise_iso, sunset_iso) strings in 'YYYY-MM-DDTHH:MM' format (UTC).
+    Returns (None, None) for polar day/night.
+    """
+    n = date.timetuple().tm_yday
+    gamma = 2 * math.pi / 365 * (n - 1)
+
+    # Equation of time (minutes)
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(gamma)
+             - 0.032077 * math.sin(gamma)
+             - 0.014615 * math.cos(2 * gamma)
+             - 0.040849 * math.sin(2 * gamma))
+
+    # Solar declination (radians)
+    decl = (0.006918 - 0.399912 * math.cos(gamma) + 0.070257 * math.sin(gamma)
+            - 0.006758 * math.cos(2 * gamma) + 0.000907 * math.sin(2 * gamma)
+            - 0.002697 * math.cos(3 * gamma) + 0.00148 * math.sin(3 * gamma))
+
+    lat_rad = math.radians(lat)
+
+    # Hour angle
+    cos_ha = (math.cos(math.radians(90.833)) / (math.cos(lat_rad) * math.cos(decl))
+              - math.tan(lat_rad) * math.tan(decl))
+
+    if cos_ha > 1 or cos_ha < -1:
+        return None, None  # Polar night or day
+
+    ha = math.degrees(math.acos(cos_ha))
+
+    # Sunrise and sunset in minutes from midnight UTC
+    sunrise_min = 720 - 4 * (lon + ha) - eqtime
+    sunset_min = 720 - 4 * (lon - ha) - eqtime
+
+    def min_to_iso(minutes):
+        minutes = minutes % 1440
+        h = int(minutes // 60)
+        m = int(minutes % 60)
+        return f"{date.isoformat()}T{h:02d}:{m:02d}"
+
+    return min_to_iso(sunrise_min), min_to_iso(sunset_min)
+
+def _interpolate_wind_to_hourly(wind_parsed, target_times_dt, target_lats, target_lons_360):
+    """
+    Interpolate 3-hourly GFS U/V wind data to hourly time steps.
+    Returns (wind_speed_grid, wind_dir_grid) as numpy arrays.
+    Wind speed in km/h, direction in meteorological degrees.
+    """
+    num_times = len(target_times_dt)
+    num_lats = len(target_lats)
+    num_lons = len(target_lons_360)
+
+    wind_speed_out = np.zeros((num_times, num_lats, num_lons))
+    wind_dir_out = np.zeros((num_times, num_lats, num_lons))
+
+    if not wind_parsed or not wind_parsed['times']:
+        return wind_speed_out, wind_dir_out
+
+    wind_dts = [_parse_erddap_time(t) for t in wind_parsed['times']]
+    wind_u = wind_parsed['grids']['ugrd10m']
+    wind_v = wind_parsed['grids']['vgrd10m']
+
+    # Spatially align wind grid to target grid if needed
+    if len(wind_parsed['lats']) == num_lats and len(wind_parsed['lons']) == num_lons:
+        u_aligned = wind_u
+        v_aligned = wind_v
+    else:
+        wind_lats_arr = np.array(wind_parsed['lats'])
+        wind_lons_arr = np.array(wind_parsed['lons'])
+        nn_lat = np.array([np.argmin(np.abs(wind_lats_arr - la)) for la in target_lats])
+        nn_lon = np.array([np.argmin(np.abs(wind_lons_arr - lo)) for lo in target_lons_360])
+        lat_mesh, lon_mesh = np.meshgrid(nn_lat, nn_lon, indexing='ij')
+        u_aligned = np.array([wind_u[t][lat_mesh, lon_mesh] for t in range(len(wind_dts))])
+        v_aligned = np.array([wind_v[t][lat_mesh, lon_mesh] for t in range(len(wind_dts))])
+
+    # Linearly interpolate 3-hourly U/V to each hourly time step
+    wind_secs = np.array([(wdt - wind_dts[0]).total_seconds() for wdt in wind_dts])
+    for ti, tdt in enumerate(target_times_dt):
+        t_sec = (tdt - wind_dts[0]).total_seconds()
+        if t_sec <= wind_secs[0]:
+            u_interp, v_interp = u_aligned[0], v_aligned[0]
+        elif t_sec >= wind_secs[-1]:
+            u_interp, v_interp = u_aligned[-1], v_aligned[-1]
+        else:
+            idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
+            dt = wind_secs[idx + 1] - wind_secs[idx]
+            w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
+            u_interp = u_aligned[idx] * (1 - w) + u_aligned[idx + 1] * w
+            v_interp = v_aligned[idx] * (1 - w) + v_aligned[idx + 1] * w
+
+        wind_speed_out[ti] = np.sqrt(u_interp**2 + v_interp**2) * 3.6  # m/s → km/h
+        wind_dir_out[ti] = (270 - np.degrees(np.arctan2(v_interp, u_interp))) % 360
+
+    return wind_speed_out, wind_dir_out
+
+def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
+    """
+    Fetches gridded wave and wind data from ERDDAP for local map display.
+    WW3 at native 0.5° resolution, GFS wind interpolated to hourly.
     """
     try:
-        # Round to avoid floating point precision issues in URL
-        lats = np.round(np.arange(lat_min, lat_max + 0.001, resolution), 2)
-        lons = np.round(np.arange(lon_min, lon_max + 0.001, resolution), 2)
+        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        t_start = now.isoformat() + "Z"
+        time_range = f"({t_start}):(last)"
 
-        all_coords = list(product(lats, lons))
-        all_lats = [float(coord[0]) for coord in all_coords]
-        all_lons = [float(coord[1]) for coord in all_coords]
+        # Convert lon bounds to 0-360 for ERDDAP
+        lon_min_360 = lon_min % 360
+        lon_max_360 = lon_max % 360
+        lat_range = f"({lat_min}):({lat_max})"
+        lon_range = f"({lon_min_360}):({lon_max_360})"
 
-        # Fetch marine data in batches (wave height, wave period)
-        marine_url = "https://marine-api.open-meteo.com/v1/marine"
-        marine_base_params = {
-            "hourly": "wave_height,wave_period,wave_direction",
-            "timezone": "auto"
-        }
+        # Fetch WW3 wave data (native 0.5° resolution)
+        print(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
+        wave_json = _fetch_erddap_grid(
+            server="pae-paha.pacioos.hawaii.edu",
+            dataset="ww3_global",
+            variables=["Thgt", "Tper", "Tdir"],
+            time_range=time_range,
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=0
+        )
+        wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
+        wave_dts = [_parse_erddap_time(t) for t in wave['times']]
+        print(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
 
-        # Fetch weather data in batches (wind speed, wind direction)
-        weather_url = "https://api.open-meteo.com/v1/forecast"
-        weather_base_params = {
-            "hourly": "wind_speed_10m,wind_direction_10m",
-            "timezone": "auto"
-        }
+        # Fetch GFS wind data
+        print(f"Grid forecast: fetching GFS wind...")
+        wind_json = _fetch_erddap_grid(
+            server="coastwatch.pfeg.noaa.gov",
+            dataset="NCEP_Global_Best",
+            variables=["ugrd10m", "vgrd10m"],
+            time_range=time_range,
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=None
+        )
+        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
+        print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
 
-        marine_data = fetch_batched(marine_url, marine_base_params, all_lats, all_lons)
-        weather_data = fetch_batched(weather_url, weather_base_params, all_lats, all_lons)
+        lats = wave['lats']
+        lons_360 = wave['lons']
+        lons = [lo - 360 if lo > 180 else lo for lo in lons_360]
 
-        num_lats = len(lats)
-        num_lons = len(lons)
+        # Interpolate wind to hourly using shared helper
+        wind_speed_grid, wind_dir_grid = _interpolate_wind_to_hourly(
+            wind, wave_dts, wave['lats'], lons_360
+        )
 
-        # Use marine data for time reference
-        time_points = pd.to_datetime(marine_data[0]['hourly']['time'])
-        num_times = len(time_points)
-
-        # Initialize grids with NaN to handle missing data
-        wave_height_grid = np.full((num_times, num_lats, num_lons), np.nan)
-        wave_period_grid = np.full((num_times, num_lats, num_lons), np.nan)
-        wind_speed_grid = np.full((num_times, num_lats, num_lons), np.nan)
-        wind_direction_grid = np.full((num_times, num_lats, num_lons), np.nan)
-
-        for i, (marine_point, weather_point) in enumerate(zip(marine_data, weather_data)):
-            lat_index = i // num_lons
-            lon_index = i % num_lons
-
-            # Handle potential null values from marine API (land points return nulls)
-            wave_heights = marine_point['hourly'].get('wave_height', [None] * num_times)
-            wave_periods = marine_point['hourly'].get('wave_period', [None] * num_times)
-
-            for t in range(min(num_times, len(wave_heights))):
-                if wave_heights[t] is not None:
-                    wave_height_grid[t, lat_index, lon_index] = wave_heights[t]
-                if wave_periods[t] is not None:
-                    wave_period_grid[t, lat_index, lon_index] = wave_periods[t]
-
-            # Wind data from weather API
-            wind_speeds = weather_point['hourly'].get('wind_speed_10m', [None] * num_times)
-            wind_dirs = weather_point['hourly'].get('wind_direction_10m', [None] * num_times)
-
-            for t in range(min(num_times, len(wind_speeds))):
-                if wind_speeds[t] is not None:
-                    wind_speed_grid[t, lat_index, lon_index] = wind_speeds[t]
-                if wind_dirs[t] is not None:
-                    wind_direction_grid[t, lat_index, lon_index] = wind_dirs[t]
+        # Wave grids
+        wave_height_grid = wave['grids']['Thgt'].copy()
+        wave_period_grid = wave['grids']['Tper'].copy()
+        wave_dir_grid = wave['grids']['Tdir'].copy()
 
         # Replace NaN with 0 for JSON serialization
         wave_height_grid = np.nan_to_num(wave_height_grid, nan=0.0)
         wave_period_grid = np.nan_to_num(wave_period_grid, nan=0.0)
+        wave_dir_grid = np.nan_to_num(wave_dir_grid, nan=0.0)
         wind_speed_grid = np.nan_to_num(wind_speed_grid, nan=0.0)
-        wind_direction_grid = np.nan_to_num(wind_direction_grid, nan=0.0)
+        wind_dir_grid = np.nan_to_num(wind_dir_grid, nan=0.0)
 
-        grid_forecast = {
-            "lats": lats.tolist(),
-            "lons": lons.tolist(),
-            "times": [time.strftime('%Y-%m-%d %H:%M') for time in time_points],
+        return {
+            "lats": [float(la) for la in lats],
+            "lons": [float(lo) for lo in lons],
+            "times": [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts],
             "wave_height": wave_height_grid.tolist(),
             "wave_period": wave_period_grid.tolist(),
+            "wave_direction": wave_dir_grid.tolist(),
             "wind_speed": wind_speed_grid.tolist(),
-            "wind_direction": wind_direction_grid.tolist(),
+            "wind_direction": wind_dir_grid.tolist(),
         }
 
-        return grid_forecast
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching grid data: {e}")
-        traceback.print_exc()
-        return None
     except Exception as e:
-        print(f"Error processing grid data: {e}")
+        print(f"Error fetching grid data from ERDDAP: {e}")
         traceback.print_exc()
         return None
 
@@ -381,13 +458,13 @@ def map_forecast():
     center_lat = round(center_lat, 2)
     center_lon = round(center_lon, 2)
 
-    # Create bounding box around center point (±0.5° lat, ±0.75° lon)
-    lat_min, lat_max = center_lat - 0.5, center_lat + 0.5
-    lon_min, lon_max = center_lon - 0.75, center_lon + 0.75
-    resolution = 0.1  # degrees (~11 km cells) - gives 11x16=176 points (1 batch, no sleep delays)
+    # Create bounding box around center point (±1.5° lat, ±2.0° lon)
+    # Wider box gives ~7×9 grid at WW3 native 0.5° and better coastal coverage
+    lat_min, lat_max = center_lat - 1.5, center_lat + 1.5
+    lon_min, lon_max = center_lon - 2.0, center_lon + 2.0
 
     cache_key = f"map:{center_lat},{center_lon}"
-    data = cached(cache_key, lambda: get_grid_weather_data(lat_min, lat_max, lon_min, lon_max, resolution))
+    data = cached(cache_key, lambda: get_grid_weather_data(lat_min, lat_max, lon_min, lon_max))
 
     if data:
         return jsonify(data)
@@ -411,11 +488,15 @@ def get_ocean_basin_data():
     """
     Fetches global wave and wind data using NOAA ERDDAP.
     Uses WW3 global wave model (PacIOOS) and GFS wind model (CoastWatch).
-    Two HTTP requests replace ~150+ Open-Meteo calls.
     """
+    # Use explicit ISO start time with (last) end to avoid 404 when forecast end varies
+    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    t_start = now.isoformat() + "Z"
+
     # Full WW3 global range at 3° effective resolution (stride=6 on native 0.5°)
-    lat_range = "(-77.5):6:(77.5)"
-    lon_range = "(0.0):6:(359.5)"
+    # stride=3 on native 0.5° = 1.5° effective resolution
+    lat_range = "(-77.5):3:(77.5)"
+    lon_range = "(0.0):3:(359.5)"
 
     # --- Fetch WW3 wave data (required) ---
     try:
@@ -424,7 +505,7 @@ def get_ocean_basin_data():
             server="pae-paha.pacioos.hawaii.edu",
             dataset="ww3_global",
             variables=["Thgt", "Tper", "Tdir"],
-            time_range="(last-71):(last)",
+            time_range=f"({t_start}):(last)",
             lat_range=lat_range,
             lon_range=lon_range,
             depth=0
@@ -444,7 +525,7 @@ def get_ocean_basin_data():
             server="coastwatch.pfeg.noaa.gov",
             dataset="NCEP_Global_Best",
             variables=["ugrd10m", "vgrd10m"],
-            time_range="(last-23):(last)",
+            time_range=f"({t_start}):(last)",
             lat_range=lat_range,
             lon_range=lon_range,
             depth=None
@@ -457,74 +538,22 @@ def get_ocean_basin_data():
 
     # --- Assemble output grids ---
     try:
-        def _parse_erddap_time(t):
-            """Parse ERDDAP timestamp (may or may not have trailing Z, fractional seconds, etc.)."""
-            for fmt in ('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S'):
-                try:
-                    return datetime.strptime(t, fmt)
-                except ValueError:
-                    continue
-            return datetime.fromisoformat(t.replace('Z', '+00:00').replace('+00:00', ''))
-
-        # Use wave times as the output time axis (72 hourly steps)
-        output_times = wave['times']
-        wave_dts = [_parse_erddap_time(t) for t in output_times]
+        wave_dts = [_parse_erddap_time(t) for t in wave['times']]
 
         # Convert ERDDAP 0–360° lons back to -180..180 for the frontend
         lats = wave['lats']
         lons = [lon - 360 if lon > 180 else lon for lon in wave['lons']]
+        lons_360 = wave['lons']
 
-        num_times = len(output_times)
-        num_lats = len(lats)
-        num_lons = len(lons)
-
-        # Wave data maps directly (same time axis)
+        # Wave grids
         wave_height_out = wave['grids']['Thgt'].copy()
         wave_period_out = wave['grids']['Tper'].copy()
         wave_dir_out = wave['grids']['Tdir'].copy()
-        wind_speed_out = np.zeros((num_times, num_lats, num_lons))
-        wind_dir_out = np.zeros((num_times, num_lats, num_lons))
 
-        # Convert wind U/V → speed (km/h) + direction, interpolated to hourly
-        if wind and wind['times']:
-            wind_dts = [_parse_erddap_time(t) for t in wind['times']]
-            wind_u = wind['grids']['ugrd10m']
-            wind_v = wind['grids']['vgrd10m']
-
-            # Step 1: Spatially align wind grid to wave grid if needed
-            if len(wind['lats']) == num_lats and len(wind['lons']) == num_lons:
-                print(f"  Wind/wave grids match ({num_lats}x{num_lons})")
-                u_aligned = wind_u
-                v_aligned = wind_v
-            else:
-                print(f"  Wind grid ({len(wind['lats'])}x{len(wind['lons'])}) differs from wave grid ({num_lats}x{num_lons}), using nearest-neighbor interpolation")
-                wind_lats_arr = np.array(wind['lats'])
-                wind_lons_arr = np.array(wind['lons'])
-                nn_lat = np.array([np.argmin(np.abs(wind_lats_arr - la)) for la in wave['lats']])
-                nn_lon = np.array([np.argmin(np.abs(wind_lons_arr - lo)) for lo in wave['lons']])
-                lat_mesh, lon_mesh = np.meshgrid(nn_lat, nn_lon, indexing='ij')
-                u_aligned = np.array([wind_u[t][lat_mesh, lon_mesh] for t in range(len(wind_dts))])
-                v_aligned = np.array([wind_v[t][lat_mesh, lon_mesh] for t in range(len(wind_dts))])
-
-            # Step 2: Linearly interpolate 3-hourly U/V to each hourly wave time step
-            wind_secs = np.array([(wdt - wind_dts[0]).total_seconds() for wdt in wind_dts])
-            for ti, wdt in enumerate(wave_dts):
-                t_sec = (wdt - wind_dts[0]).total_seconds()
-                if t_sec <= wind_secs[0]:
-                    u_interp, v_interp = u_aligned[0], v_aligned[0]
-                elif t_sec >= wind_secs[-1]:
-                    u_interp, v_interp = u_aligned[-1], v_aligned[-1]
-                else:
-                    idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
-                    dt = wind_secs[idx + 1] - wind_secs[idx]
-                    w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
-                    u_interp = u_aligned[idx] * (1 - w) + u_aligned[idx + 1] * w
-                    v_interp = v_aligned[idx] * (1 - w) + v_aligned[idx + 1] * w
-
-                wind_speed_out[ti] = np.sqrt(u_interp**2 + v_interp**2) * 3.6  # m/s → km/h
-                wind_dir_out[ti] = (270 - np.degrees(np.arctan2(v_interp, u_interp))) % 360
-
-            print(f"  Wind data interpolated from {len(wind_dts)} to {num_times} hourly time steps")
+        # Interpolate wind using shared helper
+        wind_speed_out, wind_dir_out = _interpolate_wind_to_hourly(
+            wind, wave_dts, wave['lats'], lons_360
+        )
 
         # Replace NaN with 0 for JSON serialization (land points)
         wave_height_out = np.nan_to_num(wave_height_out, nan=0.0)
@@ -533,7 +562,6 @@ def get_ocean_basin_data():
         wind_speed_out = np.nan_to_num(wind_speed_out, nan=0.0)
         wind_dir_out = np.nan_to_num(wind_dir_out, nan=0.0)
 
-        # Format times to match frontend expectation
         formatted_times = [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts]
 
         return {
