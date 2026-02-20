@@ -125,13 +125,13 @@ def _short_sleep(seconds):
     while time.time() < end:
         time.sleep(min(1, end - time.time()))
 
-def _request_with_retry(url, params, label='', max_retries=3):
+def _request_with_retry(url, params, label='', max_retries=4):
     """Make a GET request with 429 retry logic using short sleeps."""
     for attempt in range(max_retries):
         response = requests.get(url, params=params)
         if response.status_code == 429:
-            wait = 2 * (attempt + 1)  # 2s, 4s, 6s
-            print(f"Rate limited ({label}), retrying in {wait}s...")
+            wait = [5, 15, 30, 45][attempt]  # Escalating waits to outlast rate limit window
+            print(f"Rate limited ({label}), retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
             _short_sleep(wait)
             continue
         response.raise_for_status()
@@ -147,7 +147,7 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
     all_results = []
     for i, start in enumerate(range(0, len(all_lats), batch_size)):
         if i > 0:
-            _short_sleep(1)  # Brief pause between batches
+            _short_sleep(3)  # Pause between batches to respect rate limits
         end = start + batch_size
         batch_lats = all_lats[start:end]
         batch_lons = all_lons[start:end]
@@ -343,8 +343,8 @@ def get_ocean_basin_data(center_lat, center_lon):
         lon_min = round(center_lon - 20, 0)
         lon_max = round(center_lon + 20, 0)
 
-        # Use 1.5 degree resolution for better detail (~21x28=588 points max)
-        resolution = 1.5
+        # Use 3 degree resolution (~11x14=154 points, fits in 1 batch per API)
+        resolution = 3
         lats = np.arange(lat_min, lat_max + resolution, resolution)
         lons = np.arange(lon_min, lon_max + resolution, resolution)
 
