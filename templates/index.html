@@ -411,6 +411,22 @@
             color: var(--text);
         }
 
+        .chart-home-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 10px;
+            padding: 2px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            display: none;
+        }
+
+        .chart-home-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: var(--text);
+        }
+
         /* === Time Slider === */
         .slider-row {
             padding: 6px 10px;
@@ -876,6 +892,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Wave &amp; Wind Forecast</span>
+                        <button class="chart-home-btn" id="wave-chart-reset" onclick="resetWaveChart()">Reset Zoom</button>
                     </div>
                     <div class="panel-content">
                         <div class="chart-wrap">
@@ -892,6 +909,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Tidal Predictions</span>
+                        <button class="chart-home-btn" id="tide-chart-reset" onclick="resetTideChart()">Reset Zoom</button>
                         <span class="panel-badge" id="tide-station-info">Loading station</span>
                     </div>
                     <div class="panel-content">
@@ -937,8 +955,10 @@
     <!-- JS Libraries (no Bootstrap JS) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
     <!-- GridStack JS -->
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
 
@@ -1131,28 +1151,66 @@
         let basinGridData = null;
         let localGridData = null;
 
-        // === Land Mask GeoJSON (fetched once, overlaid on all maps) ===
-        let landGeoJSONPromise = fetch('https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_land.geojson')
-            .then(r => r.json())
-            .catch(err => { console.warn('Land mask fetch failed:', err); return null; });
+        // === Ocean Canvas Clipping ===
+        // Clip grid data to ocean using the coastline GeoJSON as a canvas clip path.
+        // Grid cells are drawn on a canvas, clipped to the ocean shape — no mask layer needed,
+        // no alignment issues, Windy-style sharp coastline boundary.
+        let landPolygons = [];
 
-        function addLandMask(map) {
-            landGeoJSONPromise.then(geojson => {
-                if (!geojson) return;
-                map.createPane('landMask');
-                map.getPane('landMask').style.zIndex = 450;
-                map.getPane('landMask').style.pointerEvents = 'none';
-                L.geoJSON(geojson, {
-                    pane: 'landMask',
-                    style: {
-                        fillColor: '#0a0a0a',
-                        fillOpacity: 1,
-                        color: '#2a2a2a',
-                        weight: 0.5
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-10m.json')
+            .then(r => r.json())
+            .then(topo => {
+                const geojson = topojson.feature(topo, topo.objects.land);
+                geojson.features.forEach(feature => {
+                    const coords = feature.geometry.coordinates;
+                    if (feature.geometry.type === 'Polygon') {
+                        landPolygons.push(coords[0]);
+                    } else if (feature.geometry.type === 'MultiPolygon') {
+                        coords.forEach(poly => landPolygons.push(poly[0]));
                     }
-                }).addTo(map);
-            });
-        }
+                });
+                landPolygons = landPolygons.map(ring => {
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    ring.forEach(([x, y]) => {
+                        if (x < minX) minX = x; if (x > maxX) maxX = x;
+                        if (y < minY) minY = y; if (y > maxY) maxY = y;
+                    });
+                    return { ring, bbox: [minX, minY, maxX, maxY] };
+                });
+                console.log(`Loaded ${landPolygons.length} land polygons for ocean clipping`);
+            })
+            .catch(err => console.warn('Land TopoJSON fetch failed:', err));
+
+        // Patch L.Canvas renderer to clip drawing to ocean when oceanClip option is set
+        const _origCanvasDraw = L.Canvas.prototype._draw;
+        L.Canvas.prototype._draw = function() {
+            if (this.options.oceanClip && landPolygons.length && this._map) {
+                const ctx = this._ctx;
+                const map = this._map;
+                const mapBounds = map.getBounds();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(-1e7, -1e7, 2e7, 2e7);
+
+                for (const { ring, bbox } of landPolygons) {
+                    if (bbox[2] < mapBounds.getWest() || bbox[0] > mapBounds.getEast() ||
+                        bbox[3] < mapBounds.getSouth() || bbox[1] > mapBounds.getNorth()) continue;
+                    let first = true;
+                    for (const [lon, lat] of ring) {
+                        const p = map.latLngToLayerPoint([lat, lon]);
+                        if (first) { ctx.moveTo(p.x, p.y); first = false; }
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.closePath();
+                }
+                ctx.clip('evenodd');
+            }
+            _origCanvasDraw.call(this);
+            if (this.options.oceanClip && landPolygons.length && this._map) {
+                this._ctx.restore();
+            }
+        };
 
         function addMapDataError(map, message) {
             const ctrl = L.control({ position: 'topright' });
@@ -1194,7 +1252,6 @@
                 maxZoom: 19
             }).addTo(map);
             addHomeButton(map, center, zoom);
-            addLandMask(map);
             addMapDataError(map, errorMessage);
             setTimeout(() => map.invalidateSize(), 100);
             return map;
@@ -1213,6 +1270,22 @@
             tideChart.options.scales.x.max = sharedMax;
             waveChart.update('none');
             tideChart.update('none');
+        }
+
+        function resetWaveChart() {
+            if (waveChart) {
+                waveChart.resetZoom();
+                syncChartTimeAxes();
+            }
+            document.getElementById('wave-chart-reset').style.display = 'none';
+        }
+
+        function resetTideChart() {
+            if (tideChart) {
+                tideChart.resetZoom();
+                syncChartTimeAxes();
+            }
+            document.getElementById('tide-chart-reset').style.display = 'none';
         }
 
         // === Live Clock ===
@@ -1640,6 +1713,18 @@
                                             return '';
                                         }
                                     }
+                                },
+                                zoom: {
+                                    pan: {
+                                        enabled: true,
+                                        mode: 'x'
+                                    },
+                                    zoom: {
+                                        wheel: { enabled: true },
+                                        pinch: { enabled: true },
+                                        mode: 'x',
+                                        onZoomComplete: () => document.getElementById('wave-chart-reset').style.display = ''
+                                    }
                                 }
                             }
                         }
@@ -1737,10 +1822,6 @@
                     });
                     L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinHeight).bindPopup(currentLocation.name);
                     L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasinPeriod).bindPopup(currentLocation.name);
-
-                    // Add land mask overlay for sharp coastlines
-                    addLandMask(mapBasinHeight);
-                    addLandMask(mapBasinPeriod);
 
                     setTimeout(() => {
                         mapBasinHeight.invalidateSize();
@@ -1861,11 +1942,6 @@
                     L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map2);
                     L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map3);
 
-                    // Add land mask overlay for sharp coastlines
-                    addLandMask(map1);
-                    addLandMask(map2);
-                    addLandMask(map3);
-
                     setTimeout(() => {
                         map1.invalidateSize();
                         map2.invalidateSize();
@@ -1980,8 +2056,8 @@
                 basinHeightLayer = L.layerGroup();
                 basinPeriodLayer = L.layerGroup();
 
-                const basinHeightRenderer = L.canvas({ padding: 0.5 });
-                const basinPeriodRenderer = L.canvas({ padding: 0.5 });
+                const basinHeightRenderer = L.canvas({ padding: 0.5, oceanClip: true });
+                const basinPeriodRenderer = L.canvas({ padding: 0.5, oceanClip: true });
 
                 const bLats = basinGridData.lats;
                 const bLons = basinGridData.lons;
@@ -2028,8 +2104,8 @@
                 localWaveHeightLayer = L.layerGroup();
                 localWindLayer = L.layerGroup();
 
-                const localPeriodRenderer = L.canvas({ padding: 0.5 });
-                const localHeightRenderer = L.canvas({ padding: 0.5 });
+                const localPeriodRenderer = L.canvas({ padding: 0.5, oceanClip: true });
+                const localHeightRenderer = L.canvas({ padding: 0.5, oceanClip: true });
 
                 const lLats = localGridData.lats;
                 const lLons = localGridData.lons;
@@ -2268,6 +2344,18 @@
                                             if (lowTides[index] !== null) return '▼ Low Tide';
                                             return '';
                                         }
+                                    }
+                                },
+                                zoom: {
+                                    pan: {
+                                        enabled: true,
+                                        mode: 'x'
+                                    },
+                                    zoom: {
+                                        wheel: { enabled: true },
+                                        pinch: { enabled: true },
+                                        mode: 'x',
+                                        onZoomComplete: () => document.getElementById('tide-chart-reset').style.display = ''
                                     }
                                 }
                             }

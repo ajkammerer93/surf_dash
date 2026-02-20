@@ -34,7 +34,8 @@ def cached(key, fn):
     if key in _cache and now - _cache[key]['time'] < CACHE_TTL:
         return _cache[key]['data']
     result = fn()
-    _cache[key] = {'data': result, 'time': now}
+    if result is not None:
+        _cache[key] = {'data': result, 'time': now}
     return result
 
 def get_point_weather_data(latitude, longitude):
@@ -126,7 +127,9 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
     Returns a flat list of per-point JSON results.
     """
     all_results = []
-    for start in range(0, len(all_lats), batch_size):
+    for i, start in enumerate(range(0, len(all_lats), batch_size)):
+        if i > 0:
+            time.sleep(2)  # Pause between batches to avoid per-minute rate limit
         end = start + batch_size
         batch_lats = all_lats[start:end]
         batch_lons = all_lons[start:end]
@@ -134,8 +137,17 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
         params["latitude"] = batch_lats
         params["longitude"] = batch_lons
         req_url, params = _apply_api_key(url, params)
-        response = requests.get(req_url, params=params)
-        response.raise_for_status()
+        for attempt in range(5):
+            response = requests.get(req_url, params=params)
+            if response.status_code == 429:
+                wait = 5 * (attempt + 1)
+                print(f"Rate limited (batch {i}), retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            break
+        else:
+            response.raise_for_status()  # All retries exhausted
         data = response.json()
         # Single-point responses are a dict, multi-point are a list
         if isinstance(data, list):
