@@ -52,8 +52,7 @@ def get_point_weather_data(latitude, longitude):
             "timezone": "auto"
         }
         marine_url, marine_params = _apply_api_key(marine_url, marine_params)
-        marine_response = requests.get(marine_url, params=marine_params)
-        marine_response.raise_for_status()
+        marine_response = _request_with_retry(marine_url, marine_params, label='point marine')
         marine_data = marine_response.json()
 
         # Fetch weather data (for wind and sunrise/sunset)
@@ -66,8 +65,7 @@ def get_point_weather_data(latitude, longitude):
             "timezone": "auto"
         }
         weather_url, weather_params = _apply_api_key(weather_url, weather_params)
-        weather_response = requests.get(weather_url, params=weather_params)
-        weather_response.raise_for_status()
+        weather_response = _request_with_retry(weather_url, weather_params, label='point weather')
         weather_data = weather_response.json()
 
         # Parse sunrise/sunset times into a dict by date
@@ -121,6 +119,26 @@ def _apply_api_key(url, params):
         params['apikey'] = api_key
     return url, params
 
+def _short_sleep(seconds):
+    """Sleep in 1-second intervals so Gunicorn sync workers can still heartbeat."""
+    end = time.time() + seconds
+    while time.time() < end:
+        time.sleep(min(1, end - time.time()))
+
+def _request_with_retry(url, params, label='', max_retries=3):
+    """Make a GET request with 429 retry logic using short sleeps."""
+    for attempt in range(max_retries):
+        response = requests.get(url, params=params)
+        if response.status_code == 429:
+            wait = 2 * (attempt + 1)  # 2s, 4s, 6s
+            print(f"Rate limited ({label}), retrying in {wait}s...")
+            _short_sleep(wait)
+            continue
+        response.raise_for_status()
+        return response
+    response.raise_for_status()  # All retries exhausted
+    return response
+
 def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
     """
     Fetches data from Open-Meteo API in batches to avoid URL length limits.
@@ -129,7 +147,7 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
     all_results = []
     for i, start in enumerate(range(0, len(all_lats), batch_size)):
         if i > 0:
-            time.sleep(2)  # Pause between batches to avoid per-minute rate limit
+            _short_sleep(1)  # Brief pause between batches
         end = start + batch_size
         batch_lats = all_lats[start:end]
         batch_lons = all_lons[start:end]
@@ -137,17 +155,7 @@ def fetch_batched(url, base_params, all_lats, all_lons, batch_size=250):
         params["latitude"] = batch_lats
         params["longitude"] = batch_lons
         req_url, params = _apply_api_key(url, params)
-        for attempt in range(5):
-            response = requests.get(req_url, params=params)
-            if response.status_code == 429:
-                wait = 5 * (attempt + 1)
-                print(f"Rate limited (batch {i}), retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            response.raise_for_status()
-            break
-        else:
-            response.raise_for_status()  # All retries exhausted
+        response = _request_with_retry(req_url, params, label=f'batch {i}')
         data = response.json()
         # Single-point responses are a dict, multi-point are a list
         if isinstance(data, list):
