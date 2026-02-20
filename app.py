@@ -39,6 +39,22 @@ def cached(key, fn, ttl=CACHE_TTL):
 
 def get_point_weather_data(latitude, longitude):
     """
+    Fetches wave and wind forecast for a single point.
+    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to ERDDAP.
+    """
+    if _in_gfswave_atlantic_coverage(latitude, longitude):
+        try:
+            result = _get_point_from_nomads(latitude, longitude)
+            if result:
+                return result
+            print("NOMADS point forecast returned no data, falling back to ERDDAP")
+        except Exception as e:
+            print(f"NOMADS point forecast failed, falling back to ERDDAP: {e}")
+            traceback.print_exc()
+    return _get_point_from_erddap(latitude, longitude)
+
+def _get_point_from_erddap(latitude, longitude):
+    """
     Fetches wave and wind forecast for a single point using ERDDAP.
     WW3 for waves, GFS for wind, local computation for sunrise/sunset.
     """
@@ -334,10 +350,433 @@ def _interpolate_wind_to_hourly(wind_parsed, target_times_dt, target_lats, targe
 
     return wind_speed_out, wind_dir_out
 
+# ---------------------------------------------------------------------------
+# GFS-Wave Atlantic 0.16° via NOMADS OPeNDAP
+# ---------------------------------------------------------------------------
+NOMADS_BASE = "https://nomads.ncep.noaa.gov/dods/wave/gfswave"
+GFSWAVE_ATL_LAT_MIN = 0.0
+GFSWAVE_ATL_LAT_MAX = 55.0
+GFSWAVE_ATL_LON_MIN = 260.0   # -100°W in 0-360
+GFSWAVE_ATL_LON_MAX = 310.0   # -50°W in 0-360
+GFSWAVE_ATL_RES = 1.0 / 6.0   # 0.16667°
+NOMADS_CYCLE_CACHE_TTL = 1800  # 30 min
+
+def _in_gfswave_atlantic_coverage(lat, lon):
+    """Return True if lat/lon is inside the GFS-Wave Atlantic 0.16deg domain."""
+    lon_360 = lon % 360
+    return (GFSWAVE_ATL_LAT_MIN <= lat <= GFSWAVE_ATL_LAT_MAX and
+            GFSWAVE_ATL_LON_MIN <= lon_360 <= GFSWAVE_ATL_LON_MAX)
+
+def _nomads_lat_index(lat):
+    """Convert latitude to 0-based grid index in GFS-Wave Atlantic."""
+    return round((lat - GFSWAVE_ATL_LAT_MIN) / GFSWAVE_ATL_RES)
+
+def _nomads_lon_index(lon_360):
+    """Convert longitude (0-360) to 0-based grid index in GFS-Wave Atlantic."""
+    return round((lon_360 - GFSWAVE_ATL_LON_MIN) / GFSWAVE_ATL_RES)
+
+def _find_latest_nomads_cycle():
+    """
+    Find the latest available NOMADS GFS-Wave Atlantic cycle URL.
+    Tries today's cycles (newest first), then yesterday's.
+    Result is cached for 30 minutes.
+    """
+    cache_key = "nomads_cycle"
+    now_ts = time.time()
+    if cache_key in _cache and now_ts - _cache[cache_key]['time'] < NOMADS_CYCLE_CACHE_TTL:
+        return _cache[cache_key]['data']
+
+    now = datetime.utcnow()
+    yesterday = now - timedelta(days=1)
+
+    for day in [now, yesterday]:
+        date_str = day.strftime('%Y%m%d')
+        for cycle in ['18', '12', '06', '00']:
+            # Skip obviously future cycles
+            if day.date() == now.date() and int(cycle) > now.hour:
+                continue
+            url = f"{NOMADS_BASE}/{date_str}/gfswave.atlocn.0p16_{cycle}z"
+            try:
+                test_url = f"{url}.ascii?time[0:0]"
+                resp = requests.get(test_url, timeout=10)
+                if resp.status_code == 200 and resp.headers.get('content-type', '').startswith('text/plain'):
+                    print(f"NOMADS cycle found: {date_str}/{cycle}z")
+                    _cache[cache_key] = {'data': url, 'time': now_ts}
+                    return url
+            except Exception:
+                continue
+
+    print("No NOMADS cycle available")
+    return None
+
+def _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice):
+    """
+    Fetch data from NOMADS OPeNDAP ASCII interface.
+    Slices use OPeNDAP syntax: "[start:stride:end]" (0-based, inclusive).
+    Returns parsed dict with 'times', 'lats', 'lons', 'grids'.
+    """
+    parts = [f"{var}{time_slice}{lat_slice}{lon_slice}" for var in variables]
+    constraint = ",".join(parts)
+    url = f"{base_url}.ascii?{constraint}"
+    print(f"  NOMADS request: {url[:180]}...")
+
+    resp = requests.get(url, timeout=120)
+    resp.raise_for_status()
+    return _parse_opendap_ascii(resp.text, variables)
+
+def _parse_opendap_ascii(text, variable_names):
+    """
+    Parse NOMADS OPeNDAP ASCII response into structured numpy grids.
+    Returns dict with 'times' (list of datetime), 'lats', 'lons',
+    and 'grids' (variable name -> 3D numpy array [time, lat, lon]).
+
+    NOMADS ASCII format (no separator, dimensions repeat per variable):
+        htsgwsfc, [2][3][3]
+        [0][0], 9.999E20, 0.88, 1.05
+        ...
+        time, [2]
+        739668.5, 739668.625
+        lat, [3]
+        34.333, 34.500, 34.667
+        lon, [3]
+        282.333, 282.500, 282.667
+        perpwsfc, [2][3][3]
+        ...
+    """
+    lines = text.strip().split('\n')
+
+    raw_grids = {}
+    dims = {}
+    current_type = None   # 'var' or 'dim'
+    current_name = None
+    current_data = []
+    var_set = set(variable_names)
+    dim_names = {'time', 'lat', 'lon', 'latitude', 'longitude'}
+
+    def _save():
+        """Save accumulated data for the current section."""
+        if current_name is None or not current_data:
+            return
+        if current_type == 'var':
+            raw_grids[current_name] = current_data
+        elif current_type == 'dim':
+            dim_key = current_name.replace('latitude', 'lat').replace('longitude', 'lon')
+            dims[dim_key] = current_data
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        comma_pos = stripped.find(',')
+        if comma_pos > 0:
+            name_part = stripped[:comma_pos].strip()
+            rest = stripped[comma_pos + 1:].strip()
+
+            # Variable header: "htsgwsfc, [2][3][3]" — multiple bracket groups
+            if name_part in var_set and rest.startswith('[') and '][' in rest:
+                _save()
+                current_type = 'var'
+                current_name = name_part
+                current_data = []
+                continue
+
+            # Dimension header: "time, [2]" — single bracket group like [N]
+            if name_part in dim_names and rest.startswith('[') and rest.endswith(']') and rest[1:-1].isdigit():
+                _save()
+                current_type = 'dim'
+                current_name = name_part
+                current_data = []
+                continue
+
+        # Data lines
+        if current_type == 'var':
+            # "[t][lat], val, val, val, ..."
+            bracket_end = stripped.rfind(']')
+            if bracket_end >= 0:
+                vals_str = stripped[bracket_end + 1:].lstrip(',').strip()
+            else:
+                vals_str = stripped
+            if vals_str:
+                for v in vals_str.split(','):
+                    v = v.strip()
+                    if v:
+                        current_data.append(float(v))
+        elif current_type == 'dim':
+            for v in stripped.rstrip(',').split(','):
+                v = v.strip()
+                if v:
+                    current_data.append(float(v))
+
+    _save()  # Save final section
+
+    times_raw = dims.get('time', [])
+    lats = dims.get('lat', [])
+    lons = dims.get('lon', [])
+    nt, nla, nlo = len(times_raw), len(lats), len(lons)
+    expected = nt * nla * nlo
+
+    # Convert NOMADS time (days since 0001-01-01 proleptic Gregorian) to datetime
+    time_dts = []
+    for t in times_raw:
+        ordinal = int(t)
+        frac = t - ordinal
+        time_dts.append(datetime.fromordinal(ordinal) + timedelta(seconds=round(frac * 86400)))
+
+    # Reshape variable data into 3D grids
+    result_grids = {}
+    for var in variable_names:
+        if var in raw_grids and len(raw_grids[var]) == expected:
+            arr = np.array(raw_grids[var])
+            arr[arr > 9.99e20] = np.nan  # Replace fill values
+            result_grids[var] = arr.reshape((nt, nla, nlo))
+        else:
+            if var in raw_grids:
+                print(f"  Warning: {var} has {len(raw_grids[var])} values, expected {expected}")
+            result_grids[var] = np.full((nt, nla, nlo), np.nan)
+
+    return {'times': time_dts, 'lats': lats, 'lons': lons, 'grids': result_grids}
+
+def _get_point_from_nomads(lat, lon):
+    """
+    Fetch point forecast from NOMADS GFS-Wave Atlantic 0.16deg.
+    Returns forecast list in the same format as _get_point_from_erddap.
+    """
+    base_url = _find_latest_nomads_cycle()
+    if not base_url:
+        return None
+
+    lon_360 = lon % 360
+
+    # +/-1 degree bounding box in grid indices
+    lat_lo = max(0, _nomads_lat_index(lat - 1))
+    lat_hi = _nomads_lat_index(min(lat + 1, GFSWAVE_ATL_LAT_MAX))
+    lon_lo = max(0, _nomads_lon_index(max(lon_360 - 1, GFSWAVE_ATL_LON_MIN)))
+    lon_hi = _nomads_lon_index(min(lon_360 + 1, GFSWAVE_ATL_LON_MAX))
+
+    # First 56 time steps = 7 days at 3-hourly
+    time_slice = "[0:1:55]"
+    lat_slice = f"[{lat_lo}:1:{lat_hi}]"
+    lon_slice = f"[{lon_lo}:1:{lon_hi}]"
+
+    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "wvhgtsfc", "wvpersfc",
+                 "ugrdsfc", "vgrdsfc"]
+
+    print(f"Point forecast: fetching NOMADS GFS-Wave for ({lat}, {lon})...")
+    data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
+
+    # Find nearest non-NaN ocean grid point
+    lats_arr = np.array(data['lats'])
+    lons_arr = np.array(data['lons'])
+    best_dist = float('inf')
+    best_li, best_loi = 0, 0
+    for li, la in enumerate(lats_arr):
+        for loi, lo in enumerate(lons_arr):
+            if not np.isnan(data['grids']['htsgwsfc'][0, li, loi]):
+                lo_180 = lo - 360 if lo > 180 else lo
+                d = haversine_distance(lat, lon, la, lo_180)
+                if d < best_dist:
+                    best_dist = d
+                    best_li, best_loi = li, loi
+
+    if best_dist == float('inf'):
+        print("  No ocean grid points found in NOMADS data")
+        return None
+
+    print(f"  Nearest ocean point: ({lats_arr[best_li]:.2f}, {lons_arr[best_loi]:.2f}), distance: {best_dist:.1f} km")
+
+    # Extract time series at nearest point
+    time_dts = data['times']
+    htsgw = data['grids']['htsgwsfc'][:, best_li, best_loi]
+    perpw = data['grids']['perpwsfc'][:, best_li, best_loi]
+    dirpw = data['grids']['dirpwsfc'][:, best_li, best_loi]
+    wvhgt = data['grids']['wvhgtsfc'][:, best_li, best_loi]
+    wvper = data['grids']['wvpersfc'][:, best_li, best_loi]
+    ugrd = data['grids']['ugrdsfc'][:, best_li, best_loi]
+    vgrd = data['grids']['vgrdsfc'][:, best_li, best_loi]
+
+    # Interpolate 3-hourly to hourly
+    src_secs = np.array([(t - time_dts[0]).total_seconds() for t in time_dts])
+    hourly_dts = []
+    dt = time_dts[0]
+    while dt <= time_dts[-1]:
+        hourly_dts.append(dt)
+        dt += timedelta(hours=1)
+    tgt_secs = np.array([(t - time_dts[0]).total_seconds() for t in hourly_dts])
+
+    htsgw_h = np.interp(tgt_secs, src_secs, htsgw)
+    perpw_h = np.interp(tgt_secs, src_secs, perpw)
+    dirpw_h = np.interp(tgt_secs, src_secs, dirpw)
+    wvhgt_h = np.interp(tgt_secs, src_secs, wvhgt)
+    wvper_h = np.interp(tgt_secs, src_secs, wvper)
+    ugrd_h = np.interp(tgt_secs, src_secs, ugrd)
+    vgrd_h = np.interp(tgt_secs, src_secs, vgrd)
+
+    # Compute wind speed and direction from U/V
+    wind_speed = np.sqrt(ugrd_h**2 + vgrd_h**2) * 3.6  # m/s to km/h
+    wind_dir = (270 - np.degrees(np.arctan2(vgrd_h, ugrd_h))) % 360
+
+    # Compute sunrise/sunset for each day
+    sunrise_map = {}
+    sunset_map = {}
+    for wdt in hourly_dts:
+        date_key = wdt.strftime('%Y-%m-%d')
+        if date_key not in sunrise_map:
+            sr, ss = _sunrise_sunset(lat, lon, wdt.date())
+            sunrise_map[date_key] = sr
+            sunset_map[date_key] = ss
+
+    # Build output
+    forecast = []
+    for i, wdt in enumerate(hourly_dts):
+        date_key = wdt.strftime('%Y-%m-%d')
+        forecast.append({
+            "time": wdt.strftime('%Y-%m-%d %H:%M'),
+            "wave_height": round(float(htsgw_h[i]), 2) if not np.isnan(htsgw_h[i]) else None,
+            "wave_period": round(float(perpw_h[i]), 1) if not np.isnan(perpw_h[i]) else None,
+            "wave_direction": round(float(dirpw_h[i]), 1) if not np.isnan(dirpw_h[i]) else None,
+            "wind_wave_height": round(float(wvhgt_h[i]), 2) if not np.isnan(wvhgt_h[i]) else None,
+            "wind_wave_period": round(float(wvper_h[i]), 1) if not np.isnan(wvper_h[i]) else None,
+            "wind_speed": round(float(wind_speed[i]), 1),
+            "wind_direction": round(float(wind_dir[i]), 1),
+            "sunrise": sunrise_map.get(date_key),
+            "sunset": sunset_map.get(date_key),
+        })
+
+    print(f"  NOMADS point forecast: {len(forecast)} hourly steps")
+    return forecast
+
+def _fill_nan_nearest(grid_2d, max_iterations=None):
+    """Fill NaN values in a 2D grid with nearest non-NaN value via iterative neighbor expansion."""
+    filled = grid_2d.copy()
+    if max_iterations is None:
+        max_iterations = max(filled.shape)
+    for _ in range(max_iterations):
+        if not np.any(np.isnan(filled)):
+            break
+        padded = np.pad(filled, 1, constant_values=np.nan)
+        for dy, dx in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            shifted = padded[1+dy:1+dy+filled.shape[0], 1+dx:1+dx+filled.shape[1]]
+            mask = np.isnan(filled) & ~np.isnan(shifted)
+            filled[mask] = shifted[mask]
+    return filled
+
+def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
+    """
+    Fetch gridded data from NOMADS GFS-Wave Atlantic 0.16deg.
+    Returns dict in the same format as _get_grid_from_erddap.
+    """
+    base_url = _find_latest_nomads_cycle()
+    if not base_url:
+        return None
+
+    lon_min_360 = lon_min % 360
+    lon_max_360 = lon_max % 360
+
+    # Grid indices
+    lat_lo = max(0, _nomads_lat_index(lat_min))
+    lat_hi = _nomads_lat_index(min(lat_max, GFSWAVE_ATL_LAT_MAX))
+    lon_lo = max(0, _nomads_lon_index(max(lon_min_360, GFSWAVE_ATL_LON_MIN)))
+    lon_hi = _nomads_lon_index(min(lon_max_360, GFSWAVE_ATL_LON_MAX))
+
+    # First 48 time steps = 6 days at 3-hourly
+    time_slice = "[0:1:47]"
+    lat_slice = f"[{lat_lo}:1:{lat_hi}]"
+    lon_slice = f"[{lon_lo}:1:{lon_hi}]"
+
+    # Fetch waves only from NOMADS (wind comes from ERDDAP GFS for land coverage)
+    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc"]
+
+    print(f"Grid forecast: fetching NOMADS GFS-Wave for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
+    data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
+    print(f"  NOMADS grid: {len(data['times'])} times, {len(data['lats'])}x{len(data['lons'])} grid")
+
+    # Convert lons from 0-360 to -180..180
+    lons = [lo - 360 if lo > 180 else lo for lo in data['lons']]
+    lons_360 = data['lons']
+    wave_dts = data['times']  # already datetime objects
+
+    # Fill coastal wave gaps (limited iterations to smooth model coastline)
+    wave_height = data['grids']['htsgwsfc'].copy()
+    wave_period = data['grids']['perpwsfc'].copy()
+    wave_dir = data['grids']['dirpwsfc'].copy()
+    for t in range(wave_height.shape[0]):
+        wave_height[t] = _fill_nan_nearest(wave_height[t], max_iterations=3)
+        wave_period[t] = _fill_nan_nearest(wave_period[t], max_iterations=3)
+        wave_dir[t] = _fill_nan_nearest(wave_dir[t], max_iterations=3)
+
+    # Fetch wind from ERDDAP GFS (has land + ocean coverage)
+    lon_min_360 = lon_min % 360
+    lon_max_360 = lon_max % 360
+    t_erddap_start = (wave_dts[0] - timedelta(hours=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    wind_time_range = f"({t_erddap_start}):(last)"
+    wind_lat_range = f"({lat_min}):({lat_max})"
+    wind_lon_range = f"({lon_min_360}):({lon_max_360})"
+
+    try:
+        print(f"Grid forecast: fetching ERDDAP GFS wind (land+ocean)...")
+        wind_json = _fetch_erddap_grid(
+            server="coastwatch.pfeg.noaa.gov",
+            dataset="NCEP_Global_Best",
+            variables=["ugrd10m", "vgrd10m"],
+            time_range=wind_time_range,
+            lat_range=wind_lat_range,
+            lon_range=wind_lon_range,
+            depth=None
+        )
+        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
+        print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
+
+        # Interpolate ERDDAP wind (0.5°, 3-hourly) to NOMADS wave grid (0.16°, 3-hourly)
+        wind_speed, wind_dir = _interpolate_wind_to_hourly(
+            wind, wave_dts, data['lats'], lons_360
+        )
+    except Exception as e:
+        print(f"  Warning: ERDDAP wind failed, grid will have no wind: {e}")
+        traceback.print_exc()
+        wind_speed = np.zeros_like(wave_height)
+        wind_dir = np.zeros_like(wave_height)
+
+    # Replace remaining NaN with 0 for JSON serialization
+    wave_height = np.nan_to_num(wave_height, nan=0.0)
+    wave_period = np.nan_to_num(wave_period, nan=0.0)
+    wave_dir = np.nan_to_num(wave_dir, nan=0.0)
+    wind_speed = np.nan_to_num(wind_speed, nan=0.0)
+    wind_dir = np.nan_to_num(wind_dir, nan=0.0)
+
+    return {
+        "lats": [float(la) for la in data['lats']],
+        "lons": [float(lo) for lo in lons],
+        "times": [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts],
+        "wave_height": wave_height.tolist(),
+        "wave_period": wave_period.tolist(),
+        "wave_direction": wave_dir.tolist(),
+        "wind_speed": wind_speed.tolist(),
+        "wind_direction": wind_dir.tolist(),
+    }
+
 def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
     """
+    Fetches gridded wave and wind data for local map display.
+    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to ERDDAP.
+    """
+    center_lat = (lat_min + lat_max) / 2
+    center_lon = (lon_min + lon_max) / 2
+    if _in_gfswave_atlantic_coverage(center_lat, center_lon):
+        try:
+            result = _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max)
+            if result:
+                return result
+            print("NOMADS grid forecast returned no data, falling back to ERDDAP")
+        except Exception as e:
+            print(f"NOMADS grid forecast failed, falling back to ERDDAP: {e}")
+            traceback.print_exc()
+    return _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max)
+
+def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
+    """
     Fetches gridded wave and wind data from ERDDAP for local map display.
-    WW3 at native 0.5° resolution, GFS wind interpolated to hourly.
+    WW3 at native 0.5deg resolution, GFS wind interpolated to hourly.
     """
     try:
         now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
@@ -459,7 +898,7 @@ def map_forecast():
     center_lon = round(center_lon, 2)
 
     # Create bounding box around center point (±1.5° lat, ±2.0° lon)
-    # Wider box gives ~7×9 grid at WW3 native 0.5° and better coastal coverage
+    # Gives ~19×25 grid at GFS-Wave 0.16° (NOMADS) or ~7×9 at WW3 0.5° (ERDDAP fallback)
     lat_min, lat_max = center_lat - 1.5, center_lat + 1.5
     lon_min, lon_max = center_lon - 2.0, center_lon + 2.0
 
@@ -493,10 +932,11 @@ def get_ocean_basin_data():
     now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     t_start = now.isoformat() + "Z"
 
-    # Full WW3 global range at 3° effective resolution (stride=6 on native 0.5°)
-    # stride=3 on native 0.5° = 1.5° effective resolution
-    lat_range = "(-77.5):3:(77.5)"
-    lon_range = "(0.0):3:(359.5)"
+    # WW3 global at 3° effective resolution (stride=6 on native 0.5°)
+    # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
+    lat_range = "(-77.5):6:(77.5)"
+    lon_range = "(0.0):6:(359.5)"
+    time_stride = 3  # every 3rd hourly step = 3-hourly
 
     # --- Fetch WW3 wave data (required) ---
     try:
@@ -505,7 +945,7 @@ def get_ocean_basin_data():
             server="pae-paha.pacioos.hawaii.edu",
             dataset="ww3_global",
             variables=["Thgt", "Tper", "Tdir"],
-            time_range=f"({t_start}):(last)",
+            time_range=f"({t_start}):{time_stride}:(last)",
             lat_range=lat_range,
             lon_range=lon_range,
             depth=0
@@ -525,7 +965,7 @@ def get_ocean_basin_data():
             server="coastwatch.pfeg.noaa.gov",
             dataset="NCEP_Global_Best",
             variables=["ugrd10m", "vgrd10m"],
-            time_range=f"({t_start}):(last)",
+            time_range=f"({t_start}):{time_stride}:(last)",
             lat_range=lat_range,
             lon_range=lon_range,
             depth=None
@@ -752,4 +1192,4 @@ def tides():
         return jsonify({"error": "Could not retrieve tide data."}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, threaded=True)
