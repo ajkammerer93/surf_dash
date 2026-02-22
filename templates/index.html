@@ -239,7 +239,12 @@
         .panel-timestamp {
             font-size: 9px;
             color: var(--text-muted);
-            margin-left: auto;
+            margin-left: 8px;
+            margin-right: auto;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             font-variant-numeric: tabular-nums;
         }
 
