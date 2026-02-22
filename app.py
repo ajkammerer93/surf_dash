@@ -41,17 +41,59 @@ def get_point_weather_data(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point.
     Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to ERDDAP.
+    Enriches result with air and water temperature from Open-Meteo.
     """
     if _in_gfswave_atlantic_coverage(latitude, longitude):
         try:
             result = _get_point_from_nomads(latitude, longitude)
             if result:
+                _enrich_with_temperatures(result, latitude, longitude)
                 return result
             print("NOMADS point forecast returned no data, falling back to ERDDAP")
         except Exception as e:
             print(f"NOMADS point forecast failed, falling back to ERDDAP: {e}")
             traceback.print_exc()
-    return _get_point_from_erddap(latitude, longitude)
+    result = _get_point_from_erddap(latitude, longitude)
+    if result:
+        _enrich_with_temperatures(result, latitude, longitude)
+    return result
+
+
+def _enrich_with_temperatures(forecast, latitude, longitude):
+    """
+    Fetch current air temperature (Open-Meteo Weather) and sea surface
+    temperature (Open-Meteo Marine) and add them to the first forecast entry.
+    Non-critical — silently skips on failure.
+    """
+    try:
+        # Air temperature
+        air_temp = None
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": latitude, "longitude": longitude,
+                    "current": "temperature_2m", "timezone": "auto"},
+            timeout=10
+        )
+        if resp.ok:
+            air_temp = resp.json().get("current", {}).get("temperature_2m")
+
+        # Sea surface temperature
+        water_temp = None
+        resp = requests.get(
+            "https://marine-api.open-meteo.com/v1/marine",
+            params={"latitude": latitude, "longitude": longitude,
+                    "current": "sea_surface_temperature"},
+            timeout=10
+        )
+        if resp.ok:
+            water_temp = resp.json().get("current", {}).get("sea_surface_temperature")
+
+        if forecast:
+            forecast[0]["air_temperature"] = air_temp
+            forecast[0]["water_temperature"] = water_temp
+            print(f"  Temperatures: air={air_temp}°C, water={water_temp}°C")
+    except Exception as e:
+        print(f"  Temperature fetch failed (non-critical): {e}")
 
 def _get_point_from_erddap(latitude, longitude):
     """

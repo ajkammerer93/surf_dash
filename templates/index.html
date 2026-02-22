@@ -236,6 +236,24 @@
             color: var(--text-dim);
         }
 
+        .panel-timestamp {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-left: auto;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .panel-location {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-left: 8px;
+            margin-right: auto;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .panel-badge {
             font-size: 9px;
             font-weight: 600;
@@ -899,6 +917,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Current Conditions</span>
+                        <span class="panel-location"></span>
                         <span class="panel-badge">Live</span>
                     </div>
                     <div class="panel-content" id="current-conditions-content">
@@ -914,6 +933,22 @@
                             <li class="stat-item">
                                 <span class="stat-label">Wave Direction</span>
                                 <span class="stat-value" id="current_wave_direction">- &deg;</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Wind Speed</span>
+                                <span class="stat-value" id="current_wind_speed">-</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Wind Direction</span>
+                                <span class="stat-value" id="current_wind_direction">-</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Air Temp</span>
+                                <span class="stat-value" id="current_air_temp">-</span>
+                            </li>
+                            <li class="stat-item">
+                                <span class="stat-label">Water Temp</span>
+                                <span class="stat-value" id="current_water_temp">-</span>
                             </li>
                         </ul>
                         <div class="chart-unavailable" id="current-conditions-error" style="display:none">Conditions data unavailable</div>
@@ -964,6 +999,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Ocean Basin</span>
+                        <span class="panel-timestamp" id="ts-ocean-basin"></span>
                         <div class="panel-header-actions">
                             <div class="basin-layer-menu">
                                 <button class="basin-layer-btn" onclick="toggleBasinLayerMenu(event)">Layers &#9662;</button>
@@ -1003,6 +1039,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Local Wave Height (ft)</span>
+                        <span class="panel-timestamp" id="ts-local-wave-height"></span>
                     </div>
                     <div class="panel-content">
                         <div id="map-wave-height" class="map-container">
@@ -1019,6 +1056,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Local Wind Speed &amp; Direction</span>
+                        <span class="panel-timestamp" id="ts-local-wind"></span>
                     </div>
                     <div class="panel-content">
                         <div id="map-wind" class="map-container">
@@ -1035,6 +1073,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Local Wave Period (s)</span>
+                        <span class="panel-timestamp" id="ts-local-wave-period"></span>
                     </div>
                     <div class="panel-content">
                         <div id="map-wave-period" class="map-container">
@@ -1071,6 +1110,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Wave &amp; Wind Forecast</span>
+                        <span class="panel-location"></span>
                         <button class="chart-home-btn" id="wave-chart-reset" onclick="resetWaveChart()">Reset Zoom</button>
                     </div>
                     <div class="panel-content">
@@ -1106,6 +1146,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Daylight Forecast</span>
+                        <span class="panel-location"></span>
                     </div>
                     <div class="panel-content">
                         <p class="conditions-hint">
@@ -1677,6 +1718,13 @@
         let locationMap = null;
         let locationMarker = null;
 
+        function updatePanelLocations() {
+            document.querySelectorAll('.panel-location').forEach(el => {
+                el.textContent = currentLocation.name;
+            });
+        }
+        updatePanelLocations();
+
         // Location selector map initialization
         function initLocationMap() {
             locationMap = L.map('location-map').setView([20, 0], 2);
@@ -1745,6 +1793,7 @@
 
                     // Update display
                     document.getElementById('location-name').textContent = currentLocation.name;
+                    updatePanelLocations();
                     document.getElementById('display-lat').textContent = currentLocation.lat.toFixed(2);
                     document.getElementById('display-lon').textContent = currentLocation.lon.toFixed(2);
 
@@ -1779,10 +1828,18 @@
             localDataReady = false;
             basinRendered = false;
             localRendered = false;
-            // Show loading state
+            // Show loading state on maps
             document.querySelectorAll('.map-container').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
             });
+            // Show loading state on current conditions
+            document.getElementById('current-conditions-stats').style.display = 'none';
+            document.getElementById('current-conditions-error').style.display = '';
+            document.getElementById('current-conditions-error').textContent = 'Loading conditions...';
+            // Show loading state on charts and daylight table
+            showChartUnavailable('waveChart', 'Loading forecast...');
+            showChartUnavailable('tideChart', 'Loading tides...');
+            document.getElementById('forecast-table').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:16px">Loading forecast...</td></tr>';
 
             // Reload lightweight endpoints in parallel
             loadPointForecast();
@@ -1807,6 +1864,7 @@
                         console.error('API Error (Point Data):', data.error);
                         showChartUnavailable('waveChart', 'Forecast data unavailable');
                         document.getElementById('current-conditions-stats').style.display = 'none';
+                        document.getElementById('current-conditions-error').textContent = 'Conditions data unavailable';
                         document.getElementById('current-conditions-error').style.display = '';
                         return;
                     }
@@ -1817,6 +1875,16 @@
                     document.getElementById('current_wave_height').textContent = `${(current.wave_height * M_TO_FT).toFixed(1)} ft`;
                     document.getElementById('current_wave_period').textContent = `${current.wave_period.toFixed(2)} s`;
                     document.getElementById('current_wave_direction').textContent = `${current.wave_direction.toFixed(0)} °`;
+                    // Wind (km/h → mph)
+                    const KMH_TO_MPH = 0.621371;
+                    document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
+                    const windDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+                    document.getElementById('current_wind_direction').textContent = current.wind_direction != null ? `${windDirs[Math.round(current.wind_direction / 22.5) % 16]} (${current.wind_direction.toFixed(0)}°)` : '-';
+                    // Temperatures (C→F)
+                    const airC = current.air_temperature;
+                    const waterC = current.water_temperature;
+                    document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F` : '-';
+                    document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F` : '-';
                     const tableBody = document.getElementById('forecast-table');
                     tableBody.innerHTML = '';
 
@@ -2073,6 +2141,7 @@
                     console.error('Error fetching point forecast data:', error);
                     showChartUnavailable('waveChart', 'Forecast data unavailable');
                     document.getElementById('current-conditions-stats').style.display = 'none';
+                    document.getElementById('current-conditions-error').textContent = 'Conditions data unavailable';
                     document.getElementById('current-conditions-error').style.display = '';
                 });
         }
@@ -2720,10 +2789,11 @@
             const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
             if (!times) return;
 
-            // Update time badge and label
+            // Update time badge, label, and panel timestamps
             const timeStr = new Date(times[timeIndex]).toLocaleString();
             document.getElementById('map-time-badge').textContent = timeStr;
             document.getElementById('time-label').textContent = 'Time: ' + timeStr;
+            document.querySelectorAll('.panel-timestamp').forEach(el => el.textContent = timeStr);
 
             // === Update basin map ===
             if (basinGridData && mapBasin) {
@@ -2948,6 +3018,7 @@
                     const timeStr = new Date(times[timeIndex]).toLocaleString();
                     document.getElementById('map-time-badge').textContent = timeStr;
                     document.getElementById('time-label').textContent = 'Time: ' + timeStr;
+                    document.querySelectorAll('.panel-timestamp').forEach(el => el.textContent = timeStr);
                 }
                 // Debounce expensive map update to 1 per frame
                 if (sliderRafId) cancelAnimationFrame(sliderRafId);
