@@ -460,6 +460,52 @@
             cursor: pointer;
         }
 
+        /* === Panel Toggle Dropdown === */
+        .panel-toggle-menu {
+            position: relative;
+            display: inline-block;
+        }
+
+        .panel-toggle-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 0;
+            z-index: 1100;
+            min-width: 200px;
+        }
+
+        .panel-toggle-dropdown.open {
+            display: block;
+        }
+
+        .panel-toggle-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--text-dim);
+            transition: background 0.1s;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .panel-toggle-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+        }
+
+        .panel-toggle-item input[type="checkbox"] {
+            accent-color: var(--status-live);
+            cursor: pointer;
+        }
+
         /* === Map Home Button === */
         .map-home-btn {
             width: 26px;
@@ -539,6 +585,31 @@
             border-radius: 50%;
             cursor: pointer;
             border: none;
+        }
+
+        .slider-play-btn, .slider-speed-btn {
+            font-family: var(--font-body);
+            font-size: 12px;
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+            padding: 2px 6px;
+            line-height: 1;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .slider-play-btn:hover, .slider-speed-btn:hover {
+            color: var(--text);
+            border-color: var(--text-muted);
+            background: rgba(255,255,255,0.03);
+        }
+
+        .slider-play-btn.playing {
+            color: var(--status-live);
+            border-color: rgba(68, 255, 136, 0.4);
         }
 
         /* === Current Conditions (stat list) === */
@@ -738,8 +809,22 @@
         }
 
         /* === Responsive === */
+        @media (min-width: 701px) {
+            .btn-icon-only { display: none; }
+        }
+
         @media (max-width: 700px) {
             .header-center { display: none; }
+            .header-left .share-btn,
+            .header-left .header-version { display: none; }
+            .header-clock { display: none; }
+            .header-title { font-size: 11px; letter-spacing: 1px; }
+            .header { gap: 8px; padding: 0 8px; }
+            .header-left { gap: 8px; }
+            .header-right { gap: 6px; }
+            .btn-text { display: none; }
+            .btn-icon-only { display: inline-flex; align-items: center; justify-content: center; }
+            .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; }
         }
     </style>
 </head>
@@ -762,7 +847,22 @@
         </div>
         <div class="header-right">
             <span class="header-clock" id="header-clock"></span>
-            <button class="header-btn" onclick="openModal()">Change Location</button>
+            <div class="panel-toggle-menu">
+                <button class="header-btn" id="panels-toggle-btn">
+                    <span class="btn-text">Panels &#9662;</span>
+                    <span class="btn-icon-only" title="Panels">&#9776;</span>
+                </button>
+                <div class="panel-toggle-dropdown" id="panel-toggle-dropdown"></div>
+            </div>
+            <button class="header-btn" onclick="openModal()">
+                <span class="btn-text">Change Location</span>
+                <span class="btn-icon-only" title="Change Location">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                        <circle cx="12" cy="9" r="2.5"/>
+                    </svg>
+                </span>
+            </button>
             <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen">&#x26F6;</button>
         </div>
     </div>
@@ -794,7 +894,7 @@
     <div class="grid-stack" id="dashboard-grid">
 
         <!-- Current Conditions -->
-        <div class="grid-stack-item" gs-x="0" gs-y="0" gs-w="4" gs-h="4">
+        <div class="grid-stack-item" data-panel-id="conditions" gs-x="0" gs-y="0" gs-w="4" gs-h="4">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -823,7 +923,7 @@
         </div>
 
         <!-- Surf Cam -->
-        <div class="grid-stack-item" gs-x="4" gs-y="0" gs-w="4" gs-h="4">
+        <div class="grid-stack-item" data-panel-id="cam-surfcity" gs-x="4" gs-y="0" gs-w="4" gs-h="4">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -841,7 +941,7 @@
         </div>
 
         <!-- Surf Cam 2 -->
-        <div class="grid-stack-item" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
+        <div class="grid-stack-item" data-panel-id="cam-topsail" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -859,7 +959,7 @@
         </div>
 
         <!-- Ocean Basin -->
-        <div class="grid-stack-item" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="ocean-basin" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -898,7 +998,7 @@
         </div>
 
         <!-- Local Wave Height -->
-        <div class="grid-stack-item" gs-x="0" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wave-height" gs-x="0" gs-y="9" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -914,7 +1014,7 @@
         </div>
 
         <!-- Local Wind Speed -->
-        <div class="grid-stack-item" gs-x="4" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wind" gs-x="4" gs-y="9" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -930,7 +1030,7 @@
         </div>
 
         <!-- Local Wave Period -->
-        <div class="grid-stack-item" gs-x="8" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wave-period" gs-x="8" gs-y="9" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -946,7 +1046,7 @@
         </div>
 
         <!-- Unified Map Time Slider -->
-        <div class="grid-stack-item" gs-x="0" gs-y="14" gs-w="12" gs-h="1" gs-no-resize="true">
+        <div class="grid-stack-item" data-panel-id="map-time" gs-x="0" gs-y="14" gs-w="12" gs-h="1" gs-no-resize="true">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -956,7 +1056,9 @@
                     <div class="panel-content" style="padding: 0;">
                         <div class="slider-row">
                             <span class="slider-label" id="time-label">Time:</span>
+                            <button class="slider-play-btn" id="slider-play-btn" title="Play">&#9654;</button>
                             <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
+                            <button class="slider-speed-btn" id="slider-speed-btn" title="Playback speed">1x</button>
                         </div>
                     </div>
                 </div>
@@ -964,7 +1066,7 @@
         </div>
 
         <!-- Wave & Wind Chart -->
-        <div class="grid-stack-item" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -981,7 +1083,7 @@
         </div>
 
         <!-- Tidal Predictions -->
-        <div class="grid-stack-item" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -999,7 +1101,7 @@
         </div>
 
         <!-- Daylight Forecast -->
-        <div class="grid-stack-item" gs-x="0" gs-y="25" gs-w="12" gs-h="6">
+        <div class="grid-stack-item" data-panel-id="daylight" gs-x="0" gs-y="25" gs-w="12" gs-h="6">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1127,6 +1229,120 @@
             }, 100);
         }
 
+        // === Panel Visibility Toggle ===
+        const PANEL_NAMES = {
+            'conditions': 'Current Conditions',
+            'cam-surfcity': 'Surf City Pier — Live Cam',
+            'cam-topsail': 'Topsail Beach — Live Cam',
+            'ocean-basin': 'Ocean Basin',
+            'local-wave-height': 'Local Wave Height',
+            'local-wind': 'Local Wind Speed & Direction',
+            'local-wave-period': 'Local Wave Period',
+            'map-time': 'Map Time',
+            'wave-wind-chart': 'Wave & Wind Forecast',
+            'tides': 'Tidal Predictions',
+            'daylight': 'Daylight Forecast'
+        };
+
+        function getHiddenPanels() {
+            try {
+                return JSON.parse(localStorage.getItem('hidden-panels')) || [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveHiddenPanels(hidden) {
+            localStorage.setItem('hidden-panels', JSON.stringify(hidden));
+        }
+
+        function togglePanel(panelId, visible) {
+            const el = document.querySelector(`.grid-stack-item[data-panel-id="${panelId}"]`);
+            if (!el || !dashboardGrid) return;
+
+            const hidden = getHiddenPanels();
+            if (visible) {
+                const idx = hidden.indexOf(panelId);
+                if (idx !== -1) hidden.splice(idx, 1);
+            } else {
+                if (!hidden.includes(panelId)) hidden.push(panelId);
+            }
+            saveHiddenPanels(hidden);
+
+            if (visible) {
+                // Re-add widget to grid so it flows back into position
+                el.style.display = '';
+                dashboardGrid.addWidget(el);
+                dashboardGrid.compact();
+                setTimeout(function() {
+                    el.querySelectorAll('.map-container').forEach(function(container) {
+                        const mapInstance = getMapById(container.id);
+                        if (mapInstance) mapInstance.invalidateSize();
+                    });
+                    el.querySelectorAll('canvas').forEach(function(canvas) {
+                        const chart = Chart.getChart(canvas);
+                        if (chart) chart.resize();
+                    });
+                }, 100);
+            } else {
+                // Remove widget from grid engine (keeps DOM node) so others collapse up
+                dashboardGrid.removeWidget(el, false);
+                el.style.display = 'none';
+            }
+        }
+
+        function applyHiddenPanels() {
+            const hidden = getHiddenPanels();
+            hidden.forEach(function(panelId) {
+                const el = document.querySelector(`.grid-stack-item[data-panel-id="${panelId}"]`);
+                if (el && dashboardGrid) {
+                    dashboardGrid.removeWidget(el, false);
+                    el.style.display = 'none';
+                }
+            });
+        }
+
+        function buildPanelToggleDropdown() {
+            const dropdown = document.getElementById('panel-toggle-dropdown');
+            const hidden = getHiddenPanels();
+            dropdown.innerHTML = '';
+            Object.keys(PANEL_NAMES).forEach(function(panelId) {
+                const label = document.createElement('label');
+                label.className = 'panel-toggle-item';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = !hidden.includes(panelId);
+                cb.addEventListener('change', function() {
+                    togglePanel(panelId, cb.checked);
+                });
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(PANEL_NAMES[panelId]));
+                dropdown.appendChild(label);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Apply saved hidden panels after GridStack init
+            setTimeout(applyHiddenPanels, 0);
+
+            // Panels toggle button
+            document.getElementById('panels-toggle-btn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                const dropdown = document.getElementById('panel-toggle-dropdown');
+                const isOpen = dropdown.classList.contains('open');
+                if (!isOpen) buildPanelToggleDropdown();
+                dropdown.classList.toggle('open');
+            });
+
+            // Close panel toggle dropdown on outside click
+            document.addEventListener('click', function(e) {
+                const dropdown = document.getElementById('panel-toggle-dropdown');
+                if (dropdown && !e.target.closest('.panel-toggle-menu')) {
+                    dropdown.classList.remove('open');
+                }
+            });
+        });
+
         // === Panel Fullscreen ===
         function toggleFullscreen(btn) {
             const gsItem = btn.closest('.grid-stack-item');
@@ -1227,6 +1443,32 @@
         // === Unified Map Data Globals ===
         let basinGridData = null;
         let localGridData = null;
+
+        // === Persistent rectangle/marker caches for slider reuse ===
+        let basinRectangles = [];       // [{rect, i, j}]
+        let localPeriodRects = [];      // [{rect, i, j}]
+        let localHeightRects = [];      // [{rect, i, j}]
+        let localWindMarkers = [];      // [{marker, i, j, arrowDiv}]
+        let basinRectsBuilt = false;    // true after first full build
+        let localRectsBuilt = false;    // true after first full build
+
+        // === Batch rendering state ===
+        let batchGeneration = 0;        // incremented on each new batch to cancel stale ones
+        let sliderRafId = null;         // for slider debounce
+
+        // === Slider Animation State ===
+        let sliderAnimationId = null;
+        let sliderAnimationSpeed = 3000;
+        const SLIDER_SPEEDS = [6000, 3000, 1500];
+        const SLIDER_SPEED_LABELS = ['0.5x', '1x', '2x'];
+        let sliderSpeedIndex = 1;
+        const SLIDER_ANIMATION_STEP = 3;  // advance 3 hours per tick (Windy-style)
+
+        // === Lazy render state ===
+        let basinDataReady = false;     // data fetched, waiting for visibility
+        let localDataReady = false;
+        let basinRendered = false;      // map initialized and first render done
+        let localRendered = false;
 
         // === Ocean Canvas Clipping ===
         // Clip grid data to ocean using the coastline GeoJSON as a canvas clip path.
@@ -1517,11 +1759,26 @@
 
         // Function to reload all dashboard data
         function reloadAllData() {
+            // Stop slider animation on location change
+            stopSliderPlay();
+
             // Reset shared time ranges and map data
             waveTimeRange = null;
             tideTimeRange = null;
             basinGridData = null;
             localGridData = null;
+            // Reset rect caches and lazy render state
+            basinRectangles = [];
+            basinRectsBuilt = false;
+            basinRectsLayerType = null;
+            localPeriodRects = [];
+            localHeightRects = [];
+            localWindMarkers = [];
+            localRectsBuilt = false;
+            basinDataReady = false;
+            localDataReady = false;
+            basinRendered = false;
+            localRendered = false;
             // Show loading state
             document.querySelectorAll('.map-container').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
@@ -1876,10 +2133,10 @@
                 periodCb.checked = false;
             }
 
-            // Re-render with current slider time
+            // Re-render with current slider time (force rebuild since layer type changed)
             const slider = document.getElementById('time-slider');
             const timeIndex = parseInt(slider.value) || 0;
-            updateBasinMap(timeIndex);
+            updateBasinMap(timeIndex, true);
         }
 
         function getColorForDirection(deg) {
@@ -2028,70 +2285,151 @@
             }
         }
 
-        function updateBasinMap(timeIndex) {
+        // Track which basin layer type was used for cached rects (force rebuild on toggle)
+        let basinRectsLayerType = null;
+
+        function updateBasinMap(timeIndex, forceRebuild) {
             if (!basinGridData || !mapBasin) return;
 
             const state = getBasinLayerState();
+            const activeType = state.height ? 'height' : state.period ? 'period' : state.direction ? 'direction' : null;
 
-            // Update grid layer
-            if (basinGridLayer) {
-                mapBasin.removeLayer(basinGridLayer);
-                basinGridLayer = null;
+            // Detect layer type change — must rebuild
+            if (activeType !== basinRectsLayerType) forceRebuild = true;
+
+            // Remove old layer if rebuilding
+            if (forceRebuild || !activeType) {
+                if (basinGridLayer) {
+                    mapBasin.removeLayer(basinGridLayer);
+                    basinGridLayer = null;
+                }
+                basinRectangles = [];
+                basinRectsBuilt = false;
+                basinRectsLayerType = activeType;
             }
 
-            if (state.height || state.period || state.direction) {
-                basinGridLayer = L.layerGroup();
-                const basinRenderer = L.canvas({ padding: 0.5, oceanClip: true });
+            if (!activeType) {
+                updateBasinLegend();
+                updateBasinVelocityLayer(timeIndex);
+                return;
+            }
 
-                const bLats = basinGridData.lats;
-                const bLons = basinGridData.lons;
-                const basinRes = bLats.length > 1 ? Math.abs(bLats[1] - bLats[0]) : 6;
-                const bHalfRes = basinRes / 2;
-                const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
+            const bLats = basinGridData.lats;
+            const bLons = basinGridData.lons;
+            const basinRes = bLats.length > 1 ? Math.abs(bLats[1] - bLats[0]) : 6;
+            const bHalfRes = basinRes / 2;
+            const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
 
-                for (let i = 0; i < bLats.length; i++) {
-                    for (let j = 0; j < bLons.length; j++) {
-                        const lat = bLats[i];
-                        const lon = bLons[j];
-                        const bounds = [[lat - bHalfRes, lon - bHalfRes], [lat + bHalfRes, lon + bHalfRes]];
+            // Fast path: reuse existing rectangles, just update style + popup
+            if (basinRectsBuilt && basinRectangles.length > 0) {
+                for (const entry of basinRectangles) {
+                    const {rect, i, j} = entry;
+                    let color, popup;
+                    if (state.height) {
+                        const wh = basinGridData.wave_height[bTimeIndex][i][j];
+                        color = getColorForValue(wh, 0, 6);
+                        popup = `Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`;
+                    } else if (state.period) {
+                        const wp = basinGridData.wave_period[bTimeIndex][i][j];
+                        color = getColorForValue(wp, 0, 15);
+                        popup = `Wave Period: ${wp.toFixed(1)} s`;
+                    } else {
+                        const dir = basinGridData.wave_direction[bTimeIndex][i][j];
+                        color = getColorForDirection(dir);
+                        popup = `Wave Direction: ${dir.toFixed(0)}° (${compassLabel(dir)})`;
+                    }
+                    rect.setStyle({fillColor: color, color: color});
+                    rect.setPopupContent(popup);
+                }
+                updateBasinLegend();
+                updateBasinVelocityLayer(timeIndex);
+                return;
+            }
 
-                        if (state.height) {
-                            const wh = basinGridData.wave_height[bTimeIndex][i][j];
-                            if (wh > 0) {
-                                const color = getColorForValue(wh, 0, 6);
-                                L.rectangle(bounds, {
-                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                                }).bindPopup(`Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`).addTo(basinGridLayer);
-                            }
-                        } else if (state.period) {
-                            const wp = basinGridData.wave_period[bTimeIndex][i][j];
-                            if (wp > 0) {
-                                const color = getColorForValue(wp, 0, 15);
-                                L.rectangle(bounds, {
-                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                                }).bindPopup(`Wave Period: ${wp.toFixed(1)} s`).addTo(basinGridLayer);
-                            }
-                        } else if (state.direction) {
-                            const dir = basinGridData.wave_direction[bTimeIndex][i][j];
-                            const wh = basinGridData.wave_height[bTimeIndex][i][j];
-                            if (dir > 0 || wh > 0) {
-                                const color = getColorForDirection(dir);
-                                L.rectangle(bounds, {
-                                    renderer: basinRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                                }).bindPopup(`Wave Direction: ${dir.toFixed(0)}° (${compassLabel(dir)})`).addTo(basinGridLayer);
-                            }
-                        }
+            // Slow path: first render — build descriptors then batch-create
+            basinGridLayer = L.layerGroup();
+            const basinRenderer = L.canvas({ padding: 0.5, oceanClip: true });
+            basinRectangles = [];
+            const descriptors = [];
+
+            for (let i = 0; i < bLats.length; i++) {
+                for (let j = 0; j < bLons.length; j++) {
+                    const lat = bLats[i];
+                    const lon = bLons[j];
+                    const bounds = [[lat - bHalfRes, lon - bHalfRes], [lat + bHalfRes, lon + bHalfRes]];
+                    let color, popup, hasData = false;
+
+                    if (state.height) {
+                        const wh = basinGridData.wave_height[bTimeIndex][i][j];
+                        if (wh > 0) { color = getColorForValue(wh, 0, 6); popup = `Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`; hasData = true; }
+                    } else if (state.period) {
+                        const wp = basinGridData.wave_period[bTimeIndex][i][j];
+                        if (wp > 0) { color = getColorForValue(wp, 0, 15); popup = `Wave Period: ${wp.toFixed(1)} s`; hasData = true; }
+                    } else if (state.direction) {
+                        const dir = basinGridData.wave_direction[bTimeIndex][i][j];
+                        const wh = basinGridData.wave_height[bTimeIndex][i][j];
+                        if (dir > 0 || wh > 0) { color = getColorForDirection(dir); popup = `Wave Direction: ${dir.toFixed(0)}° (${compassLabel(dir)})`; hasData = true; }
+                    }
+
+                    if (hasData) {
+                        descriptors.push({
+                            type: 'rect', bounds, i, j, popup,
+                            options: {renderer: basinRenderer, color, weight: 0, fillColor: color, fillOpacity: 0.7},
+                            store: basinRectangles
+                        });
                     }
                 }
-
-                basinGridLayer.addTo(mapBasin);
             }
 
-            // Update legend
-            updateBasinLegend();
+            batchGeneration++;
+            batchAddLayers(descriptors, basinGridLayer, mapBasin, batchGeneration, () => {
+                basinRectsBuilt = true;
+            });
 
-            // Update velocity layer
+            // Update legend and velocity immediately (they're lightweight)
+            updateBasinLegend();
             updateBasinVelocityLayer(timeIndex);
+        }
+
+        // Render the basin map (called after data fetch, deferred by IntersectionObserver)
+        function renderBasinMap() {
+            if (!basinGridData || basinRendered) return;
+            basinRendered = true;
+
+            const data = basinGridData;
+            const center = data.center;
+
+            // Clear loading message
+            document.getElementById('map-basin').innerHTML = '';
+
+            // Initialize map centered on the forecast location (zoom 3 for global view)
+            mapBasin = L.map('map-basin', {worldCopyJump: true}).setView([center.lat, center.lon], 3);
+
+            addHomeButton(mapBasin, [center.lat, center.lon], 3);
+
+            const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+            const tileLayerOptions = {
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+                maxZoom: 10
+            };
+
+            L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapBasin);
+
+            // Add marker for forecast location
+            const locationIcon = L.divIcon({
+                html: '<div style="color: #ff0; font-size: 20px; text-shadow: 2px 2px 4px black;">&#9733;</div>',
+                className: 'location-marker',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+            L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasin).bindPopup(currentLocation.name);
+
+            setTimeout(() => {
+                mapBasin.invalidateSize();
+            }, 100);
+
+            // Notify unified slider
+            onMapDataReady();
         }
 
         function loadOceanBasinMaps() {
@@ -2103,6 +2441,11 @@
             basinGridLayer = null;
             basinVelocityLayer = null;
             basinLegendControl = null;
+            basinRectangles = [];
+            basinRectsBuilt = false;
+            basinRectsLayerType = null;
+            basinDataReady = false;
+            basinRendered = false;
 
             // Reset container HTML
             document.getElementById('map-basin').innerHTML = '<div class="map-loading">Loading ocean data...</div>';
@@ -2124,40 +2467,13 @@
 
                     // Store data globally
                     basinGridData = data;
+                    basinDataReady = true;
 
-                    const center = data.center;
-
-                    // Clear loading message
-                    document.getElementById('map-basin').innerHTML = '';
-
-                    // Initialize map centered on the forecast location (zoom 3 for global view)
-                    mapBasin = L.map('map-basin', {worldCopyJump: true}).setView([center.lat, center.lon], 3);
-
-                    addHomeButton(mapBasin, [center.lat, center.lon], 3);
-
-                    const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-                    const tileLayerOptions = {
-                        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-                        maxZoom: 10
-                    };
-
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(mapBasin);
-
-                    // Add marker for forecast location
-                    const locationIcon = L.divIcon({
-                        html: '<div style="color: #ff0; font-size: 20px; text-shadow: 2px 2px 4px black;">&#9733;</div>',
-                        className: 'location-marker',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    });
-                    L.marker([center.lat, center.lon], {icon: locationIcon}).addTo(mapBasin).bindPopup(currentLocation.name);
-
-                    setTimeout(() => {
-                        mapBasin.invalidateSize();
-                    }, 100);
-
-                    // Notify unified slider
-                    onMapDataReady();
+                    // If container is already visible, render immediately
+                    if (mapVisibility['map-basin']) {
+                        renderBasinMap();
+                    }
+                    // Otherwise IntersectionObserver will trigger renderBasinMap when visible
                 })
                 .catch(error => {
                     console.error('Error fetching ocean basin data:', error);
@@ -2172,6 +2488,85 @@
         let map1 = null, map2 = null, map3 = null;
         let localWavePeriodLayer = null, localWaveHeightLayer = null, localWindLayer = null;
 
+        // Render local maps (called after data fetch, deferred by IntersectionObserver)
+        function renderLocalMaps() {
+            if (!localGridData || localRendered) return;
+            localRendered = true;
+
+            const mapContainers = ['map-wave-period', 'map-wave-height', 'map-wind'];
+            const gridData = localGridData;
+
+            const lats = gridData.lats;
+            const lons = gridData.lons;
+
+            const centerLat = (lats[0] + lats[lats.length - 1]) / 2;
+            const centerLon = (lons[0] + lons[lons.length - 1]) / 2;
+
+            // Clear loading messages
+            mapContainers.forEach(id => {
+                document.getElementById(id).innerHTML = '';
+            });
+
+            // Initialize maps
+            map1 = L.map('map-wave-period').setView([centerLat, centerLon], 8);
+            map2 = L.map('map-wave-height').setView([centerLat, centerLon], 8);
+            map3 = L.map('map-wind').setView([centerLat, centerLon], 8);
+
+            addHomeButton(map1, [centerLat, centerLon], 8);
+            addHomeButton(map2, [centerLat, centerLon], 8);
+            addHomeButton(map3, [centerLat, centerLon], 8);
+
+            const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+            const tileLayerOptions = {
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+                maxZoom: 19
+            };
+
+            L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map1);
+            L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map2);
+            L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map3);
+
+            setTimeout(() => {
+                map1.invalidateSize();
+                map2.invalidateSize();
+                map3.invalidateSize();
+            }, 100);
+
+            // Add legends
+            function addLegend(map, title, minVal, maxVal, colors) {
+                const legend = L.control({position: 'bottomright'});
+                legend.onAdd = function() {
+                    const div = L.DomUtil.create('div', 'legend');
+                    div.innerHTML = `<strong>${title}</strong><br>`;
+                    colors.forEach((color, i) => {
+                        const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
+                        div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
+                    });
+                    return div;
+                };
+                legend.addTo(map);
+            }
+
+            addLegend(map1, 'Period (s)', 0, 15, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
+            addLegend(map2, 'Height (ft)', 0, 10, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
+
+            // Wind legend
+            const windLegend = L.control({position: 'bottomright'});
+            windLegend.onAdd = function() {
+                const div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = '<strong>Wind (mph)</strong><br>' +
+                    '<span style="color:#33ff88">&rarr;</span> 0-6<br>' +
+                    '<span style="color:#3388ff">&rarr;</span> 6-12<br>' +
+                    '<span style="color:#ffff33">&rarr;</span> 12-19<br>' +
+                    '<span style="color:#ff8833">&rarr;</span> 19+';
+                return div;
+            };
+            windLegend.addTo(map3);
+
+            // Notify unified slider
+            onMapDataReady();
+        }
+
         function loadLocalMaps() {
             const mapContainers = ['map-wave-period', 'map-wave-height', 'map-wind'];
 
@@ -2182,6 +2577,12 @@
             localWavePeriodLayer = null;
             localWaveHeightLayer = null;
             localWindLayer = null;
+            localPeriodRects = [];
+            localHeightRects = [];
+            localWindMarkers = [];
+            localRectsBuilt = false;
+            localDataReady = false;
+            localRendered = false;
 
             // Reset container HTML
             mapContainers.forEach(id => {
@@ -2216,76 +2617,13 @@
 
                     // Store data globally
                     localGridData = gridData;
+                    localDataReady = true;
 
-                    const lats = gridData.lats;
-                    const lons = gridData.lons;
-
-                    const centerLat = (lats[0] + lats[lats.length - 1]) / 2;
-                    const centerLon = (lons[0] + lons[lons.length - 1]) / 2;
-
-                    // Clear loading messages
-                    mapContainers.forEach(id => {
-                        document.getElementById(id).innerHTML = '';
-                    });
-
-                    // Initialize maps
-                    map1 = L.map('map-wave-period').setView([centerLat, centerLon], 8);
-                    map2 = L.map('map-wave-height').setView([centerLat, centerLon], 8);
-                    map3 = L.map('map-wind').setView([centerLat, centerLon], 8);
-
-                    addHomeButton(map1, [centerLat, centerLon], 8);
-                    addHomeButton(map2, [centerLat, centerLon], 8);
-                    addHomeButton(map3, [centerLat, centerLon], 8);
-
-                    const tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-                    const tileLayerOptions = {
-                        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-                        maxZoom: 19
-                    };
-
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map1);
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map2);
-                    L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map3);
-
-                    setTimeout(() => {
-                        map1.invalidateSize();
-                        map2.invalidateSize();
-                        map3.invalidateSize();
-                    }, 100);
-
-                    // Add legends
-                    function addLegend(map, title, minVal, maxVal, colors) {
-                        const legend = L.control({position: 'bottomright'});
-                        legend.onAdd = function() {
-                            const div = L.DomUtil.create('div', 'legend');
-                            div.innerHTML = `<strong>${title}</strong><br>`;
-                            colors.forEach((color, i) => {
-                                const val = minVal + (maxVal - minVal) * i / (colors.length - 1);
-                                div.innerHTML += `<span class="legend-color" style="background:${color}"></span>${val.toFixed(1)}<br>`;
-                            });
-                            return div;
-                        };
-                        legend.addTo(map);
+                    // If any local map container is already visible, render immediately
+                    if (mapVisibility['map-wave-height'] || mapVisibility['map-wind'] || mapVisibility['map-wave-period']) {
+                        renderLocalMaps();
                     }
-
-                    addLegend(map1, 'Period (s)', 0, 15, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
-                    addLegend(map2, 'Height (ft)', 0, 10, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
-
-                    // Wind legend
-                    const windLegend = L.control({position: 'bottomright'});
-                    windLegend.onAdd = function() {
-                        const div = L.DomUtil.create('div', 'legend');
-                        div.innerHTML = '<strong>Wind (mph)</strong><br>' +
-                            '<span style="color:#33ff88">&rarr;</span> 0-6<br>' +
-                            '<span style="color:#3388ff">&rarr;</span> 6-12<br>' +
-                            '<span style="color:#ffff33">&rarr;</span> 12-19<br>' +
-                            '<span style="color:#ff8833">&rarr;</span> 19+';
-                        return div;
-                    };
-                    windLegend.addTo(map3);
-
-                    // Notify unified slider
-                    onMapDataReady();
+                    // Otherwise IntersectionObserver will trigger renderLocalMaps when visible
                 })
                 .catch(error => {
                     console.error('Error fetching map forecast data:', error);
@@ -2297,6 +2635,40 @@
         }
 
         // === Unified Map Time Slider Logic ===
+
+        // Batch utility: creates Leaflet layers in chunks of BATCH_SIZE, yielding
+        // to the browser via requestAnimationFrame between batches so HLS.js can decode.
+        const BATCH_SIZE = 200;
+        function batchAddLayers(descriptors, layerGroup, map, gen, callback) {
+            let idx = 0;
+            function processChunk() {
+                if (gen !== batchGeneration) return; // cancelled by newer batch
+                const end = Math.min(idx + BATCH_SIZE, descriptors.length);
+                for (; idx < end; idx++) {
+                    const d = descriptors[idx];
+                    if (d.type === 'rect') {
+                        const rect = L.rectangle(d.bounds, d.options);
+                        if (d.popup) rect.bindPopup(d.popup);
+                        rect.addTo(layerGroup);
+                        if (d.store) d.store.push({rect, i: d.i, j: d.j});
+                    } else if (d.type === 'marker') {
+                        const marker = L.marker(d.latlng, {icon: d.icon});
+                        if (d.popup) marker.bindPopup(d.popup);
+                        marker.addTo(layerGroup);
+                        if (d.store) d.store.push({marker, i: d.i, j: d.j, arrowDiv: d.arrowDiv});
+                    }
+                }
+                if (idx < descriptors.length) {
+                    requestAnimationFrame(processChunk);
+                } else {
+                    if (!map.hasLayer(layerGroup)) layerGroup.addTo(map);
+                    if (callback) callback();
+                }
+            }
+            if (!map.hasLayer(layerGroup)) layerGroup.addTo(map);
+            requestAnimationFrame(processChunk);
+        }
+
         function getColorForValue(value, minVal, maxVal) {
             const ratio = Math.min(1, Math.max(0, (value - minVal) / (maxVal - minVal)));
             const stops = [
@@ -2360,6 +2732,41 @@
 
             // === Update local maps ===
             if (localGridData && map1 && map2 && map3) {
+                const lLats = localGridData.lats;
+                const lLons = localGridData.lons;
+                const localRes = lLats.length > 1 ? Math.abs(lLats[1] - lLats[0]) : 0.25;
+                const lHalfRes = localRes / 2;
+                const lTimeIndex = Math.min(timeIndex, localGridData.times.length - 1);
+
+                // Fast path: reuse existing rectangles/markers
+                if (localRectsBuilt && localPeriodRects.length > 0) {
+                    for (const entry of localPeriodRects) {
+                        const period = localGridData.wave_period[lTimeIndex][entry.i][entry.j];
+                        const color = getColorForValue(period, 0, 12);
+                        entry.rect.setStyle({fillColor: color, color: color});
+                        entry.rect.setPopupContent(`Wave Period: ${period.toFixed(1)} s`);
+                    }
+                    for (const entry of localHeightRects) {
+                        const height = localGridData.wave_height[lTimeIndex][entry.i][entry.j];
+                        const color = getColorForValue(height, 0, 3);
+                        entry.rect.setStyle({fillColor: color, color: color});
+                        entry.rect.setPopupContent(`Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`);
+                    }
+                    for (const entry of localWindMarkers) {
+                        const speed = localGridData.wind_speed[lTimeIndex][entry.i][entry.j];
+                        const direction = localGridData.wind_direction[lTimeIndex][entry.i][entry.j];
+                        const color = getWindColor(speed);
+                        const rotation = (direction + 180) % 360;
+                        if (entry.arrowDiv) {
+                            entry.arrowDiv.style.transform = `rotate(${rotation}deg)`;
+                            entry.arrowDiv.style.color = color;
+                        }
+                        entry.marker.setPopupContent(`Wind: ${(speed * KMH_TO_MPH).toFixed(1)} mph<br>Direction: ${direction.toFixed(0)}°`);
+                    }
+                    return;
+                }
+
+                // Slow path: first render — destroy old layers, build new ones with batching
                 if (localWavePeriodLayer) map1.removeLayer(localWavePeriodLayer);
                 if (localWaveHeightLayer) map2.removeLayer(localWaveHeightLayer);
                 if (localWindLayer) map3.removeLayer(localWindLayer);
@@ -2371,13 +2778,13 @@
                 const localPeriodRenderer = L.canvas({ padding: 0.5, oceanClip: true });
                 const localHeightRenderer = L.canvas({ padding: 0.5, oceanClip: true });
 
-                const lLats = localGridData.lats;
-                const lLons = localGridData.lons;
-                const localRes = lLats.length > 1 ? Math.abs(lLats[1] - lLats[0]) : 0.25;
-                const lHalfRes = localRes / 2;
+                localPeriodRects = [];
+                localHeightRects = [];
+                localWindMarkers = [];
 
-                // Clamp timeIndex to local data range
-                const lTimeIndex = Math.min(timeIndex, localGridData.times.length - 1);
+                const periodDescs = [];
+                const heightDescs = [];
+                const windDescs = [];
 
                 for (let i = 0; i < lLats.length; i++) {
                     for (let j = 0; j < lLons.length; j++) {
@@ -2389,21 +2796,24 @@
 
                         if (period > 0) {
                             const color = getColorForValue(period, 0, 12);
-                            L.rectangle(bounds, {
-                                renderer: localPeriodRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                            }).bindPopup(`Wave Period: ${period.toFixed(1)} s`).addTo(localWavePeriodLayer);
+                            periodDescs.push({
+                                type: 'rect', bounds, i, j,
+                                options: {renderer: localPeriodRenderer, color, weight: 0, fillColor: color, fillOpacity: 0.7},
+                                popup: `Wave Period: ${period.toFixed(1)} s`,
+                                store: localPeriodRects
+                            });
                         }
                         if (height > 0) {
                             const color = getColorForValue(height, 0, 3);
-                            L.rectangle(bounds, {
-                                renderer: localHeightRenderer, color: color, weight: 0, fillColor: color, fillOpacity: 0.7
-                            }).bindPopup(`Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`).addTo(localWaveHeightLayer);
+                            heightDescs.push({
+                                type: 'rect', bounds, i, j,
+                                options: {renderer: localHeightRenderer, color, weight: 0, fillColor: color, fillOpacity: 0.7},
+                                popup: `Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`,
+                                store: localHeightRects
+                            });
                         }
                     }
                 }
-
-                localWavePeriodLayer.addTo(map1);
-                localWaveHeightLayer.addTo(map2);
 
                 // Wind arrows (every 5th point)
                 const step = Math.max(1, Math.floor(lLats.length / 5));
@@ -2415,30 +2825,141 @@
                         if (speed > 0) {
                             const color = getWindColor(speed);
                             const rotation = (direction + 180) % 360;
-
+                            const arrowHtml = `<div style="transform: rotate(${rotation}deg); color: ${color}; font-size: 18px; text-shadow: 1px 1px 2px black;">&#10148;</div>`;
                             const arrowIcon = L.divIcon({
-                                html: `<div style="transform: rotate(${rotation}deg); color: ${color}; font-size: 18px; text-shadow: 1px 1px 2px black;">&#10148;</div>`,
+                                html: arrowHtml,
                                 className: 'wind-arrow',
                                 iconSize: [20, 20],
                                 iconAnchor: [10, 10]
                             });
 
-                            const marker = L.marker([lLats[i], lLons[j]], {icon: arrowIcon});
-                            marker.bindPopup(`Wind: ${(speed * KMH_TO_MPH).toFixed(1)} mph<br>Direction: ${direction.toFixed(0)}°`);
-                            localWindLayer.addLayer(marker);
+                            windDescs.push({
+                                type: 'marker', latlng: [lLats[i], lLons[j]], i, j,
+                                icon: arrowIcon,
+                                popup: `Wind: ${(speed * KMH_TO_MPH).toFixed(1)} mph<br>Direction: ${direction.toFixed(0)}°`,
+                                store: localWindMarkers, arrowDiv: null
+                            });
                         }
                     }
                 }
 
-                localWindLayer.addTo(map3);
+                batchGeneration++;
+                const gen = batchGeneration;
+                // Batch all three layer groups; mark built when last one finishes
+                let layersDone = 0;
+                const onLayerDone = () => {
+                    layersDone++;
+                    if (layersDone === 3) {
+                        // Grab arrowDiv references from the DOM markers now that they're rendered
+                        for (const entry of localWindMarkers) {
+                            const el = entry.marker.getElement && entry.marker.getElement();
+                            if (el) entry.arrowDiv = el.querySelector('div');
+                        }
+                        localRectsBuilt = true;
+                    }
+                };
+                batchAddLayers(periodDescs, localWavePeriodLayer, map1, gen, onLayerDone);
+                batchAddLayers(heightDescs, localWaveHeightLayer, map2, gen, onLayerDone);
+                batchAddLayers(windDescs, localWindLayer, map3, gen, onLayerDone);
             }
         }
 
-        // Wire up the slider
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('time-slider').addEventListener('input', function(e) {
-                updateAllMaps(parseInt(e.target.value));
+        // === IntersectionObserver for lazy map rendering ===
+        const mapVisibility = {};
+        const mapObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const id = entry.target.id;
+                mapVisibility[id] = entry.isIntersecting;
+                if (entry.isIntersecting) {
+                    // Basin map
+                    if (id === 'map-basin' && basinDataReady && !basinRendered) {
+                        renderBasinMap();
+                    }
+                    // Local maps — any one becoming visible triggers all three
+                    if ((id === 'map-wave-height' || id === 'map-wind' || id === 'map-wave-period') && localDataReady && !localRendered) {
+                        renderLocalMaps();
+                    }
+                }
             });
+        }, { threshold: 0.1 });
+
+        // === Slider Animation Functions ===
+        function advanceSlider() {
+            const slider = document.getElementById('time-slider');
+            let val = parseInt(slider.value);
+            const max = parseInt(slider.max);
+            if (max <= 0) return;
+            val = val + SLIDER_ANIMATION_STEP;
+            if (val > max) val = 0;
+            slider.value = val;
+            slider.dispatchEvent(new Event('input'));
+        }
+
+        function startSliderPlay() {
+            if (sliderAnimationId) return;
+            const btn = document.getElementById('slider-play-btn');
+            btn.innerHTML = '&#10074;&#10074;';
+            btn.title = 'Pause';
+            btn.classList.add('playing');
+            sliderAnimationId = setInterval(advanceSlider, sliderAnimationSpeed);
+        }
+
+        function stopSliderPlay() {
+            if (!sliderAnimationId) return;
+            clearInterval(sliderAnimationId);
+            sliderAnimationId = null;
+            const btn = document.getElementById('slider-play-btn');
+            btn.innerHTML = '&#9654;';
+            btn.title = 'Play';
+            btn.classList.remove('playing');
+        }
+
+        function toggleSliderPlay() {
+            if (sliderAnimationId) {
+                stopSliderPlay();
+            } else {
+                startSliderPlay();
+            }
+        }
+
+        function cycleSliderSpeed() {
+            sliderSpeedIndex = (sliderSpeedIndex + 1) % SLIDER_SPEEDS.length;
+            sliderAnimationSpeed = SLIDER_SPEEDS[sliderSpeedIndex];
+            document.getElementById('slider-speed-btn').textContent = SLIDER_SPEED_LABELS[sliderSpeedIndex];
+            if (sliderAnimationId) {
+                clearInterval(sliderAnimationId);
+                sliderAnimationId = setInterval(advanceSlider, sliderAnimationSpeed);
+            }
+        }
+
+        // Start observing map containers once DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            ['map-basin', 'map-wave-height', 'map-wind', 'map-wave-period'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) mapObserver.observe(el);
+            });
+
+            // Wire up the slider with requestAnimationFrame debounce
+            document.getElementById('time-slider').addEventListener('input', function(e) {
+                const timeIndex = parseInt(e.target.value);
+                // Update label immediately (cheap DOM write)
+                const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
+                if (times && times[timeIndex]) {
+                    const timeStr = new Date(times[timeIndex]).toLocaleString();
+                    document.getElementById('map-time-badge').textContent = timeStr;
+                    document.getElementById('time-label').textContent = 'Time: ' + timeStr;
+                }
+                // Debounce expensive map update to 1 per frame
+                if (sliderRafId) cancelAnimationFrame(sliderRafId);
+                sliderRafId = requestAnimationFrame(() => {
+                    updateAllMaps(timeIndex);
+                    sliderRafId = null;
+                });
+            });
+
+            // Wire up play/pause and speed buttons
+            document.getElementById('slider-play-btn').addEventListener('click', toggleSliderPlay);
+            document.getElementById('slider-speed-btn').addEventListener('click', cycleSliderSpeed);
         });
 
         // Local maps loaded via staggered init in loadPointForecast listener

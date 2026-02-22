@@ -684,8 +684,8 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
     lat_slice = f"[{lat_lo}:1:{lat_hi}]"
     lon_slice = f"[{lon_lo}:1:{lon_hi}]"
 
-    # Fetch waves only from NOMADS (wind comes from ERDDAP GFS for land coverage)
-    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc"]
+    # Fetch waves + wind from NOMADS (wind U/V at same 0.16° resolution)
+    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "ugrdsfc", "vgrdsfc"]
 
     print(f"Grid forecast: fetching NOMADS GFS-Wave for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
     data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
@@ -705,37 +705,15 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
         wave_period[t] = _fill_nan_nearest(wave_period[t], max_iterations=3)
         wave_dir[t] = _fill_nan_nearest(wave_dir[t], max_iterations=3)
 
-    # Fetch wind from ERDDAP GFS (has land + ocean coverage)
-    lon_min_360 = lon_min % 360
-    lon_max_360 = lon_max % 360
-    t_erddap_start = (wave_dts[0] - timedelta(hours=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    wind_time_range = f"({t_erddap_start}):(last)"
-    wind_lat_range = f"({lat_min}):({lat_max})"
-    wind_lon_range = f"({lon_min_360}):({lon_max_360})"
-
-    try:
-        print(f"Grid forecast: fetching ERDDAP GFS wind (land+ocean)...")
-        wind_json = _fetch_erddap_grid(
-            server="coastwatch.pfeg.noaa.gov",
-            dataset="NCEP_Global_Best",
-            variables=["ugrd10m", "vgrd10m"],
-            time_range=wind_time_range,
-            lat_range=wind_lat_range,
-            lon_range=wind_lon_range,
-            depth=None
-        )
-        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
-        print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
-
-        # Interpolate ERDDAP wind (0.5°, 3-hourly) to NOMADS wave grid (0.16°, 3-hourly)
-        wind_speed, wind_dir = _interpolate_wind_to_hourly(
-            wind, wave_dts, data['lats'], lons_360
-        )
-    except Exception as e:
-        print(f"  Warning: ERDDAP wind failed, grid will have no wind: {e}")
-        traceback.print_exc()
-        wind_speed = np.zeros_like(wave_height)
-        wind_dir = np.zeros_like(wave_height)
+    # Compute wind from NOMADS U/V (same 0.16° grid as waves)
+    # Wind blows over land too — fill all NaN so arrows appear inland
+    ugrd = data['grids']['ugrdsfc'].copy()
+    vgrd = data['grids']['vgrdsfc'].copy()
+    for t in range(ugrd.shape[0]):
+        ugrd[t] = _fill_nan_nearest(ugrd[t])
+        vgrd[t] = _fill_nan_nearest(vgrd[t])
+    wind_speed = np.sqrt(ugrd**2 + vgrd**2) * 3.6  # m/s -> km/h
+    wind_dir = (270 - np.degrees(np.arctan2(vgrd, ugrd))) % 360
 
     # Replace remaining NaN with 0 for JSON serialization
     wave_height = np.nan_to_num(wave_height, nan=0.0)
