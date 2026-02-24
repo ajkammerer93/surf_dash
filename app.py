@@ -5,16 +5,20 @@ import math
 import subprocess
 import time
 import traceback
+import os
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
 
 def get_version():
-    """Read version from git tags via git describe."""
+    """Read version from the most recent git tag."""
     try:
         return subprocess.check_output(
-            ['git', 'describe', '--tags', '--always'],
+            ['git', 'describe', '--tags', '--abbrev=0'],
             stderr=subprocess.DEVNULL
         ).decode().strip()
     except Exception:
@@ -943,6 +947,85 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     km = 6371 * c
     return km
 
+SURFCHEX_CAMERAS = [
+    {"name": "Surf City Pier",       "lat": 34.4271, "lon": -77.5461, "stream_url": "https://streams.surfchex.com:8443/live/sc1.stream/playlist.m3u8"},
+    {"name": "Surf City Bridge",     "lat": 34.4380, "lon": -77.5570, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/sciga.stream/playlist.m3u8"},
+    {"name": "Surf City Line",       "lat": 34.4350, "lon": -77.5510, "stream_url": "https://streams.surfchex.com:8443/live/cityline.stream/playlist.m3u8"},
+    {"name": "Topsail Beach",        "lat": 34.3550, "lon": -77.4620, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/topsail.stream/playlist.m3u8"},
+    {"name": "Avon Pier",            "lat": 35.3467, "lon": -75.5026, "stream_url": "https://streams.surfchex.com:8443/live/avon.stream/playlist.m3u8"},
+    {"name": "Avon Soundside",       "lat": 35.3500, "lon": -75.5100, "stream_url": "https://streams.surfchex.com:8443/live/avonsound.stream/playlist.m3u8"},
+    {"name": "Carolina Beach",       "lat": 34.0352, "lon": -77.8936, "stream_url": "https://streams.surfchex.com:8443/live/cb.stream/playlist.m3u8"},
+    {"name": "Kure Beach",           "lat": 33.9966, "lon": -77.9064, "stream_url": "https://streams.surfchex.com:8443/live/kb.stream/playlist.m3u8"},
+    {"name": "Wrightsville Beach",   "lat": 34.2085, "lon": -77.7964, "stream_url": "https://streams.surfchex.com:8443/live/wb3.stream/playlist.m3u8"},
+    {"name": "WB Mercers Pier",      "lat": 34.2090, "lon": -77.7960, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/mercers.stream/playlist.m3u8"},
+    {"name": "Ocean Isle Beach",     "lat": 33.8950, "lon": -78.4310, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/oib.stream/playlist.m3u8"},
+    {"name": "Ocracoke",             "lat": 35.1150, "lon": -75.9830, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/ocracoke.stream/playlist.m3u8"},
+    {"name": "Sunset Beach",         "lat": 33.8700, "lon": -78.5120, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/sunsetbeach.stream/playlist.m3u8"},
+    {"name": "Nags Head",            "lat": 35.9574, "lon": -75.6235, "stream_url": "https://streams.surfchex.com:8443/live/abalonestreet.stream/playlist.m3u8"},
+    {"name": "Manasquan NJ",         "lat": 40.1170, "lon": -74.0360, "stream_url": "https://streams.surfchex.com:8443/live/squan.stream/playlist.m3u8"},
+    {"name": "Virginia Beach",       "lat": 36.8529, "lon": -75.9780, "stream_url": "https://streams.surfchex.com:8443/live/vb.stream/playlist.m3u8"},
+    {"name": "Pistol River OR",      "lat": 42.2770, "lon": -124.3960, "stream_url": "https://streams.surfchex.com:8443/live/pistol.stream/playlist.m3u8"},
+    {"name": "Folly Beach SC",       "lat": 32.6552, "lon": -79.9403, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/folly.stream/playlist.m3u8"},
+    {"name": "Beaufort",             "lat": 34.7190, "lon": -76.6650, "stream_url": "https://streams.surfchex.com:8443/live/gp.stream/playlist.m3u8"},
+    {"name": "Bath",                 "lat": 35.4740, "lon": -76.8100, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/bath.stream/playlist.m3u8"},
+]
+SURFCHEX_MAX_DISTANCE_KM = 160  # ~100 miles
+
+def find_nearest_cameras(lat, lon, count=2):
+    """Find the nearest surf cameras to the given coordinates."""
+    # Search Surfchex catalog
+    nearby = []
+    for cam in SURFCHEX_CAMERAS:
+        dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
+        if dist <= SURFCHEX_MAX_DISTANCE_KM:
+            nearby.append({
+                'name': cam['name'],
+                'type': 'hls',
+                'url': cam['stream_url'],
+                'distance_km': round(dist, 1)
+            })
+    nearby.sort(key=lambda c: c['distance_km'])
+    results = nearby[:count]
+
+    # Windy Webcams API fallback if we don't have enough Surfchex cams
+    if len(results) < count:
+        windy_key = os.environ.get('WINDY_API_KEY')
+        if windy_key:
+            try:
+                needed = count - len(results)
+                radius_km = SURFCHEX_MAX_DISTANCE_KM
+                resp = requests.get(
+                    'https://api.windy.com/webcams/api/v3/webcams',
+                    params={
+                        'nearby': f'{lat},{lon},{radius_km}',
+                        'categories': 'beach',
+                        'include': 'images,location,player',
+                        'limit': needed
+                    },
+                    headers={'x-windy-api-key': windy_key},
+                    timeout=10
+                )
+                if resp.ok:
+                    webcams = resp.json().get('webcams', [])
+                    for wc in webcams:
+                        loc = wc.get('location', {})
+                        wc_lat = loc.get('latitude', 0)
+                        wc_lon = loc.get('longitude', 0)
+                        dist = haversine_distance(lat, lon, wc_lat, wc_lon)
+                        player = wc.get('player', {})
+                        embed_url = player.get('day') or player.get('lifetime')
+                        if embed_url:
+                            results.append({
+                                'name': wc.get('title', 'Webcam'),
+                                'type': 'iframe',
+                                'url': embed_url,
+                                'distance_km': round(dist, 1)
+                            })
+            except Exception as e:
+                print(f"Windy webcam fallback failed (non-critical): {e}")
+
+    return results
+
 def get_ocean_basin_data():
     """
     Fetches global wave and wind data using NOAA ERDDAP.
@@ -1210,6 +1293,14 @@ def tides():
         return jsonify(data)
     else:
         return jsonify({"error": "Could not retrieve tide data."}), 500
+
+@app.route('/api/webcams')
+def webcams():
+    lat = request.args.get('lat', 34.42711, type=float)
+    lon = request.args.get('lon', -77.54608, type=float)
+    cache_key = f"webcams:{lat:.2f},{lon:.2f}"
+    cameras = cached(cache_key, lambda: find_nearest_cameras(lat, lon))
+    return jsonify({"cameras": cameras or []})
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)

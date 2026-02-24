@@ -791,6 +791,42 @@
             color: var(--text);
         }
 
+        .location-search {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .location-search input {
+            flex: 1;
+            font-family: var(--font-body);
+            font-size: 11px;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            outline: none;
+        }
+
+        .location-search input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .location-search button {
+            font-family: var(--font-body);
+            font-size: 11px;
+            padding: 6px 12px;
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            color: var(--bg);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .location-search button:hover {
+            opacity: 0.85;
+        }
+
         .modal-footer {
             padding: 10px 14px;
             border-top: 1px solid var(--border);
@@ -900,8 +936,12 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p>Click anywhere on the ocean to select a new forecast location.</p>
-                <div id="location-map" style="height: 450px;"></div>
+                <div class="location-search">
+                    <input type="text" id="location-search-input" placeholder="Search for a location (e.g. Santa Monica, Pipeline Hawaii)">
+                    <button id="location-search-btn">Search</button>
+                </div>
+                <p>Or click anywhere on the map to select a location.</p>
+                <div id="location-map" style="height: 420px;"></div>
                 <div class="modal-selected">
                     <strong>Selected:</strong> <span id="selected-location-text">None</span>
                 </div>
@@ -962,37 +1002,31 @@
             </div>
         </div>
 
-        <!-- Surf Cam -->
-        <div class="grid-stack-item" data-panel-id="cam-surfcity" gs-x="4" gs-y="0" gs-w="4" gs-h="4">
+        <!-- Surf Cam 1 -->
+        <div class="grid-stack-item" data-panel-id="cam-1" gs-x="4" gs-y="0" gs-w="4" gs-h="4">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
-                        <span class="panel-title">Surf City Pier &mdash; Live Cam</span>
-                        <span class="panel-badge">Live</span>
+                        <span class="panel-title" id="cam-1-title">Live Cam</span>
+                        <span class="panel-badge" id="cam-1-badge">Loading</span>
                     </div>
-                    <div class="panel-content" style="padding: 0;">
-                        <video id="surf-cam" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
-                        <div id="surf-cam-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
-                            Stream unavailable
-                        </div>
+                    <div class="panel-content" id="cam-1-content" style="padding: 0;">
+                        <div style="padding: 16px; color: var(--text-muted); font-size: 11px;">Finding nearest camera...</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Surf Cam 2 -->
-        <div class="grid-stack-item" data-panel-id="cam-topsail" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
+        <div class="grid-stack-item" data-panel-id="cam-2" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
-                        <span class="panel-title">Topsail Beach &mdash; Live Cam</span>
-                        <span class="panel-badge">Live</span>
+                        <span class="panel-title" id="cam-2-title">Live Cam</span>
+                        <span class="panel-badge" id="cam-2-badge">Loading</span>
                     </div>
-                    <div class="panel-content" style="padding: 0;">
-                        <video id="surf-cam-2" style="width: 100%; display: block; background: #000;" muted autoplay playsinline></video>
-                        <div id="surf-cam-2-error" style="display: none; padding: 8px; font-size: 11px; color: var(--status-error);">
-                            Stream unavailable
-                        </div>
+                    <div class="panel-content" id="cam-2-content" style="padding: 0;">
+                        <div style="padding: 16px; color: var(--text-muted); font-size: 11px;">Finding nearest camera...</div>
                     </div>
                 </div>
             </div>
@@ -1278,8 +1312,8 @@
         // === Panel Visibility Toggle ===
         const PANEL_NAMES = {
             'conditions': 'Current Conditions',
-            'cam-surfcity': 'Surf City Pier — Live Cam',
-            'cam-topsail': 'Topsail Beach — Live Cam',
+            'cam-1': 'Live Cam 1',
+            'cam-2': 'Live Cam 2',
             'ocean-basin': 'Ocean Basin',
             'local-wave-height': 'Local Wave Height',
             'local-wind': 'Local Wind Speed & Direction',
@@ -1368,6 +1402,15 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Migrate old cam panel IDs
+            var hidden = getHiddenPanels();
+            var migrated = false;
+            ['cam-surfcity', 'cam-topsail'].forEach(function(oldId, i) {
+                var idx = hidden.indexOf(oldId);
+                if (idx !== -1) { hidden[idx] = 'cam-' + (i + 1); migrated = true; }
+            });
+            if (migrated) saveHiddenPanels(hidden);
+
             // Apply saved hidden panels after GridStack init
             setTimeout(applyHiddenPanels, 0);
 
@@ -1786,6 +1829,43 @@
                         document.getElementById('selected-location-text').textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                     });
             });
+
+            // Location search handler
+            function searchLocation(query) {
+                if (!query.trim()) return;
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&limit=1`)
+                    .then(r => r.json())
+                    .then(results => {
+                        if (!results || results.length === 0) {
+                            document.getElementById('selected-location-text').textContent = 'No results found';
+                            return;
+                        }
+                        const lat = parseFloat(results[0].lat);
+                        const lon = parseFloat(results[0].lon);
+                        const name = results[0].display_name.split(',').slice(0, 3).join(',').trim();
+
+                        locationMap.flyTo([lat, lon], 10);
+
+                        if (locationMarker) locationMarker.remove();
+                        locationMarker = L.marker([lat, lon]).addTo(locationMap);
+
+                        selectedLocation = { lat, lon, name };
+                        document.getElementById('selected-location-text').textContent = `${name} (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+                        document.getElementById('confirm-location-btn').disabled = false;
+                    })
+                    .catch(() => {});
+            }
+
+            document.getElementById('location-search-btn').addEventListener('click', () => {
+                searchLocation(document.getElementById('location-search-input').value);
+            });
+
+            document.getElementById('location-search-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchLocation(e.target.value);
+                }
+            });
         }
 
         // Confirm location button
@@ -1815,6 +1895,9 @@
         function reloadAllData() {
             // Stop slider animation on location change
             stopSliderPlay();
+            // Destroy existing cam streams
+            destroyCam(0);
+            destroyCam(1);
 
             // Reset shared time ranges and map data
             waveTimeRange = null;
@@ -1849,6 +1932,7 @@
             // Reload lightweight endpoints in parallel
             loadPointForecast();
             loadTideData();
+            loadNearestCams();
             // Reload heavy grid endpoints sequentially to avoid rate limits
             loadOceanBasinMaps().then(() => loadLocalMaps());
         }
@@ -3248,32 +3332,117 @@
 
         // Tide data loaded via staggered init in loadPointForecast listener
 
-        // === Surf Cams (HLS) ===
-        function initHlsStream(videoId, errorId, streamUrl) {
-            const video = document.getElementById(videoId);
-            const errorEl = document.getElementById(errorId);
+        // === Surf Cams (Dynamic) ===
+        var activeCamInstances = {};
 
-            if (Hls.isSupported()) {
-                const hls = new Hls();
-                hls.loadSource(streamUrl);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.ERROR, function(event, data) {
-                    if (data.fatal) {
-                        video.style.display = 'none';
-                        errorEl.style.display = 'block';
-                    }
-                });
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = streamUrl;
-            } else {
-                video.style.display = 'none';
-                errorEl.style.display = 'block';
+        function destroyCam(slotIndex) {
+            if (activeCamInstances[slotIndex]) {
+                try { activeCamInstances[slotIndex].destroy(); } catch (e) {}
+                delete activeCamInstances[slotIndex];
             }
         }
 
+        function setCamPanel(slotIndex, camData) {
+            var panelId = 'cam-' + (slotIndex + 1);
+            var titleEl = document.getElementById(panelId + '-title');
+            var badgeEl = document.getElementById(panelId + '-badge');
+            var contentEl = document.getElementById(panelId + '-content');
+            if (!contentEl) return;
+
+            destroyCam(slotIndex);
+            contentEl.innerHTML = '';
+
+            if (!camData) {
+                // No camera — hide panel (unless user manually controls it)
+                titleEl.textContent = 'Live Cam';
+                badgeEl.textContent = 'Off';
+                badgeEl.style.color = '';
+                contentEl.innerHTML = '<div style="padding: 16px; color: var(--text-muted); font-size: 11px;">No nearby camera found</div>';
+                PANEL_NAMES[panelId] = 'Live Cam ' + (slotIndex + 1);
+                togglePanel(panelId, false);
+                return;
+            }
+
+            var distMi = Math.round(camData.distance_km * 0.621371);
+            var label = camData.name + ' \u2014 ' + distMi + ' mi';
+            titleEl.textContent = label;
+            PANEL_NAMES[panelId] = camData.name + ' \u2014 Live Cam';
+
+            if (camData.type === 'hls') {
+                var video = document.createElement('video');
+                video.style.cssText = 'width:100%;display:block;background:#000;';
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                contentEl.appendChild(video);
+
+                if (Hls.isSupported()) {
+                    var hls = new Hls();
+                    activeCamInstances[slotIndex] = hls;
+                    hls.loadSource(camData.url);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        if (data.fatal) {
+                            video.style.display = 'none';
+                            badgeEl.textContent = 'Error';
+                            badgeEl.style.color = 'var(--status-error)';
+                            contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';
+                        }
+                    });
+                    badgeEl.textContent = 'Live';
+                    badgeEl.style.color = '';
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = camData.url;
+                    badgeEl.textContent = 'Live';
+                    badgeEl.style.color = '';
+                } else {
+                    contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';
+                    badgeEl.textContent = 'Error';
+                    badgeEl.style.color = 'var(--status-error)';
+                }
+            } else if (camData.type === 'iframe') {
+                var iframe = document.createElement('iframe');
+                iframe.src = camData.url;
+                iframe.style.cssText = 'width:100%;height:100%;border:none;background:#000;';
+                iframe.allow = 'autoplay';
+                contentEl.appendChild(iframe);
+                badgeEl.textContent = 'Live';
+                badgeEl.style.color = '';
+            }
+
+            // Re-show panel unless user has manually hidden it
+            if (!getHiddenPanels().includes(panelId)) {
+                togglePanel(panelId, true);
+            }
+        }
+
+        function loadNearestCams() {
+            var params = new URLSearchParams({
+                lat: currentLocation.lat,
+                lon: currentLocation.lon
+            });
+            // Show loading state
+            for (var i = 0; i < 2; i++) {
+                var cEl = document.getElementById('cam-' + (i + 1) + '-content');
+                var bEl = document.getElementById('cam-' + (i + 1) + '-badge');
+                if (cEl) cEl.innerHTML = '<div style="padding: 16px; color: var(--text-muted); font-size: 11px;">Finding nearest camera...</div>';
+                if (bEl) { bEl.textContent = 'Loading'; bEl.style.color = ''; }
+            }
+            fetch('/api/webcams?' + params)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var cameras = data.cameras || [];
+                    setCamPanel(0, cameras[0] || null);
+                    setCamPanel(1, cameras[1] || null);
+                })
+                .catch(function() {
+                    setCamPanel(0, null);
+                    setCamPanel(1, null);
+                });
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
-            initHlsStream('surf-cam', 'surf-cam-error', 'https://streams.surfchex.com:8443/live/sc1.stream/playlist.m3u8');
-            initHlsStream('surf-cam-2', 'surf-cam-2-error', 'https://5a5f765a4fcc2.streamlock.net:1936/live/topsail.stream/playlist.m3u8');
+            loadNearestCams();
         });
     </script>
 </body>
