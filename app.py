@@ -7,9 +7,11 @@ import time
 import traceback
 import os
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # Initialize Flask app
 app = Flask(__name__)
