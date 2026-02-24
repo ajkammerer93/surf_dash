@@ -17,7 +17,13 @@ except ImportError:
 app = Flask(__name__)
 
 def get_version():
-    """Read version from the most recent git tag."""
+    """Read version from VERSION file, falling back to git tag."""
+    version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
+    try:
+        with open(version_file) as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        pass
     try:
         return subprocess.check_output(
             ['git', 'describe', '--tags', '--abbrev=0'],
