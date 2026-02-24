@@ -113,10 +113,6 @@ def _get_point_from_erddap(latitude, longitude):
     WW3 for waves, GFS for wind, local computation for sunrise/sunset.
     """
     try:
-        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-        t_start = now.isoformat() + "Z"
-        time_range = f"({t_start}):(last)"
-
         # Convert longitude to 0-360 for ERDDAP
         lon_360 = longitude % 360
 
@@ -124,17 +120,31 @@ def _get_point_from_erddap(latitude, longitude):
         lat_range = f"({latitude - 1}):({latitude + 1})"
         lon_range = f"({lon_360 - 1}):({lon_360 + 1})"
 
-        # Fetch WW3 wave data
-        print(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude})...")
-        wave_json = _fetch_erddap_grid(
-            server="pae-paha.pacioos.hawaii.edu",
-            dataset="ww3_global",
-            variables=["Thgt", "Tper", "Tdir", "whgt", "wper"],
-            time_range=time_range,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=0
-        )
+        # Retry with progressively older start times to handle ERDDAP model update gaps
+        wave_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+                time_range = f"({t_start}):(last)"
+
+                # Fetch WW3 wave data
+                print(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude}), start={t_start}...")
+                wave_json = _fetch_erddap_grid(
+                    server="pae-paha.pacioos.hawaii.edu",
+                    dataset="ww3_global",
+                    variables=["Thgt", "Tper", "Tdir", "whgt", "wper"],
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=0
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir", "whgt", "wper"])
 
         # Find nearest non-NaN ocean grid point
@@ -161,17 +171,30 @@ def _get_point_from_erddap(latitude, longitude):
         whgt = wave['grids']['whgt'][:, best_lat_i, best_lon_i]
         wper = wave['grids']['wper'][:, best_lat_i, best_lon_i]
 
-        # Fetch GFS wind data
-        print(f"Point forecast: fetching GFS wind...")
-        wind_json = _fetch_erddap_grid(
-            server="coastwatch.pfeg.noaa.gov",
-            dataset="NCEP_Global_Best",
-            variables=["ugrd10m", "vgrd10m"],
-            time_range=time_range,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=None
-        )
+        # Fetch GFS wind data (also retry on 404)
+        wind_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+                time_range = f"({t_start}):(last)"
+
+                print(f"Point forecast: fetching GFS wind, start={t_start}...")
+                wind_json = _fetch_erddap_grid(
+                    server="coastwatch.pfeg.noaa.gov",
+                    dataset="NCEP_Global_Best",
+                    variables=["ugrd10m", "vgrd10m"],
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=None
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
 
         # Find nearest wind grid point
@@ -461,6 +484,8 @@ def _find_latest_nomads_cycle():
                 continue
 
     print("No NOMADS cycle available")
+    # Cache the failure for 5 minutes to avoid hammering NOMADS when it's down
+    _cache[cache_key] = {'data': None, 'time': now_ts - (NOMADS_CYCLE_CACHE_TTL - 300)}
     return None
 
 def _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice):
@@ -811,42 +836,65 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
     WW3 at native 0.5deg resolution, GFS wind interpolated to hourly.
     """
     try:
-        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-        t_start = now.isoformat() + "Z"
-        time_range = f"({t_start}):(last)"
-
         # Convert lon bounds to 0-360 for ERDDAP
         lon_min_360 = lon_min % 360
         lon_max_360 = lon_max % 360
         lat_range = f"({lat_min}):({lat_max})"
         lon_range = f"({lon_min_360}):({lon_max_360})"
 
-        # Fetch WW3 wave data (native 0.5° resolution)
-        print(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
-        wave_json = _fetch_erddap_grid(
-            server="pae-paha.pacioos.hawaii.edu",
-            dataset="ww3_global",
-            variables=["Thgt", "Tper", "Tdir"],
-            time_range=time_range,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=0
-        )
+        # Retry with progressively older start times to handle ERDDAP model update gaps
+        wave_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+                time_range = f"({t_start}):(last)"
+
+                # Fetch WW3 wave data (native 0.5° resolution)
+                print(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max}), start={t_start}...")
+                wave_json = _fetch_erddap_grid(
+                    server="pae-paha.pacioos.hawaii.edu",
+                    dataset="ww3_global",
+                    variables=["Thgt", "Tper", "Tdir"],
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=0
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
         wave_dts = [_parse_erddap_time(t) for t in wave['times']]
         print(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
 
-        # Fetch GFS wind data
-        print(f"Grid forecast: fetching GFS wind...")
-        wind_json = _fetch_erddap_grid(
-            server="coastwatch.pfeg.noaa.gov",
-            dataset="NCEP_Global_Best",
-            variables=["ugrd10m", "vgrd10m"],
-            time_range=time_range,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=None
-        )
+        # Fetch GFS wind data (also retry on 404)
+        wind_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+                time_range = f"({t_start}):(last)"
+
+                print(f"Grid forecast: fetching GFS wind, start={t_start}...")
+                wind_json = _fetch_erddap_grid(
+                    server="coastwatch.pfeg.noaa.gov",
+                    dataset="NCEP_Global_Best",
+                    variables=["ugrd10m", "vgrd10m"],
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=None
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
         print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
 
@@ -1039,10 +1087,6 @@ def get_ocean_basin_data():
     Fetches global wave and wind data using NOAA ERDDAP.
     Uses WW3 global wave model (PacIOOS) and GFS wind model (CoastWatch).
     """
-    # Use explicit ISO start time with (last) end to avoid 404 when forecast end varies
-    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    t_start = now.isoformat() + "Z"
-
     # WW3 global at 3° effective resolution (stride=6 on native 0.5°)
     # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
     lat_range = "(-77.5):6:(77.5)"
@@ -1050,17 +1094,30 @@ def get_ocean_basin_data():
     time_stride = 3  # every 3rd hourly step = 3-hourly
 
     # --- Fetch WW3 wave data (required) ---
+    # Retry with progressively older start times to handle ERDDAP model update gaps
     try:
-        print("Fetching global wave data from ERDDAP (WW3)...")
-        wave_json = _fetch_erddap_grid(
-            server="pae-paha.pacioos.hawaii.edu",
-            dataset="ww3_global",
-            variables=["Thgt", "Tper", "Tdir"],
-            time_range=f"({t_start}):{time_stride}:(last)",
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=0
-        )
+        wave_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+
+                print(f"Fetching global wave data from ERDDAP (WW3), start={t_start}...")
+                wave_json = _fetch_erddap_grid(
+                    server="pae-paha.pacioos.hawaii.edu",
+                    dataset="ww3_global",
+                    variables=["Thgt", "Tper", "Tdir"],
+                    time_range=f"({t_start}):{time_stride}:(last)",
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=0
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
         print(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
     except Exception as e:
@@ -1071,16 +1128,28 @@ def get_ocean_basin_data():
     # --- Fetch GFS wind data (optional — degrade gracefully) ---
     wind = None
     try:
-        print("Fetching global wind data from ERDDAP (GFS)...")
-        wind_json = _fetch_erddap_grid(
-            server="coastwatch.pfeg.noaa.gov",
-            dataset="NCEP_Global_Best",
-            variables=["ugrd10m", "vgrd10m"],
-            time_range=f"({t_start}):{time_stride}:(last)",
-            lat_range=lat_range,
-            lon_range=lon_range,
-            depth=None
-        )
+        wind_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                t_start = now.isoformat() + "Z"
+
+                print(f"Fetching global wind data from ERDDAP (GFS), start={t_start}...")
+                wind_json = _fetch_erddap_grid(
+                    server="coastwatch.pfeg.noaa.gov",
+                    dataset="NCEP_Global_Best",
+                    variables=["ugrd10m", "vgrd10m"],
+                    time_range=f"({t_start}):{time_stride}:(last)",
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=None
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    continue
+                raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
         print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
     except Exception as e:
