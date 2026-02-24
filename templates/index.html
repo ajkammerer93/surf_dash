@@ -827,6 +827,93 @@
             opacity: 0.85;
         }
 
+        /* === Favorites === */
+        .favorites-section {
+            margin-bottom: 10px;
+        }
+
+        .favorites-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .favorites-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .favorite-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.15s;
+            max-width: 200px;
+        }
+
+        .favorite-item:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--text);
+            border-color: var(--text-muted);
+        }
+
+        .favorite-item-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .favorite-item-remove {
+            font-size: 13px;
+            color: var(--text-muted);
+            cursor: pointer;
+            line-height: 1;
+            padding: 0 2px;
+            flex-shrink: 0;
+        }
+
+        .favorite-item-remove:hover {
+            color: var(--status-error);
+        }
+
+        .btn-save-favorite {
+            font-family: var(--font-body);
+            font-size: 11px;
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            margin-right: auto;
+            transition: all 0.15s;
+        }
+
+        .btn-save-favorite:hover {
+            color: var(--text);
+            border-color: var(--text-muted);
+        }
+
+        .btn-save-favorite:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn-save-favorite.saved {
+            color: var(--status-live);
+            border-color: rgba(68, 255, 136, 0.3);
+        }
+
         .modal-footer {
             padding: 10px 14px;
             border-top: 1px solid var(--border);
@@ -889,6 +976,8 @@
             #location-map { height: 300px !important; }
             .location-search input { font-size: 16px; padding: 10px; }
             .location-search button { font-size: 14px; padding: 10px 14px; }
+            .favorite-item { padding: 6px 10px; font-size: 13px; }
+            .btn-save-favorite { font-size: 13px; padding: 8px 14px; }
         }
     </style>
 </head>
@@ -941,6 +1030,10 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="favorites-section" id="favorites-section" style="display:none;">
+                    <div class="favorites-label">Saved Locations</div>
+                    <div class="favorites-list" id="favorites-list"></div>
+                </div>
                 <div class="location-search">
                     <input type="text" id="location-search-input" placeholder="Search for a location (e.g. Santa Monica, Pipeline Hawaii)">
                     <button id="location-search-btn">Search</button>
@@ -952,6 +1045,7 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <button class="btn-save-favorite" id="save-favorite-btn" disabled>&#9734; Save</button>
                 <button class="btn-modal" onclick="closeModal()">Cancel</button>
                 <button class="btn-modal primary" id="confirm-location-btn" disabled>Load Forecast</button>
             </div>
@@ -1230,7 +1324,13 @@
     <script>
         // === Share Link ===
         function copyShareLink() {
-            navigator.clipboard.writeText('https://freesurfforecast.com').then(function() {
+            const url = new URL('https://freesurfforecast.com');
+            if (currentLocation) {
+                url.searchParams.set('lat', currentLocation.lat.toFixed(4));
+                url.searchParams.set('lon', currentLocation.lon.toFixed(4));
+                if (currentLocation.name) url.searchParams.set('name', currentLocation.name);
+            }
+            navigator.clipboard.writeText(url.toString()).then(function() {
                 const toast = document.getElementById('share-toast');
                 toast.classList.add('show');
                 setTimeout(function() { toast.classList.remove('show'); }, 2000);
@@ -1739,6 +1839,8 @@
         function openModal() {
             const modal = document.getElementById('locationModal');
             modal.classList.add('open');
+            renderFavoritesList();
+            updateSaveFavoriteButton();
             // Initialize or refresh the Leaflet map
             setTimeout(function() {
                 if (!locationMap) {
@@ -1762,20 +1864,172 @@
         });
 
         // === Global location state ===
-        let currentLocation = {
+        const DEFAULT_LOCATION = {
             lat: 34.42711,
             lon: -77.54608,
             name: 'Surf City, North Carolina'
         };
+
+        function getInitialLocation() {
+            // Priority 1: URL params
+            const params = new URLSearchParams(window.location.search);
+            const urlLat = parseFloat(params.get('lat'));
+            const urlLon = parseFloat(params.get('lon'));
+            if (!isNaN(urlLat) && !isNaN(urlLon)) {
+                return {
+                    lat: urlLat,
+                    lon: urlLon,
+                    name: params.get('name') || `Location (${urlLat.toFixed(2)}, ${urlLon.toFixed(2)})`
+                };
+            }
+            // Priority 2: localStorage last-location
+            try {
+                const saved = JSON.parse(localStorage.getItem('last-location'));
+                if (saved && typeof saved.lat === 'number' && typeof saved.lon === 'number') {
+                    return saved;
+                }
+            } catch (e) {}
+            // Priority 3: default
+            return { ...DEFAULT_LOCATION };
+        }
+
+        let currentLocation = getInitialLocation();
         let selectedLocation = null;
         let locationMap = null;
         let locationMarker = null;
+
+        // === Saved Locations (Favorites) ===
+        function getSavedLocations() {
+            try {
+                return JSON.parse(localStorage.getItem('saved-locations')) || [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveSavedLocations(locations) {
+            localStorage.setItem('saved-locations', JSON.stringify(locations));
+        }
+
+        function addSavedLocation(loc) {
+            const locations = getSavedLocations();
+            const roundedLat = parseFloat(loc.lat.toFixed(4));
+            const roundedLon = parseFloat(loc.lon.toFixed(4));
+            const exists = locations.some(l =>
+                parseFloat(l.lat.toFixed(4)) === roundedLat &&
+                parseFloat(l.lon.toFixed(4)) === roundedLon
+            );
+            if (exists) return false;
+            if (locations.length >= 10) return null; // at capacity
+            locations.push({ lat: loc.lat, lon: loc.lon, name: loc.name });
+            saveSavedLocations(locations);
+            return true;
+        }
+
+        function removeSavedLocation(index) {
+            const locations = getSavedLocations();
+            if (index >= 0 && index < locations.length) {
+                locations.splice(index, 1);
+                saveSavedLocations(locations);
+            }
+        }
+
+        function isLocationSaved(loc) {
+            if (!loc) return false;
+            const locations = getSavedLocations();
+            const roundedLat = parseFloat(loc.lat.toFixed(4));
+            const roundedLon = parseFloat(loc.lon.toFixed(4));
+            return locations.some(l =>
+                parseFloat(l.lat.toFixed(4)) === roundedLat &&
+                parseFloat(l.lon.toFixed(4)) === roundedLon
+            );
+        }
+
+        function renderFavoritesList() {
+            const list = document.getElementById('favorites-list');
+            const section = document.getElementById('favorites-section');
+            const locations = getSavedLocations();
+            list.innerHTML = '';
+            if (locations.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = '';
+            locations.forEach(function(loc, index) {
+                const chip = document.createElement('div');
+                chip.className = 'favorite-item';
+                chip.title = loc.name + ' (' + loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4) + ')';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'favorite-item-name';
+                nameSpan.textContent = loc.name;
+                chip.appendChild(nameSpan);
+
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'favorite-item-remove';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.title = 'Remove';
+                removeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    removeSavedLocation(index);
+                    renderFavoritesList();
+                    updateSaveFavoriteButton();
+                });
+                chip.appendChild(removeBtn);
+
+                chip.addEventListener('click', function() {
+                    // Select this favorite
+                    selectedLocation = { lat: loc.lat, lon: loc.lon, name: loc.name };
+                    document.getElementById('selected-location-text').textContent =
+                        loc.name + ' (' + loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4) + ')';
+                    document.getElementById('confirm-location-btn').disabled = false;
+                    document.getElementById('save-favorite-btn').disabled = false;
+
+                    // Fly map to location and place marker
+                    if (locationMap) {
+                        locationMap.flyTo([loc.lat, loc.lon], 10);
+                        if (locationMarker) locationMarker.remove();
+                        locationMarker = L.marker([loc.lat, loc.lon]).addTo(locationMap);
+                    }
+                    updateSaveFavoriteButton();
+                });
+
+                list.appendChild(chip);
+            });
+        }
+
+        function updateSaveFavoriteButton() {
+            const btn = document.getElementById('save-favorite-btn');
+            if (!selectedLocation) {
+                btn.disabled = true;
+                btn.innerHTML = '&#9734; Save';
+                btn.classList.remove('saved');
+                return;
+            }
+            btn.disabled = false;
+            if (isLocationSaved(selectedLocation)) {
+                btn.innerHTML = '&#9733; Saved';
+                btn.classList.add('saved');
+            } else {
+                btn.innerHTML = '&#9734; Save';
+                btn.classList.remove('saved');
+            }
+        }
 
         function updatePanelLocations() {
             document.querySelectorAll('.panel-location').forEach(el => {
                 el.textContent = currentLocation.name;
             });
         }
+
+        // Sync header display with initial location on load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('location-name').textContent = currentLocation.name;
+            document.getElementById('display-lat').textContent = currentLocation.lat.toFixed(2);
+            document.getElementById('display-lon').textContent = currentLocation.lon.toFixed(2);
+            updatePanelLocations();
+        });
+
         updatePanelLocations();
 
         // Location selector map initialization
@@ -1801,6 +2055,8 @@
 
                 selectedLocation = { lat: lat, lon: lon };
                 document.getElementById('confirm-location-btn').disabled = false;
+                document.getElementById('save-favorite-btn').disabled = false;
+                updateSaveFavoriteButton();
 
                 // Reverse geocode to get location name
                 fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
@@ -1857,6 +2113,8 @@
                         selectedLocation = { lat, lon, name };
                         document.getElementById('selected-location-text').textContent = `${name} (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
                         document.getElementById('confirm-location-btn').disabled = false;
+                        document.getElementById('save-favorite-btn').disabled = false;
+                        updateSaveFavoriteButton();
                     })
                     .catch(() => {});
             }
@@ -1881,6 +2139,9 @@
                 if (selectedLocation) {
                     currentLocation = { ...selectedLocation };
 
+                    // Persist last location
+                    localStorage.setItem('last-location', JSON.stringify(currentLocation));
+
                     // Update display
                     document.getElementById('location-name').textContent = currentLocation.name;
                     updatePanelLocations();
@@ -1893,6 +2154,37 @@
                     // Reload all data
                     reloadAllData();
                 }
+            });
+
+            // Save favorite button
+            document.getElementById('save-favorite-btn').addEventListener('click', function() {
+                if (!selectedLocation) return;
+                if (isLocationSaved(selectedLocation)) {
+                    // Remove it
+                    const locations = getSavedLocations();
+                    const roundedLat = parseFloat(selectedLocation.lat.toFixed(4));
+                    const roundedLon = parseFloat(selectedLocation.lon.toFixed(4));
+                    const idx = locations.findIndex(l =>
+                        parseFloat(l.lat.toFixed(4)) === roundedLat &&
+                        parseFloat(l.lon.toFixed(4)) === roundedLon
+                    );
+                    if (idx !== -1) removeSavedLocation(idx);
+                } else {
+                    const result = addSavedLocation(selectedLocation);
+                    if (result === null) {
+                        // At capacity — show toast
+                        const toast = document.getElementById('share-toast');
+                        toast.textContent = 'Maximum 10 saved locations';
+                        toast.classList.add('show');
+                        setTimeout(function() {
+                            toast.classList.remove('show');
+                            toast.textContent = 'Link copied to clipboard';
+                        }, 2000);
+                        return;
+                    }
+                }
+                renderFavoritesList();
+                updateSaveFavoriteButton();
             });
         });
 
