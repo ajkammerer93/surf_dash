@@ -1039,7 +1039,9 @@ def find_nearest_cameras(lat, lon, count=2):
     # Windy Webcams API fallback if we don't have enough Surfchex cams
     if len(results) < count:
         windy_key = os.environ.get('WINDY_API_KEY')
-        if windy_key:
+        if not windy_key:
+            print("Windy fallback skipped: WINDY_API_KEY not set")
+        else:
             try:
                 needed = count - len(results)
                 radius_km = SURFCHEX_MAX_DISTANCE_KM
@@ -1054,8 +1056,11 @@ def find_nearest_cameras(lat, lon, count=2):
                     headers={'x-windy-api-key': windy_key},
                     timeout=10
                 )
-                if resp.ok:
+                if not resp.ok:
+                    print(f"Windy API returned {resp.status_code}: {resp.text[:200]}")
+                else:
                     webcams = resp.json().get('webcams', [])
+                    print(f"Windy returned {len(webcams)} webcams")
                     for wc in webcams:
                         loc = wc.get('location', {})
                         wc_lat = loc.get('latitude', 0)
