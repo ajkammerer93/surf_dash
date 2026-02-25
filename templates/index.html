@@ -271,6 +271,24 @@
             border: 1px solid rgba(68, 255, 136, 0.2);
         }
 
+        .cam-select {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 2px;
+            margin-left: 8px;
+            flex: 1;
+            min-width: 0;
+            cursor: pointer;
+        }
+
+        .cam-select option {
+            background: var(--surface);
+            color: var(--text);
+        }
+
         .panel-header-actions {
             display: flex;
             align-items: center;
@@ -1245,6 +1263,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title" id="cam-1-title">Live Cam</span>
+                        <select class="cam-select" id="cam-1-select" style="display:none"></select>
                         <span class="panel-badge" id="cam-1-badge">Loading</span>
                     </div>
                     <div class="panel-content" id="cam-1-content" style="padding: 0;">
@@ -1260,6 +1279,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title" id="cam-2-title">Live Cam</span>
+                        <select class="cam-select" id="cam-2-select" style="display:none"></select>
                         <span class="panel-badge" id="cam-2-badge">Loading</span>
                     </div>
                     <div class="panel-content" id="cam-2-content" style="padding: 0;">
@@ -3969,11 +3989,12 @@
             }
         }
 
-        function setCamPanel(slotIndex, camData) {
+        function setCamPanel(slotIndex, camData, camIndex) {
             var panelId = 'cam-' + (slotIndex + 1);
             var titleEl = document.getElementById(panelId + '-title');
             var badgeEl = document.getElementById(panelId + '-badge');
             var contentEl = document.getElementById(panelId + '-content');
+            var selectEl = document.getElementById(panelId + '-select');
             if (!contentEl) return;
 
             destroyCam(slotIndex);
@@ -3984,16 +4005,16 @@
                 titleEl.textContent = 'Live Cam';
                 badgeEl.textContent = 'Off';
                 badgeEl.style.color = '';
+                if (selectEl) selectEl.style.display = 'none';
                 contentEl.innerHTML = '<div style="padding: 16px; color: var(--text-muted); font-size: 11px;">No nearby camera found</div>';
                 PANEL_NAMES[panelId] = 'Live Cam ' + (slotIndex + 1);
                 togglePanel(panelId, false);
                 return;
             }
 
-            var distMi = Math.round(camData.distance_km * 0.621371);
-            var label = camData.name + ' \u2014 ' + distMi + ' mi';
-            titleEl.textContent = label;
+            titleEl.textContent = 'Live Cam';
             PANEL_NAMES[panelId] = camData.name + ' \u2014 Live Cam';
+            buildCamSelect(slotIndex, camIndex != null ? camIndex : 0);
 
             if (camData.type === 'hls') {
                 var video = document.createElement('video');
@@ -4607,6 +4628,32 @@
         })();
 
 
+        window.nearbyCameras = [];
+
+        function buildCamSelect(slotIndex, selectedIdx) {
+            var selectEl = document.getElementById('cam-' + (slotIndex + 1) + '-select');
+            if (!selectEl) return;
+            selectEl.innerHTML = '';
+            if (!window.nearbyCameras.length) {
+                selectEl.style.display = 'none';
+                return;
+            }
+            window.nearbyCameras.forEach(function(cam, i) {
+                var opt = document.createElement('option');
+                var distMi = Math.round(cam.distance_km * 0.621371);
+                opt.value = i;
+                opt.textContent = cam.name + ' \u2014 ' + distMi + ' mi';
+                if (i === selectedIdx) opt.selected = true;
+                selectEl.appendChild(opt);
+            });
+            selectEl.style.display = '';
+            selectEl.onmousedown = function(e) { e.stopPropagation(); };
+            selectEl.onchange = function() {
+                var idx = parseInt(this.value);
+                setCamPanel(slotIndex, window.nearbyCameras[idx], idx);
+            };
+        }
+
         function loadNearestCams() {
             var params = new URLSearchParams({
                 lat: currentLocation.lat,
@@ -4616,17 +4663,20 @@
             for (var i = 0; i < 2; i++) {
                 var cEl = document.getElementById('cam-' + (i + 1) + '-content');
                 var bEl = document.getElementById('cam-' + (i + 1) + '-badge');
+                var sEl = document.getElementById('cam-' + (i + 1) + '-select');
                 if (cEl) cEl.innerHTML = '<div style="padding: 16px; color: var(--text-muted); font-size: 11px;">Finding nearest camera...</div>';
                 if (bEl) { bEl.textContent = 'Loading'; bEl.style.color = ''; }
+                if (sEl) sEl.style.display = 'none';
             }
             fetch('/api/webcams?' + params)
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    var cameras = data.cameras || [];
-                    setCamPanel(0, cameras[0] || null);
-                    setCamPanel(1, cameras[1] || null);
+                    window.nearbyCameras = data.cameras || [];
+                    setCamPanel(0, window.nearbyCameras[0] || null, 0);
+                    setCamPanel(1, window.nearbyCameras[1] || null, 1);
                 })
                 .catch(function() {
+                    window.nearbyCameras = [];
                     setCamPanel(0, null);
                     setCamPanel(1, null);
                 });
