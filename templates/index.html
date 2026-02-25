@@ -349,6 +349,10 @@
             overflow: auto;
         }
 
+        #current-conditions-content {
+            overflow: hidden;
+        }
+
         /* === Map Containers === */
         .map-container {
             height: 100%;
@@ -638,13 +642,17 @@
         /* === Current Conditions (stat list) === */
         .stat-list {
             list-style: none;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
 
         .stat-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 4px;
+            padding: 2px 4px;
+            flex: 1;
             border-bottom: 1px solid var(--border);
         }
 
