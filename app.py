@@ -37,15 +37,15 @@ def get_version():
 APP_VERSION = get_version()
 
 def _load_cameras():
-    """Load surf cameras from surfchex_cameras.json."""
-    cam_file = os.path.join(os.path.dirname(__file__), 'surfchex_cameras.json')
+    """Load surf cameras from surf_cameras.json."""
+    cam_file = os.path.join(os.path.dirname(__file__), 'surf_cameras.json')
     try:
         with open(cam_file) as f:
             cams = json.load(f)
         print(f"Loaded {len(cams)} surf cameras")
         return cams
     except Exception as e:
-        print(f"Warning: could not load surfchex_cameras.json: {e}")
+        print(f"Warning: could not load surf_cameras.json: {e}")
         return []
 
 SURFCHEX_CAMERAS = _load_cameras()
@@ -1050,17 +1050,23 @@ SURFCHEX_MAX_DISTANCE_KM = 160  # ~100 miles
 
 def find_nearest_cameras(lat, lon, count=2):
     """Find the nearest surf cameras to the given coordinates."""
-    # Search Surfchex catalog
+    # Search surf camera catalog
     nearby = []
     for cam in SURFCHEX_CAMERAS:
         dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
         if dist <= SURFCHEX_MAX_DISTANCE_KM:
-            nearby.append({
+            cam_type = cam.get('type', 'hls')
+            entry = {
                 'name': cam['name'],
-                'type': 'hls',
-                'url': cam['stream_url'],
+                'type': cam_type,
                 'distance_km': round(dist, 1)
-            })
+            }
+            if cam_type == 'link':
+                entry['url'] = cam['page_url']
+                entry['thumbnail_url'] = cam.get('thumbnail_url', '')
+            else:
+                entry['url'] = cam['stream_url']
+            nearby.append(entry)
     nearby.sort(key=lambda c: c['distance_km'])
     results = nearby[:count]
 
