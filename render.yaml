@@ -3,7 +3,7 @@ services:
     name: surf-dash
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2 --preload
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
