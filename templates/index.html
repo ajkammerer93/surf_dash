@@ -1131,8 +1131,42 @@
             </div>
         </div>
 
+        <!-- Wave & Wind Chart -->
+        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Wave &amp; Wind Forecast</span>
+                        <span class="panel-location"></span>
+                    </div>
+                    <div class="panel-content">
+                        <div class="chart-wrap">
+                            <canvas id="waveChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tidal Predictions -->
+        <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="9" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Tidal Predictions</span>
+                        <span class="panel-badge" id="tide-station-info">Loading station</span>
+                    </div>
+                    <div class="panel-content">
+                        <div class="chart-wrap">
+                            <canvas id="tideChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Ocean Basin -->
-        <div class="grid-stack-item" data-panel-id="ocean-basin" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="ocean-basin" gs-x="0" gs-y="14" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1172,7 +1206,7 @@
         </div>
 
         <!-- Local Wave Height -->
-        <div class="grid-stack-item" data-panel-id="local-wave-height" gs-x="0" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wave-height" gs-x="0" gs-y="19" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1189,7 +1223,7 @@
         </div>
 
         <!-- Local Wind Speed -->
-        <div class="grid-stack-item" data-panel-id="local-wind" gs-x="4" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wind" gs-x="4" gs-y="19" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1206,7 +1240,7 @@
         </div>
 
         <!-- Local Wave Period -->
-        <div class="grid-stack-item" data-panel-id="local-wave-period" gs-x="8" gs-y="9" gs-w="4" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="local-wave-period" gs-x="8" gs-y="19" gs-w="4" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1223,7 +1257,7 @@
         </div>
 
         <!-- Unified Map Time Slider -->
-        <div class="grid-stack-item" data-panel-id="map-time" gs-x="0" gs-y="14" gs-w="12" gs-h="1" gs-no-resize="true">
+        <div class="grid-stack-item" data-panel-id="map-time" gs-x="0" gs-y="24" gs-w="12" gs-h="1" gs-no-resize="true">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1236,42 +1270,6 @@
                             <button class="slider-play-btn" id="slider-play-btn" title="Play">&#9654;</button>
                             <input type="range" class="slider-input" id="time-slider" min="0" max="0" step="1">
                             <button class="slider-speed-btn" id="slider-speed-btn" title="Playback speed">1x</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Wave & Wind Chart -->
-        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
-            <div class="grid-stack-item-content">
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Wave &amp; Wind Forecast</span>
-                        <span class="panel-location"></span>
-                        <button class="chart-home-btn" id="wave-chart-reset" onclick="resetWaveChart()">Reset Zoom</button>
-                    </div>
-                    <div class="panel-content">
-                        <div class="chart-wrap">
-                            <canvas id="waveChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tidal Predictions -->
-        <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
-            <div class="grid-stack-item-content">
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Tidal Predictions</span>
-                        <button class="chart-home-btn" id="tide-chart-reset" onclick="resetTideChart()">Reset Zoom</button>
-                        <span class="panel-badge" id="tide-station-info">Loading station</span>
-                    </div>
-                    <div class="panel-content">
-                        <div class="chart-wrap">
-                            <canvas id="tideChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1788,22 +1786,6 @@
                 tideChart.options.scales.x.max = sharedMax;
                 tideChart.update('none');
             }
-        }
-
-        function resetWaveChart() {
-            if (waveChart) {
-                waveChart.resetZoom();
-                syncChartTimeAxes();
-            }
-            document.getElementById('wave-chart-reset').style.display = 'none';
-        }
-
-        function resetTideChart() {
-            if (tideChart) {
-                tideChart.resetZoom();
-                syncChartTimeAxes();
-            }
-            document.getElementById('tide-chart-reset').style.display = 'none';
         }
 
         // === Live Clock ===
@@ -2505,18 +2487,6 @@
                                         }
                                     }
                                 },
-                                zoom: {
-                                    pan: {
-                                        enabled: true,
-                                        mode: 'x'
-                                    },
-                                    zoom: {
-                                        wheel: { enabled: true },
-                                        pinch: { enabled: true },
-                                        mode: 'x',
-                                        onZoomComplete: () => document.getElementById('wave-chart-reset').style.display = ''
-                                    }
-                                }
                             }
                         }
                     });
@@ -3602,18 +3572,6 @@
                                         }
                                     }
                                 },
-                                zoom: {
-                                    pan: {
-                                        enabled: true,
-                                        mode: 'x'
-                                    },
-                                    zoom: {
-                                        wheel: { enabled: true },
-                                        pinch: { enabled: true },
-                                        mode: 'x',
-                                        onZoomComplete: () => document.getElementById('tide-chart-reset').style.display = ''
-                                    }
-                                }
                             }
                         }
                     });
@@ -3704,6 +3662,26 @@
                 iframe.allow = 'autoplay';
                 contentEl.appendChild(iframe);
                 badgeEl.textContent = 'Live';
+                badgeEl.style.color = '';
+            } else if (camData.type === 'link') {
+                var wrapper = document.createElement('a');
+                wrapper.href = camData.url;
+                wrapper.target = '_blank';
+                wrapper.rel = 'noopener';
+                wrapper.style.cssText = 'display:block;width:100%;height:100%;position:relative;background:#000;text-decoration:none;';
+                if (camData.thumbnail_url) {
+                    var img = document.createElement('img');
+                    img.src = camData.thumbnail_url;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+                    img.onerror = function() { this.style.display = 'none'; };
+                    wrapper.appendChild(img);
+                }
+                var badge = document.createElement('span');
+                badge.textContent = 'Open Live Cam \u2197';
+                badge.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.75);color:#fff;padding:4px 10px;border-radius:4px;font-size:11px;';
+                wrapper.appendChild(badge);
+                contentEl.appendChild(wrapper);
+                badgeEl.textContent = 'Link';
                 badgeEl.style.color = '';
             }
 
