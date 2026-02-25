@@ -2397,6 +2397,90 @@
         }
 
         // Point data and main chart script
+        window.sunTimes = [];
+
+        // Day/night shading plugin — draws alternating bands behind chart data
+        const dayNightPlugin = {
+            id: 'dayNight',
+            beforeDraw(chart) {
+                if (!window.sunTimes || !window.sunTimes.length) return;
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!chartArea) return;
+                const { left, right, top, bottom } = chartArea;
+                const height = bottom - top;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(left, top, right - left, height);
+                ctx.clip();
+
+                // Night intervals: gaps between sunset(i) and sunrise(i+1), plus
+                // chart-start → first sunrise and last sunset → chart-end
+                const nightColor = 'rgba(0, 0, 0, 0.3)';
+                const dayColor = 'rgba(255, 255, 255, 0.04)';
+
+                // Draw night from chart start to first sunrise
+                const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);
+                if (firstSunrise > left) {
+                    ctx.fillStyle = nightColor;
+                    ctx.fillRect(left, top, Math.min(firstSunrise, right) - left, height);
+                }
+
+                // Draw day/night pairs for each day
+                window.sunTimes.forEach((st, i) => {
+                    const srPx = Math.max(x.getPixelForValue(st.sunrise), left);
+                    const ssPx = Math.min(x.getPixelForValue(st.sunset), right);
+
+                    // Day band: sunrise → sunset
+                    if (ssPx > srPx) {
+                        ctx.fillStyle = dayColor;
+                        ctx.fillRect(srPx, top, ssPx - srPx, height);
+                    }
+
+                    // Night band: this sunset → next sunrise (or chart end)
+                    const nightStart = Math.max(ssPx, left);
+                    const nightEnd = (i + 1 < window.sunTimes.length)
+                        ? Math.min(x.getPixelForValue(window.sunTimes[i + 1].sunrise), right)
+                        : right;
+                    if (nightEnd > nightStart) {
+                        ctx.fillStyle = nightColor;
+                        ctx.fillRect(nightStart, top, nightEnd - nightStart, height);
+                    }
+                });
+
+                ctx.restore();
+            }
+        };
+
+        // Linked tooltip helper — mirrors hover position from one chart to the other
+        function syncTooltip(sourceChart, targetChart, event) {
+            if (!targetChart || !targetChart.canvas) return;
+            const sourceX = sourceChart.scales.x;
+            const targetX = targetChart.scales.x;
+            const targetArea = targetChart.chartArea;
+            if (!sourceX || !targetX || !targetArea) return;
+
+            const timestamp = sourceX.getValueForPixel(event.x);
+            const targetPixel = targetX.getPixelForValue(timestamp);
+            const syntheticPoint = { x: targetPixel, y: targetArea.top + 1 };
+
+            const elements = targetChart.getElementsAtEventForMode(
+                syntheticPoint, 'index', { intersect: false }, false
+            );
+            targetChart.tooltip.setActiveElements(elements, syntheticPoint);
+            targetChart.setActiveElements(elements.map(e => ({
+                datasetIndex: e.datasetIndex, index: e.index
+            })));
+            targetChart.update('none');
+        }
+
+        function clearSyncedTooltip(chart) {
+            if (!chart || !chart.canvas) return;
+            chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+            chart.setActiveElements([]);
+            chart.update('none');
+        }
+
         let waveChart = null;
 
         function loadPointForecast() {
@@ -2419,6 +2503,25 @@
                     clearChartUnavailable('waveChart');
                     document.getElementById('current-conditions-stats').style.display = '';
                     document.getElementById('current-conditions-error').style.display = 'none';
+
+                    // Extract sunrise/sunset times for day/night shading
+                    window.sunTimes = [];
+                    const seenDates = new Set();
+                    data.forEach(item => {
+                        const dateKey = item.time.substring(0, 10);
+                        if (!seenDates.has(dateKey) && item.sunrise && item.sunset) {
+                            seenDates.add(dateKey);
+                            window.sunTimes.push({
+                                sunrise: new Date(item.sunrise),
+                                sunset: new Date(item.sunset)
+                            });
+                        }
+                    });
+                    // Redraw tide chart with shading if it loaded before forecast
+                    if (tideChart && tideChart.canvas) {
+                        tideChart.update('none');
+                    }
+
                     const current = data[0];
                     document.getElementById('current_wave_height').textContent = `${(current.wave_height * M_TO_FT).toFixed(1)} ft`;
                     document.getElementById('current_wave_period').textContent = `${current.wave_period.toFixed(2)} s`;
@@ -2558,7 +2661,7 @@
 
                     waveChart = new Chart(ctx, {
                         type: 'line',
-                        plugins: [windArrowPlugin],
+                        plugins: [dayNightPlugin, windArrowPlugin],
                         data: {
                             datasets: [
                                 {
@@ -2598,20 +2701,24 @@
                                 mode: 'index',
                                 intersect: false
                             },
+                            onHover: (event, elements, chart) => {
+                                if (!tideChart || !event.native) return;
+                                syncTooltip(chart, tideChart, event);
+                            },
                             scales: {
                                 x: {
                                     type: 'time',
                                     time: {
                                         displayFormats: {
-                                            hour: 'MMM d HH:mm'
+                                            hour: 'EEE MMM d HH:mm'
                                         },
-                                        tooltipFormat: 'MMM d, yyyy HH:mm'
+                                        tooltipFormat: 'EEEE MMM d, yyyy HH:mm'
                                     },
                                     ticks: {
                                         maxRotation: 45,
                                         minRotation: 45,
                                         autoSkip: true,
-                                        maxTicksLimit: 24,
+                                        maxTicksLimit: 18,
                                         color: '#888'
                                     },
                                     grid: {
@@ -2669,6 +2776,11 @@
                                 },
                             }
                         }
+                    });
+
+                    // Dismiss linked tooltip when mouse leaves wave chart
+                    document.getElementById('waveChart').addEventListener('mouseleave', () => {
+                        clearSyncedTooltip(tideChart);
                     });
 
                     syncChartTimeAxes();
@@ -3650,6 +3762,7 @@
 
                     tideChart = new Chart(ctx, {
                         type: 'line',
+                        plugins: [dayNightPlugin],
                         data: {
                             datasets: [
                                 {
@@ -3689,20 +3802,24 @@
                                 mode: 'index',
                                 intersect: false
                             },
+                            onHover: (event, elements, chart) => {
+                                if (!waveChart || !event.native) return;
+                                syncTooltip(chart, waveChart, event);
+                            },
                             scales: {
                                 x: {
                                     type: 'time',
                                     time: {
                                         displayFormats: {
-                                            hour: 'MMM d HH:mm'
+                                            hour: 'EEE MMM d HH:mm'
                                         },
-                                        tooltipFormat: 'MMM d, yyyy HH:mm'
+                                        tooltipFormat: 'EEEE MMM d, yyyy HH:mm'
                                     },
                                     ticks: {
                                         maxRotation: 45,
                                         minRotation: 45,
                                         autoSkip: true,
-                                        maxTicksLimit: 24,
+                                        maxTicksLimit: 18,
                                         color: '#888'
                                     },
                                     grid: {
@@ -3755,6 +3872,11 @@
                                 },
                             }
                         }
+                    });
+
+                    // Dismiss linked tooltip when mouse leaves tide chart
+                    document.getElementById('tideChart').addEventListener('mouseleave', () => {
+                        clearSyncedTooltip(waveChart);
                     });
 
                     syncChartTimeAxes();
