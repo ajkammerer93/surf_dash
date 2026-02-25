@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request
 import requests
+import re
 import numpy as np
 import math
 import subprocess
@@ -48,6 +49,33 @@ def _load_cameras():
         return []
 
 SURFCHEX_CAMERAS = _load_cameras()
+
+def _load_ndbc_stations():
+    """Load NDBC buoy stations from ndbc_stations.json."""
+    path = os.path.join(os.path.dirname(__file__), 'ndbc_stations.json')
+    try:
+        with open(path) as f:
+            stations = json.load(f)
+        print(f"Loaded {len(stations)} NDBC stations")
+        return stations
+    except Exception as e:
+        print(f"Warning: could not load ndbc_stations.json: {e}")
+        return []
+
+def _load_cdip_stations():
+    """Load CDIP buoy stations from cdip_stations.json."""
+    path = os.path.join(os.path.dirname(__file__), 'cdip_stations.json')
+    try:
+        with open(path) as f:
+            stations = json.load(f)
+        print(f"Loaded {len(stations)} CDIP stations")
+        return stations
+    except Exception as e:
+        print(f"Warning: could not load cdip_stations.json: {e}")
+        return []
+
+NDBC_STATIONS = _load_ndbc_stations()
+CDIP_STATIONS = _load_cdip_stations()
 
 # Simple time-based response cache
 _cache = {}
@@ -1376,6 +1404,397 @@ def webcams():
     cache_key = f"webcams:{lat:.2f},{lon:.2f}"
     cameras = cached(cache_key, lambda: find_nearest_cameras(lat, lon))
     return jsonify({"cameras": cameras or []})
+
+BUOY_MAX_DISTANCE_KM = 320  # ~200 miles
+
+def find_nearest_buoys(lat, lon, max_km=BUOY_MAX_DISTANCE_KM, count=3):
+    """Find the nearest NDBC and CDIP buoys to the given coordinates."""
+    candidates = []
+    for st in NDBC_STATIONS:
+        dist = haversine_distance(lat, lon, st['lat'], st['lon'])
+        if dist <= max_km:
+            candidates.append({
+                'id': st['id'], 'source': 'ndbc',
+                'name': st['name'], 'lat': st['lat'], 'lon': st['lon'],
+                'distance_km': round(dist, 1)
+            })
+    for st in CDIP_STATIONS:
+        dist = haversine_distance(lat, lon, st['lat'], st['lon'])
+        if dist <= max_km:
+            candidates.append({
+                'id': st['id'], 'source': 'cdip',
+                'name': st['name'], 'lat': st['lat'], 'lon': st['lon'],
+                'distance_km': round(dist, 1)
+            })
+    candidates.sort(key=lambda b: b['distance_km'])
+    return candidates[:count]
+
+
+def _fetch_ndbc_observation(station_id):
+    """Fetch latest observation from NDBC realtime2 text files."""
+    try:
+        url = f"https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt"
+        resp = requests.get(url, timeout=15)
+        if not resp.ok:
+            print(f"  NDBC obs {station_id}: HTTP {resp.status_code}")
+            return None
+        lines = resp.text.strip().split('\n')
+        if len(lines) < 3:
+            return None
+        # Header row 0 = column names, row 1 = units, row 2+ = data (newest first)
+        headers = lines[0].replace('#', '').split()
+        data = lines[2].split()
+        if len(data) < len(headers):
+            return None
+
+        def val(name):
+            try:
+                idx = headers.index(name)
+                v = data[idx]
+                if v == 'MM' or v == 'MM.M':
+                    return None
+                return float(v)
+            except (ValueError, IndexError):
+                return None
+
+        yr, mo, dy, hr, mn = val('YY'), val('MM'), val('DD'), val('hh'), val('mm')
+        time_str = None
+        if yr and mo and dy:
+            time_str = f"{int(yr)}-{int(mo):02d}-{int(dy):02d} {int(hr or 0):02d}:{int(mn or 0):02d} UTC"
+
+        return {
+            'time': time_str,
+            'wave_height': val('WVHT'),
+            'dominant_period': val('DPD'),
+            'avg_period': val('APD'),
+            'wave_direction': val('MWD'),
+            'wind_speed': val('WSPD'),
+            'wind_direction': val('WDIR'),
+            'wind_gust': val('GST'),
+            'air_temp': val('ATMP'),
+            'water_temp': val('WTMP'),
+            'pressure': val('PRES'),
+        }
+    except Exception as e:
+        print(f"  NDBC obs {station_id} error: {e}")
+        return None
+
+
+def _fetch_ndbc_spectrum(station_id):
+    """Fetch latest 1D energy spectrum from NDBC realtime2 data_spec file."""
+    try:
+        url = f"https://www.ndbc.noaa.gov/data/realtime2/{station_id}.data_spec"
+        resp = requests.get(url, timeout=15)
+        if not resp.ok:
+            return None
+        lines = resp.text.strip().split('\n')
+        if len(lines) < 2:
+            return None
+        # First data line (after header) has format:
+        # YYYY MM DD hh mm  sep_freq  spec_1(freq_1) spec_2(freq_2) ...
+        import re
+        data_line = lines[1]
+        # Extract energy(freq) pairs
+        pairs = re.findall(r'([\d.]+)\s*\(([\d.]+)\)', data_line)
+        if not pairs:
+            return None
+        energy = [float(p[0]) for p in pairs]
+        frequencies = [float(p[1]) for p in pairs]
+        return {'frequencies': frequencies, 'energy': energy}
+    except Exception as e:
+        print(f"  NDBC spectrum {station_id} error: {e}")
+        return None
+
+
+def _fetch_ndbc_directional(station_id):
+    """Fetch mean direction and spread per frequency from NDBC .swdir and .swr1 files."""
+    try:
+        dir_url = f"https://www.ndbc.noaa.gov/data/realtime2/{station_id}.swdir"
+        r1_url = f"https://www.ndbc.noaa.gov/data/realtime2/{station_id}.swr1"
+        import re
+
+        dir_resp = requests.get(dir_url, timeout=15)
+        r1_resp = requests.get(r1_url, timeout=15)
+        if not dir_resp.ok or not r1_resp.ok:
+            return None
+
+        def parse_freq_values(text):
+            lines = text.strip().split('\n')
+            if len(lines) < 2:
+                return None, None
+            data_line = lines[1]
+            pairs = re.findall(r'([\d.]+)\s*\(([\d.]+)\)', data_line)
+            if not pairs:
+                return None, None
+            values = [float(p[0]) for p in pairs]
+            freqs = [float(p[1]) for p in pairs]
+            return freqs, values
+
+        freqs_d, directions = parse_freq_values(dir_resp.text)
+        freqs_r, r1_values = parse_freq_values(r1_resp.text)
+        if not freqs_d or not directions:
+            return None
+
+        return {
+            'frequencies': freqs_d,
+            'directions': directions,
+            'r1': r1_values or []
+        }
+    except Exception as e:
+        print(f"  NDBC directional {station_id} error: {e}")
+        return None
+
+
+_cdip_dds_cache = {}
+
+def _cdip_last_index(station_id, dim_name='waveTime'):
+    """Get the last valid index for a CDIP OPeNDAP dimension."""
+    import re
+    if station_id not in _cdip_dds_cache or time.time() - _cdip_dds_cache[station_id]['t'] > 900:
+        base = f"https://thredds.cdip.ucsd.edu/thredds/dodsC/cdip/realtime/{station_id}p1_rt.nc"
+        resp = requests.get(base + ".dds", timeout=10)
+        if not resp.ok:
+            return None
+        _cdip_dds_cache[station_id] = {'text': resp.text, 't': time.time()}
+    text = _cdip_dds_cache[station_id]['text']
+    m = re.search(dim_name + r'\s*=\s*(\d+)', text)
+    return int(m.group(1)) - 1 if m else None
+
+
+def _fetch_cdip_observation(station_id):
+    """Fetch latest observation from CDIP via OPeNDAP."""
+    try:
+        last_w = _cdip_last_index(station_id, 'waveTime')
+        if last_w is None:
+            return None
+        last_s = _cdip_last_index(station_id, 'sstTime')
+        base = f"https://thredds.cdip.ucsd.edu/thredds/dodsC/cdip/realtime/{station_id}p1_rt.nc"
+        query = f".ascii?waveHs[{last_w}],waveTp[{last_w}],waveDp[{last_w}],waveTa[{last_w}],waveTime[{last_w}]"
+        if last_s is not None:
+            query += f",sstSeaSurfaceTemperature[{last_s}]"
+        resp = requests.get(base + query, timeout=15)
+        if not resp.ok:
+            return None
+        text = resp.text
+        import re
+
+        def extract_val(varname):
+            # OPeNDAP format: "varname[1]\nvalue\n" or "varname, value"
+            m = re.search(varname + r'(?:\[\d+\])?\s*[\n,]\s*([\d.eE+\-]+)', text)
+            if m:
+                v = float(m.group(1))
+                if v > 900 or v < -900:
+                    return None
+                return v
+            return None
+
+        time_str = None
+        m = re.search(r'waveTime\[\d+\]\s*\n\s*([\d.eE+\-]+)', text)
+        if m:
+            epoch = float(m.group(1))
+            dt = datetime.utcfromtimestamp(epoch)
+            time_str = dt.strftime('%Y-%m-%d %H:%M UTC')
+
+        return {
+            'time': time_str,
+            'wave_height': extract_val('waveHs'),
+            'dominant_period': extract_val('waveTp'),
+            'wave_direction': extract_val('waveDp'),
+            'avg_period': extract_val('waveTa'),
+            'water_temp': extract_val('sstSeaSurfaceTemperature'),
+            'wind_speed': None,
+            'wind_direction': None,
+            'wind_gust': None,
+            'air_temp': None,
+            'pressure': None,
+        }
+    except Exception as e:
+        print(f"  CDIP obs {station_id} error: {e}")
+        return None
+
+
+def _fetch_cdip_spectrum(station_id):
+    """Fetch latest 1D energy spectrum from CDIP via OPeNDAP."""
+    try:
+        last_w = _cdip_last_index(station_id, 'waveTime')
+        if last_w is None:
+            return None
+        # waveFrequency dimension size varies by station; get from DDS
+        last_f = _cdip_last_index(station_id, 'waveFrequency')
+        if last_f is None:
+            return None
+        base = f"https://thredds.cdip.ucsd.edu/thredds/dodsC/cdip/realtime/{station_id}p1_rt.nc"
+        url = base + f".ascii?waveEnergyDensity[{last_w}][0:1:{last_f}],waveFrequency[0:1:{last_f}]"
+        resp = requests.get(url, timeout=15)
+        if not resp.ok:
+            return None
+        text = resp.text
+        import re
+
+        def parse_cdip_array(text, varname):
+            """Extract float array from CDIP OPeNDAP ASCII response."""
+            # Find the section starting with varname[N] or varname.varname[N][M]
+            # Data is on lines after the header, comma-separated
+            # Format: "varname[100]\n0.025, 0.03, ..." or "[0], 0.025, 0.03, ..."
+            pattern = varname + r'(?:\.' + varname + r')?\[\d+\](?:\[\d+\])?\s*\n'
+            m = re.search(pattern, text)
+            if not m:
+                return []
+            start = m.end()
+            # Collect until next blank line or next variable
+            remaining = text[start:]
+            # Take lines until we hit a blank line or a new variable name
+            data_lines = []
+            for line in remaining.split('\n'):
+                stripped = line.strip()
+                if not stripped or (stripped[0].isalpha() and not stripped[0] == 'E'):
+                    break
+                data_lines.append(stripped)
+            data_str = ' '.join(data_lines)
+            # Remove array index prefix like "[0],"
+            data_str = re.sub(r'\[\d+\],?\s*', '', data_str)
+            vals = []
+            for s in data_str.split(','):
+                s = s.strip()
+                if s:
+                    try:
+                        vals.append(float(s))
+                    except ValueError:
+                        pass
+            return vals
+
+        freq_vals = parse_cdip_array(text, 'waveFrequency')
+        energy_vals = parse_cdip_array(text, 'waveEnergyDensity')
+
+        if not freq_vals or not energy_vals:
+            return None
+        energy_vals = [e if e < 9000 else 0 for e in energy_vals]
+        n = min(len(freq_vals), len(energy_vals))
+        return {'frequencies': freq_vals[:n], 'energy': energy_vals[:n]}
+    except Exception as e:
+        print(f"  CDIP spectrum {station_id} error: {e}")
+        return None
+
+
+def _fetch_cdip_directional(station_id):
+    """Fetch directional Fourier coefficients from CDIP via OPeNDAP."""
+    try:
+        last_w = _cdip_last_index(station_id, 'waveTime')
+        last_f = _cdip_last_index(station_id, 'waveFrequency')
+        if last_w is None or last_f is None:
+            return None
+        base = f"https://thredds.cdip.ucsd.edu/thredds/dodsC/cdip/realtime/{station_id}p1_rt.nc"
+        url = (base + f".ascii?waveMeanDirection[{last_w}][0:1:{last_f}],"
+               f"waveA1Value[{last_w}][0:1:{last_f}],waveB1Value[{last_w}][0:1:{last_f}],"
+               f"waveA2Value[{last_w}][0:1:{last_f}],waveB2Value[{last_w}][0:1:{last_f}],"
+               f"waveFrequency[0:1:{last_f}]")
+        resp = requests.get(url, timeout=15)
+        if not resp.ok:
+            return None
+        text = resp.text
+        import re
+
+        def parse_cdip_dir_array(text, varname):
+            """Extract float array from CDIP OPeNDAP ASCII response."""
+            pattern = varname + r'(?:\.' + varname + r')?\[\d+\](?:\[\d+\])?\s*\n'
+            m = re.search(pattern, text)
+            if not m:
+                return []
+            start = m.end()
+            remaining = text[start:]
+            data_lines = []
+            for line in remaining.split('\n'):
+                stripped = line.strip()
+                if not stripped or (stripped[0].isalpha() and stripped[0] != 'E' and stripped[0] != 'e'):
+                    break
+                data_lines.append(stripped)
+            data_str = ' '.join(data_lines)
+            data_str = re.sub(r'\[\d+\],?\s*', '', data_str)
+            vals = []
+            for s in data_str.split(','):
+                s = s.strip()
+                if s:
+                    try:
+                        vals.append(float(s))
+                    except ValueError:
+                        pass
+            return vals
+
+        frequencies = parse_cdip_dir_array(text, 'waveFrequency')
+        directions = parse_cdip_dir_array(text, 'waveMeanDirection')
+        a1 = parse_cdip_dir_array(text, 'waveA1Value')
+        b1 = parse_cdip_dir_array(text, 'waveB1Value')
+        a2 = parse_cdip_dir_array(text, 'waveA2Value')
+        b2 = parse_cdip_dir_array(text, 'waveB2Value')
+
+        if not frequencies or not a1:
+            return None
+
+        directions = [d if -360 <= d <= 360 else 0 for d in directions]
+        n = min(len(frequencies), len(directions), len(a1), len(b1), len(a2), len(b2))
+        if n == 0:
+            return None
+
+        return {
+            'frequencies': frequencies[:n],
+            'directions': directions[:n],
+            'a1': a1[:n], 'b1': b1[:n],
+            'a2': a2[:n], 'b2': b2[:n]
+        }
+    except Exception as e:
+        print(f"  CDIP directional {station_id} error: {e}")
+        return None
+
+
+def get_buoy_data(lat, lon):
+    """Fetch live buoy observations and spectral data for nearest buoys."""
+    # Fetch extra candidates since some NDBC stations lack realtime data
+    candidates = find_nearest_buoys(lat, lon, count=10)
+    if not candidates:
+        return {'buoys': [], 'spectrum': None, 'directional': None}
+
+    print(f"Buoy search: {len(candidates)} candidates near ({lat}, {lon})")
+
+    buoys = []
+    for buoy in candidates:
+        if len(buoys) >= 3:
+            break
+        if buoy['source'] == 'ndbc':
+            obs = _fetch_ndbc_observation(buoy['id'])
+        else:
+            obs = _fetch_cdip_observation(buoy['id'])
+        if obs and obs.get('wave_height') is not None:
+            buoy.update(obs)
+            buoys.append(buoy)
+        else:
+            print(f"  Skipping {buoy['source'].upper()} {buoy['id']} (no realtime data)")
+
+    # Fetch spectrum and directional data for each buoy
+    for buoy in buoys:
+        bid = buoy['id']
+        if buoy['source'] == 'ndbc':
+            spec = _fetch_ndbc_spectrum(bid)
+            dire = _fetch_ndbc_directional(bid)
+        else:
+            spec = _fetch_cdip_spectrum(bid)
+            dire = _fetch_cdip_directional(bid)
+        buoy['spectrum'] = spec
+        buoy['directional'] = dire
+
+    return {'buoys': buoys}
+
+
+@app.route('/api/buoys')
+def buoys_endpoint():
+    lat = request.args.get('lat', 34.42711, type=float)
+    lon = request.args.get('lon', -77.54608, type=float)
+    cache_key = f"buoys:{lat:.4f},{lon:.4f}"
+    data = cached(cache_key, lambda: get_buoy_data(lat, lon))
+    if data:
+        return jsonify(data)
+    else:
+        return jsonify({"error": "Could not retrieve buoy data."}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)

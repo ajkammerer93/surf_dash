@@ -662,6 +662,160 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* === Buoy Panel === */
+        .buoy-panel-layout {
+            display: flex;
+            gap: 12px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .buoy-stats {
+            flex: 0 0 26%;
+            min-width: 130px;
+            overflow-y: auto;
+        }
+
+        .buoy-spectrum {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .buoy-map-wrap {
+            flex: 0 0 200px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .buoy-map {
+            flex: 1;
+            min-height: 100px !important;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+        }
+
+        .buoy-loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 11px;
+            z-index: 10;
+        }
+
+        .buoy-selector {
+            font-family: var(--font-body);
+            font-size: 10px;
+            background: var(--surface);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 2px 6px;
+            cursor: pointer;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .buoy-selector:hover {
+            color: var(--text);
+            border-color: var(--text-muted);
+        }
+
+        .spectrum-chart-wrap {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .spectrum-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding-bottom: 2px;
+            flex-shrink: 0;
+        }
+
+        .spectrum-chart-wrap canvas {
+            flex: 1;
+            min-height: 0;
+        }
+
+        #spectrum-2d-wrap .chart-unavailable {
+            position: absolute;
+            inset: 0;
+            top: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 700px) {
+            .buoy-panel-layout {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: auto 1fr;
+                gap: 6px;
+                height: 100%;
+            }
+            /* Top-left: compact stats */
+            .buoy-stats {
+                grid-row: 1;
+                grid-column: 1;
+                flex: none;
+                min-width: 0;
+                overflow-y: auto;
+            }
+            .buoy-stats .stat-list {
+                display: flex;
+                flex-direction: column;
+            }
+            .buoy-stats .stat-item {
+                padding: 3px 2px;
+            }
+            .buoy-stats .stat-label {
+                font-size: 10px;
+            }
+            .buoy-stats .stat-value {
+                font-size: 10px;
+            }
+            /* Top-right: map (placed explicitly since DOM order differs) */
+            .buoy-map-wrap {
+                grid-row: 1;
+                grid-column: 2;
+                flex: none;
+                height: auto;
+                min-height: 80px;
+            }
+            .buoy-map {
+                min-height: 0 !important;
+                height: 100%;
+            }
+            /* Bottom: spectrum plots side by side, spanning full width */
+            .buoy-spectrum {
+                grid-row: 2;
+                grid-column: 1 / -1;
+                gap: 6px;
+                min-height: 0;
+                overflow: hidden;
+            }
+            .spectrum-chart-wrap {
+                min-height: 0;
+                overflow: hidden;
+            }
+            .spectrum-chart-wrap canvas {
+                min-height: 0;
+            }
+        }
+
         /* === Offshore indicator === */
         .conditions-hint {
             font-size: 10px;
@@ -1242,8 +1396,54 @@
             </div>
         </div>
 
+        <!-- Buoy Observations -->
+        <div class="grid-stack-item" data-panel-id="buoys" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Buoy Observations</span>
+                        <select class="buoy-selector" id="buoy-selector" title="Select buoy"></select>
+                        <span class="panel-timestamp" id="buoy-timestamp"></span>
+                        <div class="panel-header-actions">
+                            <span class="panel-badge" id="buoy-badge">Live</span>
+                        </div>
+                    </div>
+                    <div class="panel-content" id="buoy-panel-content">
+                        <div class="buoy-panel-layout">
+                            <div class="buoy-stats">
+                                <ul class="stat-list" id="buoy-stats-list">
+                                    <li class="stat-item"><span class="stat-label">Wave Height</span><span class="stat-value" id="buoy_wave_height">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Period</span><span class="stat-value" id="buoy_wave_period">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Direction</span><span class="stat-value" id="buoy_wave_dir">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Wind</span><span class="stat-value" id="buoy_wind">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Water Temp</span><span class="stat-value" id="buoy_water_temp">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Air Temp</span><span class="stat-value" id="buoy_air_temp">-</span></li>
+                                    <li class="stat-item"><span class="stat-label">Pressure</span><span class="stat-value" id="buoy_pressure">-</span></li>
+                                </ul>
+                            </div>
+                            <div class="buoy-spectrum">
+                                <div class="spectrum-chart-wrap" id="spectrum-1d-wrap">
+                                    <div class="spectrum-label">Energy Spectrum</div>
+                                    <canvas id="spectrumChart"></canvas>
+                                </div>
+                                <div class="spectrum-chart-wrap" id="spectrum-2d-wrap">
+                                    <div class="spectrum-label">Directional</div>
+                                    <canvas id="polarCanvas"></canvas>
+                                    <div class="chart-unavailable" id="directional-unavailable" style="display:none">No directional data</div>
+                                </div>
+                            </div>
+                            <div class="buoy-map-wrap">
+                                <div id="buoy-map" class="buoy-map map-container"></div>
+                            </div>
+                        </div>
+                        <div class="chart-unavailable" id="buoy-error" style="display:none">No buoys found nearby</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Wave & Wind Chart -->
-        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="15" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1261,7 +1461,7 @@
         </div>
 
         <!-- Tidal Predictions -->
-        <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="20" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="25" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1279,7 +1479,7 @@
         </div>
 
         <!-- Daylight Forecast -->
-        <div class="grid-stack-item" data-panel-id="daylight" gs-x="0" gs-y="25" gs-w="12" gs-h="6">
+        <div class="grid-stack-item" data-panel-id="daylight" gs-x="0" gs-y="30" gs-w="12" gs-h="6">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1424,6 +1624,7 @@
             'local-wind': 'Local Wind Speed & Direction',
             'local-wave-period': 'Local Wave Period',
             'map-time': 'Map Time',
+            'buoys': 'Buoy Observations',
             'wave-wind-chart': 'Wave & Wind Forecast',
             'tides': 'Tidal Predictions',
             'daylight': 'Daylight Forecast'
@@ -1576,6 +1777,7 @@
                 'map-wave-period': () => map1,
                 'map-wave-height': () => map2,
                 'map-wind': () => map3,
+                'buoy-map': () => typeof buoyMap !== 'undefined' ? buoyMap : null,
             };
             return mapLookup[id] ? mapLookup[id]() : null;
         }
@@ -2213,14 +2415,17 @@
             localDataReady = false;
             basinRendered = false;
             localRendered = false;
-            // Show loading state on maps
-            document.querySelectorAll('.map-container').forEach(el => {
+            // Show loading state on maps (skip buoy map — managed separately)
+            document.querySelectorAll('.map-container:not(.buoy-map)').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
             });
             // Show loading state on current conditions
             document.getElementById('current-conditions-stats').style.display = 'none';
             document.getElementById('current-conditions-error').style.display = '';
             document.getElementById('current-conditions-error').textContent = 'Loading conditions...';
+            // Show loading state on buoy panel (full-pane overlay)
+            document.getElementById('buoy-badge').textContent = 'Loading';
+            showBuoyLoading();
             // Show loading state on charts and daylight table
             showChartUnavailable('waveChart', 'Loading forecast...');
             showChartUnavailable('tideChart', 'Loading tides...');
@@ -2230,6 +2435,7 @@
             loadPointForecast();
             loadTideData();
             loadNearestCams();
+            loadBuoyData();
             // Reload heavy grid endpoints sequentially to avoid rate limits
             loadOceanBasinMaps().then(() => loadLocalMaps());
         }
@@ -2538,6 +2744,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadPointForecast();
             loadTideData();
+            loadBuoyData();
             loadOceanBasinMaps().then(() => loadLocalMaps());
         });
 
@@ -3712,6 +3919,485 @@
                 togglePanel(panelId, true);
             }
         }
+
+        // === Buoy Observations ===
+        let spectrumChart = null;
+        let buoyData = null;
+
+        function showBuoyLoading() {
+            var panel = document.getElementById('buoy-panel-content');
+            var overlay = document.getElementById('buoy-loading-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'buoy-loading-overlay';
+                overlay.className = 'buoy-loading-overlay';
+                overlay.textContent = 'Loading buoy data...';
+                panel.style.position = 'relative';
+                panel.appendChild(overlay);
+            }
+            overlay.style.display = '';
+        }
+
+        function hideBuoyLoading() {
+            var overlay = document.getElementById('buoy-loading-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function loadBuoyData() {
+            var params = new URLSearchParams({
+                lat: currentLocation.lat,
+                lon: currentLocation.lon
+            });
+            var badge = document.getElementById('buoy-badge');
+            var error = document.getElementById('buoy-error');
+            var layout = document.querySelector('.buoy-panel-layout');
+            badge.textContent = 'Loading';
+            error.style.display = 'none';
+            layout.style.display = '';
+            showBuoyLoading();
+
+            // Destroy old map so it gets recreated for the new location
+            if (buoyMap) {
+                buoyMap.remove();
+                buoyMap = null;
+                buoyMapMarker = null;
+                buoyMapLocMarker = null;
+            }
+
+            fetch('/api/buoys?' + params)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    hideBuoyLoading();
+                    if (data.error || !data.buoys || data.buoys.length === 0) {
+                        layout.style.display = 'none';
+                        error.textContent = 'No buoys found nearby';
+                        error.style.display = '';
+                        badge.textContent = 'Off';
+                        return;
+                    }
+                    buoyData = data;
+                    badge.textContent = 'Live';
+
+                    // Populate selector
+                    var sel = document.getElementById('buoy-selector');
+                    sel.innerHTML = '';
+                    data.buoys.forEach(function(b, i) {
+                        var opt = document.createElement('option');
+                        var distMi = Math.round(b.distance_km * 0.621371);
+                        opt.value = i;
+                        opt.textContent = b.source.toUpperCase() + ' ' + b.id + ' — ' + distMi + ' mi';
+                        sel.appendChild(opt);
+                    });
+                    sel.onchange = function() { selectBuoy(data.buoys[parseInt(sel.value)]); };
+
+                    selectBuoy(data.buoys[0]);
+                })
+                .catch(function(err) {
+                    console.error('Buoy fetch error:', err);
+                    hideBuoyLoading();
+                    layout.style.display = 'none';
+                    error.textContent = 'Buoy data unavailable';
+                    error.style.display = '';
+                    badge.textContent = 'Error';
+                });
+        }
+
+        let buoyMap = null;
+        let buoyMapMarker = null;
+        let buoyMapLocMarker = null;
+
+        function updateBuoyMap(buoy) {
+            var container = document.getElementById('buoy-map');
+            if (!container || container.clientHeight < 10 || container.clientWidth < 10) return;
+            if (!buoyMap) {
+                buoyMap = L.map(container, {
+                    zoomControl: false,
+                    attributionControl: false,
+                    dragging: false,
+                    scrollWheelZoom: false,
+                    doubleClickZoom: false,
+                    boxZoom: false,
+                    keyboard: false,
+                    touchZoom: false
+                }).setView([buoy.lat, buoy.lon], 9);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 14
+                }).addTo(buoyMap);
+            }
+
+            if (buoyMapMarker) buoyMap.removeLayer(buoyMapMarker);
+            if (buoyMapLocMarker) buoyMap.removeLayer(buoyMapLocMarker);
+
+            // User location marker (yellow star, matches ocean basin map)
+            var starIcon = L.divIcon({
+                html: '<div style="color:#ff0;font-size:16px;text-shadow:1px 1px 3px #000;">&#9733;</div>',
+                className: 'location-marker',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+            buoyMapLocMarker = L.marker([currentLocation.lat, currentLocation.lon], {icon: starIcon}).addTo(buoyMap);
+
+            // Buoy marker
+            buoyMapMarker = L.circleMarker([buoy.lat, buoy.lon], {
+                radius: 6, fillColor: '#44ff88', fillOpacity: 0.9, color: '#fff', weight: 1.5
+            }).addTo(buoyMap);
+
+            // Fit both points in view
+            var bounds = L.latLngBounds(
+                [buoy.lat, buoy.lon],
+                [currentLocation.lat, currentLocation.lon]
+            ).pad(0.3);
+            buoyMap.fitBounds(bounds, { maxZoom: 11 });
+        }
+
+        function selectBuoy(buoy) {
+            renderBuoyStats(buoy);
+            updateBuoyMap(buoy);
+            // Retry map/charts after layout settles (helps on mobile initial load)
+            setTimeout(function() {
+                updateBuoyMap(buoy);
+                if (buoy.spectrum) {
+                    render1DSpectrum(buoy.spectrum);
+                    if (buoy.directional) {
+                        var pc = document.getElementById('polarCanvas');
+                        if (pc && pc.parentElement.clientWidth > 20) render2DSpectrum(buoy.directional, buoy.spectrum);
+                    }
+                }
+            }, 300);
+
+            var wrap1d = document.getElementById('spectrum-1d-wrap');
+            var wrap2d = document.getElementById('spectrum-2d-wrap');
+            var noSpecMsg = document.getElementById('spectrum-unavailable');
+            if (!noSpecMsg) {
+                noSpecMsg = document.createElement('div');
+                noSpecMsg.id = 'spectrum-unavailable';
+                noSpecMsg.className = 'chart-unavailable';
+                noSpecMsg.textContent = 'No spectral data available';
+                document.querySelector('.buoy-spectrum').appendChild(noSpecMsg);
+            }
+            var noDirMsg = document.getElementById('directional-unavailable');
+
+            if (buoy.spectrum) {
+                noSpecMsg.style.display = 'none';
+                wrap1d.style.display = '';
+                wrap2d.style.display = '';
+                render1DSpectrum(buoy.spectrum);
+
+                if (buoy.directional) {
+                    noDirMsg.style.display = 'none';
+                    document.getElementById('polarCanvas').style.display = '';
+                    render2DSpectrum(buoy.directional, buoy.spectrum);
+                } else {
+                    document.getElementById('polarCanvas').style.display = 'none';
+                    noDirMsg.style.display = '';
+                }
+            } else {
+                wrap1d.style.display = 'none';
+                wrap2d.style.display = 'none';
+                noSpecMsg.style.display = '';
+            }
+        }
+
+        function renderBuoyStats(buoy) {
+            var ts = document.getElementById('buoy-timestamp');
+            ts.textContent = buoy.time || '';
+
+            function fmt(v, unit, conv) {
+                if (v == null) return '-';
+                if (conv) v = conv(v);
+                return (typeof v === 'number' ? v.toFixed(1) : v) + ' ' + unit;
+            }
+
+            var dirArrow = '';
+            if (buoy.wave_direction != null) {
+                dirArrow = ' ' + degToArrow(buoy.wave_direction);
+            }
+            document.getElementById('buoy_wave_height').textContent = fmt(buoy.wave_height, 'ft', function(v) { return v * M_TO_FT; });
+            document.getElementById('buoy_wave_period').textContent = fmt(buoy.dominant_period, 's');
+            document.getElementById('buoy_wave_dir').innerHTML = buoy.wave_direction != null ? Math.round(buoy.wave_direction) + '&deg;' + dirArrow : '-';
+
+            if (buoy.wind_speed != null) {
+                var windMph = (buoy.wind_speed * 2.23694).toFixed(0);
+                var windDir = buoy.wind_direction != null ? degToCompass(buoy.wind_direction) + ' ' : '';
+                document.getElementById('buoy_wind').textContent = windDir + windMph + ' mph';
+                if (buoy.wind_gust != null) {
+                    document.getElementById('buoy_wind').textContent += ' (G' + (buoy.wind_gust * 2.23694).toFixed(0) + ')';
+                }
+            } else {
+                document.getElementById('buoy_wind').textContent = '-';
+            }
+
+            document.getElementById('buoy_water_temp').textContent = fmt(buoy.water_temp, '\u00B0F', function(v) { return v * 9/5 + 32; });
+            document.getElementById('buoy_air_temp').textContent = fmt(buoy.air_temp, '\u00B0F', function(v) { return v * 9/5 + 32; });
+            document.getElementById('buoy_pressure').textContent = fmt(buoy.pressure, 'mb');
+        }
+
+        function degToCompass(deg) {
+            var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            return dirs[Math.round(deg / 22.5) % 16];
+        }
+
+        function degToArrow(deg) {
+            // Arrow points in direction wave is coming FROM (meteorological convention)
+            var arrows = ['\u2193','\u2199','\u2190','\u2196','\u2191','\u2197','\u2192','\u2198'];
+            return arrows[Math.round(deg / 45) % 8];
+        }
+
+        function render1DSpectrum(spectrum) {
+            var ctx = document.getElementById('spectrumChart');
+            // Convert frequencies to periods and reverse for long→short display
+            var points = [];
+            for (var i = 0; i < spectrum.frequencies.length; i++) {
+                var f = spectrum.frequencies[i];
+                var period = 1 / f;
+                if (period >= 2 && period <= 30) {
+                    points.push({ period: period, energy: spectrum.energy[i] });
+                }
+            }
+            points.sort(function(a, b) { return b.period - a.period; });
+
+            var labels = points.map(function(p) { return p.period.toFixed(1); });
+            var data = points.map(function(p) { return p.energy; });
+
+            if (spectrumChart) spectrumChart.destroy();
+            spectrumChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Energy Density (m\u00B2/Hz)',
+                        data: data,
+                        borderColor: '#3388ff',
+                        backgroundColor: 'rgba(51, 136, 255, 0.15)',
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) { return items[0].label + 's period'; },
+                                label: function(item) { return item.raw.toFixed(3) + ' m\u00B2/Hz'; }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Period (s)', color: '#888', font: { size: 10, family: 'inherit' } },
+                            ticks: { color: '#666', font: { size: 9 }, maxTicksLimit: 12 },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Energy (m\u00B2/Hz)', color: '#888', font: { size: 10, family: 'inherit' } },
+                            ticks: { color: '#666', font: { size: 9 } },
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function spectrumColor(frac) {
+            // Color scale: dark blue → cyan → yellow → red
+            var r, g, b;
+            if (frac < 0.25) {
+                var t = frac / 0.25;
+                r = 0; g = Math.round(80 * t); b = Math.round(120 + 135 * t);
+            } else if (frac < 0.5) {
+                var t = (frac - 0.25) / 0.25;
+                r = 0; g = Math.round(80 + 175 * t); b = Math.round(255 * (1 - t));
+            } else if (frac < 0.75) {
+                var t = (frac - 0.5) / 0.25;
+                r = Math.round(255 * t); g = 255; b = 0;
+            } else {
+                var t = (frac - 0.75) / 0.25;
+                r = 255; g = Math.round(255 * (1 - t)); b = 0;
+            }
+            return 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+
+        function render2DSpectrum(directional, spectrum) {
+            var canvas = document.getElementById('polarCanvas');
+            var w = canvas.parentElement.clientWidth;
+            var h = canvas.parentElement.clientHeight;
+            if (w < 20 || h < 20) return;
+            var ctx = canvas.getContext('2d');
+            canvas.width = w * (window.devicePixelRatio || 1);
+            canvas.height = h * (window.devicePixelRatio || 1);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+            var cx = w / 2;
+            var cy = h / 2;
+            var maxR = Math.min(cx, cy) - 10;
+            if (maxR < 15) return;
+
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, w, h);
+
+            // Period rings
+            var ringPeriods = [5, 10, 15, 20];
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 0.5;
+            ctx.fillStyle = '#666';
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'bottom';
+            ringPeriods.forEach(function(p) {
+                var r = (p / 25) * maxR;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillText(p + 's', cx + 2, cy - r - 1);
+            });
+
+            // Cardinal directions — placed just inside the outer ring edge
+            var cardinals = [['N', 0], ['E', 90], ['S', 180], ['W', 270]];
+            ctx.fillStyle = '#999';
+            ctx.font = 'bold 9px monospace';
+            cardinals.forEach(function(cd) {
+                var angle = (cd[1] - 90) * Math.PI / 180;
+                var x = cx + (maxR - 6) * Math.cos(angle);
+                var y = cy + (maxR - 6) * Math.sin(angle);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(cd[0], x, y);
+            });
+
+            // Build directional energy grid
+            var freqs = spectrum.frequencies;
+            var energy = spectrum.energy;
+            var nDir = 72; // 5-degree bins
+            var maxEnergy = 0;
+            var grid = [];
+
+            for (var fi = 0; fi < freqs.length; fi++) {
+                var row = [];
+                for (var di = 0; di < nDir; di++) {
+                    var theta = di * 5 * Math.PI / 180;
+                    var E = energy[fi];
+                    var val;
+                    if (directional.a1 && directional.a1.length > fi) {
+                        // CDIP Fourier: D(theta,f) = E(f) * [1 + 2*a1*cos(theta) + 2*b1*sin(theta) + 2*a2*cos(2*theta) + 2*b2*sin(2*theta)] / (2*pi)
+                        var a1 = directional.a1[fi] || 0;
+                        var b1 = directional.b1[fi] || 0;
+                        var a2 = directional.a2[fi] || 0;
+                        var b2 = directional.b2[fi] || 0;
+                        val = E * (1 + 2*a1*Math.cos(theta) + 2*b1*Math.sin(theta) + 2*a2*Math.cos(2*theta) + 2*b2*Math.sin(2*theta)) / (2 * Math.PI);
+                    } else if (directional.directions && directional.r1 && directional.directions.length > fi) {
+                        // NDBC: mean direction + r1 spread
+                        var meanDir = directional.directions[fi] * Math.PI / 180;
+                        var r1 = directional.r1[fi] || 0.5;
+                        var diff = theta - meanDir;
+                        val = E * (1 + 2 * r1 * Math.cos(diff)) / (2 * Math.PI);
+                    } else {
+                        val = E / (2 * Math.PI);
+                    }
+                    val = Math.max(0, val);
+                    if (val > maxEnergy) maxEnergy = val;
+                    row.push(val);
+                }
+                grid.push(row);
+            }
+
+            if (maxEnergy === 0) return;
+
+            // Draw polar heatmap
+            for (var fi = 0; fi < freqs.length - 1; fi++) {
+                var period = 1 / freqs[fi];
+                var periodNext = 1 / freqs[fi + 1];
+                if (period > 25 || period < 1) continue;
+                var r1 = (period / 25) * maxR;
+                var r2 = (periodNext / 25) * maxR;
+                var rInner = Math.min(r1, r2);
+                var rOuter = Math.max(r1, r2);
+
+                for (var di = 0; di < nDir; di++) {
+                    var val = grid[fi][di];
+                    if (val < maxEnergy * 0.01) continue;
+                    var frac = Math.min(1, val / maxEnergy);
+
+                    var angle1 = (di * 5 - 90) * Math.PI / 180;
+                    var angle2 = ((di + 1) * 5 - 90) * Math.PI / 180;
+
+                    ctx.fillStyle = spectrumColor(frac);
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, rOuter, angle1, angle2);
+                    ctx.arc(cx, cy, rInner, angle2, angle1, true);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+            ctx.globalAlpha = 1.0;
+
+            // Draw legend in bottom-right (matches map legend style)
+            var compact = (w < 200 || h < 160);
+            var legendPad = compact ? 4 : 6;
+            var swatchW = compact ? 12 : 16;
+            var swatchH = compact ? 8 : 10;
+            var nSwatches = compact ? 4 : 5;
+            var legendFont = (compact ? '8' : '9') + 'px monospace';
+            var titleFont = 'bold ' + (compact ? '8' : '9') + 'px monospace';
+            ctx.font = legendFont;
+            // Build labels
+            var legendLabels = [];
+            for (var i = 0; i < nSwatches; i++) {
+                var val = maxEnergy * i / (nSwatches - 1);
+                legendLabels.push(val < 0.01 ? '0' : val.toFixed(2));
+            }
+            var maxLabelW = 0;
+            legendLabels.forEach(function(lbl) {
+                var lw = ctx.measureText(lbl).width;
+                if (lw > maxLabelW) maxLabelW = lw;
+            });
+            ctx.font = titleFont;
+            var titleText = compact ? 'm\u00B2/Hz/\u00B0' : 'Energy (m\u00B2/Hz/\u00B0)';
+            var titleW = ctx.measureText(titleText).width;
+            var lineH = compact ? 12 : 14;
+            var titleH = lineH + 2;
+            var contentW = Math.max(titleW, swatchW + 4 + maxLabelW);
+            var boxW = legendPad * 2 + contentW;
+            var boxH = legendPad + titleH + nSwatches * lineH + legendPad - 4;
+            var boxX = w - boxW - 4;
+            var boxY = h - boxH - 4;
+
+            // Background
+            ctx.fillStyle = 'rgba(20, 20, 20, 0.92)';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = 'rgba(42, 42, 42, 1)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            // Title
+            ctx.fillStyle = '#e8e8e8';
+            ctx.font = titleFont;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(titleText, boxX + legendPad, boxY + legendPad);
+
+            // Swatches high → low
+            for (var i = nSwatches - 1; i >= 0; i--) {
+                var row = nSwatches - 1 - i;
+                var sy = boxY + legendPad + titleH + row * lineH;
+                ctx.fillStyle = spectrumColor(i / (nSwatches - 1));
+                ctx.fillRect(boxX + legendPad, sy, swatchW, swatchH);
+                ctx.fillStyle = '#888';
+                ctx.font = legendFont;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(legendLabels[i], boxX + legendPad + swatchW + 4, sy + swatchH / 2);
+            }
+        }
+
 
         function loadNearestCams() {
             var params = new URLSearchParams({
