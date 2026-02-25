@@ -696,14 +696,16 @@
         }
 
         .buoy-map-wrap {
-            position: relative;
             overflow: hidden;
             min-width: 0;
+            min-height: 0;
+            display: grid;
+            grid-template-rows: auto 1fr;
         }
 
         .buoy-map {
-            position: absolute;
-            inset: 0;
+            position: relative;
+            min-height: 0;
             border-radius: 3px;
             border: 1px solid var(--border);
         }
@@ -1324,12 +1326,13 @@
                                     <canvas id="spectrumChart"></canvas>
                                 </div>
                                 <div class="spectrum-chart-wrap" id="spectrum-2d-wrap">
-                                    <div class="spectrum-label">Directional</div>
+                                    <div class="spectrum-label">Directional Spectrum</div>
                                     <canvas id="polarCanvas"></canvas>
                                     <div class="chart-unavailable" id="directional-unavailable" style="display:none">No directional data</div>
                                 </div>
                             </div>
                             <div class="buoy-map-wrap">
+                                <div class="spectrum-label">Buoy Location</div>
                                 <div id="buoy-map" class="buoy-map map-container"></div>
                             </div>
                         </div>
@@ -2398,6 +2401,7 @@
 
         // Point data and main chart script
         window.sunTimes = [];
+        window.utcOffsetHours = Math.round(currentLocation.lon / 15);
 
         // Day/night shading plugin — draws alternating bands behind chart data
         const dayNightPlugin = {
@@ -2462,7 +2466,7 @@
 
             const timestamp = sourceX.getValueForPixel(event.x);
             const targetPixel = targetX.getPixelForValue(timestamp);
-            const syntheticPoint = { x: targetPixel, y: targetArea.top + 1 };
+            const syntheticPoint = { x: targetPixel, y: targetArea.top + 1, native: true };
 
             const elements = targetChart.getElementsAtEventForMode(
                 syntheticPoint, 'index', { intersect: false }, false
@@ -2479,6 +2483,50 @@
             chart.tooltip.setActiveElements([], { x: 0, y: 0 });
             chart.setActiveElements([]);
             chart.update('none');
+        }
+
+        // Local-time axis tick helpers
+        // Places major ticks at 12:00 noon local, minor ticks at 00, 06, 18 local
+        function buildLocalTimeTicks(axis) {
+            if (!axis.min || !axis.max) return;
+            const offset = window.utcOffsetHours || 0;
+            const ticks = [];
+            const start = new Date(axis.min);
+            start.setUTCMinutes(0, 0, 0);
+            let t = start.getTime() - 3600000;
+            while (t <= axis.max) {
+                const localHour = ((new Date(t).getUTCHours() + offset) % 24 + 24) % 24;
+                if (localHour === 0 || localHour === 6 || localHour === 12 || localHour === 18) {
+                    ticks.push({ value: t, major: localHour === 12 });
+                }
+                t += 3600000;
+            }
+            axis.ticks = ticks;
+        }
+
+        function formatLocalTimeTick(value, index, ticksArray) {
+            const offset = window.utcOffsetHours || 0;
+            const tick = ticksArray[index];
+            const d = new Date(tick.value);
+            const local = new Date(d.getTime() + offset * 3600000);
+            if (tick.major) {
+                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return days[local.getUTCDay()] + ' ' + months[local.getUTCMonth()] + ' ' + local.getUTCDate();
+            }
+            const h = local.getUTCHours();
+            return (h < 10 ? '0' : '') + h + ':00';
+        }
+
+        function formatLocalTooltipTitle(items) {
+            const offset = window.utcOffsetHours || 0;
+            const d = new Date(items[0].parsed.x);
+            const local = new Date(d.getTime() + offset * 3600000);
+            const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const h = local.getUTCHours();
+            const m = local.getUTCMinutes();
+            return days[local.getUTCDay()] + ' ' + months[local.getUTCMonth()] + ' ' + local.getUTCDate() + ', ' + local.getUTCFullYear() + ' ' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
         }
 
         let waveChart = null;
@@ -2504,7 +2552,8 @@
                     document.getElementById('current-conditions-stats').style.display = '';
                     document.getElementById('current-conditions-error').style.display = 'none';
 
-                    // Extract sunrise/sunset times for day/night shading
+                    // Update timezone offset and extract sunrise/sunset for day/night shading
+                    window.utcOffsetHours = Math.round(currentLocation.lon / 15);
                     window.sunTimes = [];
                     const seenDates = new Set();
                     data.forEach(item => {
@@ -2512,8 +2561,8 @@
                         if (!seenDates.has(dateKey) && item.sunrise && item.sunset) {
                             seenDates.add(dateKey);
                             window.sunTimes.push({
-                                sunrise: new Date(item.sunrise),
-                                sunset: new Date(item.sunset)
+                                sunrise: new Date(item.sunrise + 'Z'),
+                                sunset: new Date(item.sunset + 'Z')
                             });
                         }
                     });
@@ -2708,21 +2757,26 @@
                             scales: {
                                 x: {
                                     type: 'time',
-                                    time: {
-                                        displayFormats: {
-                                            hour: 'EEE MMM d HH:mm'
-                                        },
-                                        tooltipFormat: 'EEEE MMM d, yyyy HH:mm'
-                                    },
+                                    afterBuildTicks: buildLocalTimeTicks,
                                     ticks: {
                                         maxRotation: 45,
                                         minRotation: 45,
-                                        autoSkip: true,
-                                        maxTicksLimit: 18,
-                                        color: '#888'
+                                        autoSkip: false,
+                                        callback: formatLocalTimeTick,
+                                        color: function(context) {
+                                            return context.tick && context.tick.major ? '#aaa' : '#666';
+                                        },
+                                        font: function(context) {
+                                            if (context.tick && context.tick.major) return { weight: 'bold' };
+                                            return {};
+                                        }
                                     },
                                     grid: {
-                                        color: 'rgba(42, 42, 42, 0.8)'
+                                        color: function(context) {
+                                            return context.tick && context.tick.major
+                                                ? 'rgba(255, 255, 255, 0.12)'
+                                                : 'rgba(42, 42, 42, 0.8)';
+                                        }
                                     }
                                 },
                                 y: {
@@ -2764,6 +2818,7 @@
                                 },
                                 tooltip: {
                                     callbacks: {
+                                        title: formatLocalTooltipTitle,
                                         afterBody: function(context) {
                                             const index = context[0].dataIndex;
                                             const dir = windDirections[index];
@@ -3809,21 +3864,26 @@
                             scales: {
                                 x: {
                                     type: 'time',
-                                    time: {
-                                        displayFormats: {
-                                            hour: 'EEE MMM d HH:mm'
-                                        },
-                                        tooltipFormat: 'EEEE MMM d, yyyy HH:mm'
-                                    },
+                                    afterBuildTicks: buildLocalTimeTicks,
                                     ticks: {
                                         maxRotation: 45,
                                         minRotation: 45,
-                                        autoSkip: true,
-                                        maxTicksLimit: 18,
-                                        color: '#888'
+                                        autoSkip: false,
+                                        callback: formatLocalTimeTick,
+                                        color: function(context) {
+                                            return context.tick && context.tick.major ? '#aaa' : '#666';
+                                        },
+                                        font: function(context) {
+                                            if (context.tick && context.tick.major) return { weight: 'bold' };
+                                            return {};
+                                        }
                                     },
                                     grid: {
-                                        color: 'rgba(42, 42, 42, 0.8)'
+                                        color: function(context) {
+                                            return context.tick && context.tick.major
+                                                ? 'rgba(255, 255, 255, 0.12)'
+                                                : 'rgba(42, 42, 42, 0.8)';
+                                        }
                                     }
                                 },
                                 y: {
@@ -3862,6 +3922,7 @@
                                 },
                                 tooltip: {
                                     callbacks: {
+                                        title: formatLocalTooltipTitle,
                                         afterBody: function(context) {
                                             const index = context[0].dataIndex;
                                             if (highTides[index] !== null) return '▲ High Tide';
@@ -4246,6 +4307,7 @@
                         backgroundColor: 'rgba(51, 136, 255, 0.15)',
                         fill: true,
                         pointRadius: 0,
+                        pointHoverRadius: 4,
                         borderWidth: 1.5,
                         tension: 0.3
                     }]
@@ -4253,13 +4315,17 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
                     layout: { padding: { bottom: 2 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                title: function(items) { return items[0].label + 's period'; },
-                                label: function(item) { return item.raw.toFixed(3) + ' m\u00B2/Hz'; }
+                                title: function(items) { return 'Period: ' + items[0].label + 's'; },
+                                label: function(item) { return 'Energy: ' + item.raw.toFixed(3) + ' m\u00B2/Hz'; }
                             }
                         }
                     },
@@ -4270,10 +4336,10 @@
                             grid: { color: 'rgba(255,255,255,0.05)' }
                         },
                         y: {
+                            type: 'logarithmic',
                             title: { display: true, text: 'Energy (m\u00B2/Hz)', color: '#888', font: { size: 10, family: 'inherit' } },
                             ticks: { color: '#666', font: { size: 9 } },
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            beginAtZero: true
+                            grid: { color: 'rgba(255,255,255,0.05)' }
                         }
                     }
                 }
@@ -4386,6 +4452,9 @@
 
             if (maxEnergy === 0) return;
 
+            // Store data for hover tooltip
+            canvas._polarData = { cx: cx, cy: cy, maxR: maxR, freqs: freqs, grid: grid, maxEnergy: maxEnergy, nDir: nDir };
+
             // Draw polar heatmap
             for (var fi = 0; fi < freqs.length - 1; fi++) {
                 var period = 1 / freqs[fi];
@@ -4473,6 +4542,61 @@
                 ctx.fillText(legendLabels[i], boxX + legendPad + swatchW + 4, sy + swatchH / 2);
             }
         }
+
+        // Hover tooltip for 2D directional spectrum (raw canvas, not Chart.js)
+        (function() {
+            var tooltip = document.createElement('div');
+            tooltip.style.cssText = 'position:fixed;pointer-events:none;display:none;background:rgba(20,20,20,0.92);border:1px solid rgba(42,42,42,1);color:#e8e8e8;font:9px monospace;padding:4px 6px;border-radius:3px;z-index:9999;white-space:nowrap;';
+            document.body.appendChild(tooltip);
+
+            var canvas = document.getElementById('polarCanvas');
+            canvas.addEventListener('mousemove', function(e) {
+                var d = canvas._polarData;
+                if (!d) { tooltip.style.display = 'none'; return; }
+
+                var rect = canvas.getBoundingClientRect();
+                var scaleX = canvas.width / (window.devicePixelRatio || 1) / rect.width;
+                var scaleY = canvas.height / (window.devicePixelRatio || 1) / rect.height;
+                var mx = (e.clientX - rect.left) * scaleX;
+                var my = (e.clientY - rect.top) * scaleY;
+
+                var dx = mx - d.cx;
+                var dy = my - d.cy;
+                var dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > d.maxR || dist < 2) { tooltip.style.display = 'none'; return; }
+
+                // Convert pixel distance to period
+                var period = (dist / d.maxR) * 25;
+
+                // Convert pixel angle to direction (canvas 0° is East, polar 0° is North)
+                var angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                if (angle < 0) angle += 360;
+                var dirIndex = Math.round(angle / 5) % d.nDir;
+
+                // Find closest frequency index by period
+                var fi = -1;
+                var bestDiff = Infinity;
+                for (var i = 0; i < d.freqs.length; i++) {
+                    var p = 1 / d.freqs[i];
+                    var diff = Math.abs(p - period);
+                    if (diff < bestDiff) { bestDiff = diff; fi = i; }
+                }
+                if (fi < 0 || fi >= d.grid.length) { tooltip.style.display = 'none'; return; }
+
+                var energy = d.grid[fi][dirIndex];
+                var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+                var compass = dirs[Math.round(angle / 22.5) % 16];
+
+                tooltip.innerHTML = 'Period: ' + period.toFixed(1) + 's<br>Direction: ' + angle.toFixed(0) + '\u00B0 ' + compass + '<br>Energy: ' + energy.toFixed(3) + ' m\u00B2/Hz/\u00B0';
+                tooltip.style.display = '';
+                tooltip.style.left = (e.clientX + 12) + 'px';
+                tooltip.style.top = (e.clientY - 10) + 'px';
+            });
+
+            canvas.addEventListener('mouseleave', function() {
+                tooltip.style.display = 'none';
+            });
+        })();
 
 
         function loadNearestCams() {
