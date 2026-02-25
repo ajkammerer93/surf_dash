@@ -1408,7 +1408,7 @@ def webcams():
     lat = request.args.get('lat', 34.42711, type=float)
     lon = request.args.get('lon', -77.54608, type=float)
     cache_key = f"webcams:{lat:.2f},{lon:.2f}"
-    cameras = cached(cache_key, lambda: find_nearest_cameras(lat, lon))
+    cameras = cached(cache_key, lambda: find_nearest_cameras(lat, lon, count=50))
     return jsonify({"cameras": cameras or []})
 
 BUOY_MAX_DISTANCE_KM = 320  # ~200 miles
