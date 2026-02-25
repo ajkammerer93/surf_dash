@@ -6,6 +6,7 @@ import subprocess
 import time
 import traceback
 import os
+import json
 from datetime import datetime, timedelta
 try:
     from dotenv import load_dotenv
@@ -33,6 +34,20 @@ def get_version():
         return 'v0.1.0'
 
 APP_VERSION = get_version()
+
+def _load_cameras():
+    """Load surf cameras from surfchex_cameras.json."""
+    cam_file = os.path.join(os.path.dirname(__file__), 'surfchex_cameras.json')
+    try:
+        with open(cam_file) as f:
+            cams = json.load(f)
+        print(f"Loaded {len(cams)} surf cameras")
+        return cams
+    except Exception as e:
+        print(f"Warning: could not load surfchex_cameras.json: {e}")
+        return []
+
+SURFCHEX_CAMERAS = _load_cameras()
 
 # Simple time-based response cache
 _cache = {}
@@ -1003,28 +1018,6 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     km = 6371 * c
     return km
 
-SURFCHEX_CAMERAS = [
-    {"name": "Surf City Pier",       "lat": 34.4271, "lon": -77.5461, "stream_url": "https://streams.surfchex.com:8443/live/sc1.stream/playlist.m3u8"},
-    {"name": "Surf City Bridge",     "lat": 34.4380, "lon": -77.5570, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/sciga.stream/playlist.m3u8"},
-    {"name": "Surf City Line",       "lat": 34.4350, "lon": -77.5510, "stream_url": "https://streams.surfchex.com:8443/live/cityline.stream/playlist.m3u8"},
-    {"name": "Topsail Beach",        "lat": 34.3550, "lon": -77.4620, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/topsail.stream/playlist.m3u8"},
-    {"name": "Avon Pier",            "lat": 35.3467, "lon": -75.5026, "stream_url": "https://streams.surfchex.com:8443/live/avon.stream/playlist.m3u8"},
-    {"name": "Avon Soundside",       "lat": 35.3500, "lon": -75.5100, "stream_url": "https://streams.surfchex.com:8443/live/avonsound.stream/playlist.m3u8"},
-    {"name": "Carolina Beach",       "lat": 34.0352, "lon": -77.8936, "stream_url": "https://streams.surfchex.com:8443/live/cb.stream/playlist.m3u8"},
-    {"name": "Kure Beach",           "lat": 33.9966, "lon": -77.9064, "stream_url": "https://streams.surfchex.com:8443/live/kb.stream/playlist.m3u8"},
-    {"name": "Wrightsville Beach",   "lat": 34.2085, "lon": -77.7964, "stream_url": "https://streams.surfchex.com:8443/live/wb3.stream/playlist.m3u8"},
-    {"name": "WB Mercers Pier",      "lat": 34.2090, "lon": -77.7960, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/mercers.stream/playlist.m3u8"},
-    {"name": "Ocean Isle Beach",     "lat": 33.8950, "lon": -78.4310, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/oib.stream/playlist.m3u8"},
-    {"name": "Ocracoke",             "lat": 35.1150, "lon": -75.9830, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/ocracoke.stream/playlist.m3u8"},
-    {"name": "Sunset Beach",         "lat": 33.8700, "lon": -78.5120, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/sunsetbeach.stream/playlist.m3u8"},
-    {"name": "Nags Head",            "lat": 35.9574, "lon": -75.6235, "stream_url": "https://streams.surfchex.com:8443/live/abalonestreet.stream/playlist.m3u8"},
-    {"name": "Manasquan NJ",         "lat": 40.1170, "lon": -74.0360, "stream_url": "https://streams.surfchex.com:8443/live/squan.stream/playlist.m3u8"},
-    {"name": "Virginia Beach",       "lat": 36.8529, "lon": -75.9780, "stream_url": "https://streams.surfchex.com:8443/live/vb.stream/playlist.m3u8"},
-    {"name": "Pistol River OR",      "lat": 42.2770, "lon": -124.3960, "stream_url": "https://streams.surfchex.com:8443/live/pistol.stream/playlist.m3u8"},
-    {"name": "Folly Beach SC",       "lat": 32.6552, "lon": -79.9403, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/folly.stream/playlist.m3u8"},
-    {"name": "Beaufort",             "lat": 34.7190, "lon": -76.6650, "stream_url": "https://streams.surfchex.com:8443/live/gp.stream/playlist.m3u8"},
-    {"name": "Bath",                 "lat": 35.4740, "lon": -76.8100, "stream_url": "https://5a5f765a4fcc2.streamlock.net:1936/live/bath.stream/playlist.m3u8"},
-]
 SURFCHEX_MAX_DISTANCE_KM = 160  # ~100 miles
 
 def find_nearest_cameras(lat, lon, count=2):
