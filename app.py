@@ -1053,13 +1053,16 @@ def find_nearest_cameras(lat, lon, count=2):
     # Search surf camera catalog
     nearby = []
     for cam in SURFCHEX_CAMERAS:
+        if cam.get('disabled'):
+            continue
         dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
         if dist <= SURFCHEX_MAX_DISTANCE_KM:
             cam_type = cam.get('type', 'hls')
             entry = {
                 'name': cam['name'],
                 'type': cam_type,
-                'distance_km': round(dist, 1)
+                'distance_km': round(dist, 1),
+                'page_url': cam.get('page_url', '')
             }
             if cam_type == 'link':
                 entry['url'] = cam['page_url']
@@ -1103,11 +1106,13 @@ def find_nearest_cameras(lat, lon, count=2):
                         player = wc.get('player', {})
                         embed_url = player.get('day') or player.get('lifetime')
                         if embed_url:
+                            wc_id = wc.get('webcamId', '')
                             results.append({
                                 'name': wc.get('title', 'Webcam'),
                                 'type': 'iframe',
                                 'url': embed_url,
-                                'distance_km': round(dist, 1)
+                                'distance_km': round(dist, 1),
+                                'page_url': f'https://www.windy.com/webcams/{wc_id}' if wc_id else ''
                             })
             except Exception as e:
                 print(f"Windy webcam fallback failed (non-critical): {e}")

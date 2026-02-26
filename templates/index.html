@@ -289,6 +289,54 @@
             color: var(--text);
         }
 
+        .cam-attribution {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 9px;
+            z-index: 2;
+        }
+        .cam-attribution img {
+            width: 12px;
+            height: 12px;
+        }
+        .cam-attribution a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .cam-attribution a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+
+        .site-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            line-height: 1.8;
+        }
+        .site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .site-footer a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+        .site-footer .footer-sep {
+            margin: 0 6px;
+            opacity: 0.4;
+        }
+
         .panel-header-actions {
             display: flex;
             align-items: center;
@@ -1512,6 +1560,34 @@
         </div>
 
     </div>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Surf Dash. All rights reserved.</div>
+        <div>
+            Data:
+            <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+            <span class="footer-sep">|</span>
+            <a href="https://www.noaa.gov/" target="_blank" rel="noopener">NOAA</a>
+            <span class="footer-sep">|</span>
+            <a href="https://www.ndbc.noaa.gov/" target="_blank" rel="noopener">NDBC</a>
+            <span class="footer-sep">|</span>
+            <a href="https://cdip.ucsd.edu/" target="_blank" rel="noopener">CDIP</a>
+            &nbsp;&nbsp;Maps:
+            <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap</a>
+            <span class="footer-sep">|</span>
+            <a href="https://carto.com/" target="_blank" rel="noopener">CARTO</a>
+            &nbsp;&nbsp;Cameras:
+            <a href="https://www.surfchex.com/" target="_blank" rel="noopener">SurfChex</a>
+            <span class="footer-sep">|</span>
+            <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy</a>
+            <span class="footer-sep">|</span>
+            <a href="https://www.oceancity.com/webcams/" target="_blank" rel="noopener">OceanCity.com</a>
+            <span class="footer-sep">|</span>
+            <a href="https://www.skylinewebcams.com/" target="_blank" rel="noopener">SkylineWebcams</a>
+            <span class="footer-sep">|</span>
+            <a href="https://njbeachcams.com/" target="_blank" rel="noopener">NJBeachCams</a>
+        </div>
+    </footer>
 
     <!-- JS Libraries (no Bootstrap JS) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -3982,6 +4058,25 @@
         // === Surf Cams (Dynamic) ===
         var activeCamInstances = {};
 
+        var CAM_SOURCES = {
+            'surfchex.com': { name: 'SurfChex', url: 'https://www.surfchex.com' },
+            'hdbeachcams.com': { name: 'HDBeachCams', url: 'https://hdbeachcams.com' },
+            'thesurfersview.com': { name: 'TheSurfersView', url: 'https://thesurfersview.com' },
+            'njbeachcams.com': { name: 'NJBeachCams', url: 'https://njbeachcams.com' },
+            'oceancity.com': { name: 'OceanCity.com', url: 'https://www.oceancity.com/webcams/' },
+            'skylinewebcams.com': { name: 'SkylineWebcams', url: 'https://www.skylinewebcams.com' },
+            'twiddy.com': { name: 'Twiddy & Co.', url: 'https://www.twiddy.com' },
+            'windy.com': { name: 'Windy', url: 'https://www.windy.com' }
+        };
+
+        function getCamSource(pageUrl) {
+            if (!pageUrl) return null;
+            for (var domain in CAM_SOURCES) {
+                if (pageUrl.indexOf(domain) !== -1) return CAM_SOURCES[domain];
+            }
+            return null;
+        }
+
         function destroyCam(slotIndex) {
             if (activeCamInstances[slotIndex]) {
                 try { activeCamInstances[slotIndex].destroy(); } catch (e) {}
@@ -4076,6 +4171,18 @@
                 contentEl.appendChild(wrapper);
                 badgeEl.textContent = 'Link';
                 badgeEl.style.color = '';
+            }
+
+            // Attribution bar
+            var source = getCamSource(camData.page_url);
+            if (source) {
+                contentEl.style.position = 'relative';
+                var attr = document.createElement('div');
+                attr.className = 'cam-attribution';
+                var domain = source.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+                attr.innerHTML = '<img src="https://www.google.com/s2/favicons?domain=' + domain + '&sz=16" alt="">' +
+                    '<a href="' + source.url + '" target="_blank" rel="noopener" onclick="event.stopPropagation();">' + source.name + '</a>';
+                contentEl.appendChild(attr);
             }
 
             // Re-show panel unless user has manually hidden it
