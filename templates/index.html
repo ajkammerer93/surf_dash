@@ -2676,9 +2676,9 @@
                     }
 
                     const current = data[0];
-                    document.getElementById('current_wave_height').textContent = `${(current.wave_height * M_TO_FT).toFixed(1)} ft`;
-                    document.getElementById('current_wave_period').textContent = `${current.wave_period.toFixed(2)} s`;
-                    document.getElementById('current_wave_direction').textContent = `${current.wave_direction.toFixed(0)} °`;
+                    document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * M_TO_FT).toFixed(1)} ft` : '-';
+                    document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(2)} s` : '-';
+                    document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${current.wave_direction.toFixed(0)} °` : '-';
                     // Wind (km/h → mph)
                     const KMH_TO_MPH = 0.621371;
                     document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
@@ -2751,8 +2751,8 @@
                         const row = `<tr class="${rowClass}">
                             <td>${dateStr}</td>
                             <td>${timeStr}</td>
-                            <td>${(item.wave_height * M_TO_FT).toFixed(1)}</td>
-                            <td>${item.wave_period.toFixed(1)}</td>
+                            <td>${item.wave_height != null ? (item.wave_height * M_TO_FT).toFixed(1) : '-'}</td>
+                            <td>${item.wave_period != null ? item.wave_period.toFixed(1) : '-'}</td>
                             <td>${windSpeed}</td>
                             <td>${windDir}${offshoreIndicator}</td>
                         </tr>`;
