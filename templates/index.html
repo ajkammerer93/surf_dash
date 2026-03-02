@@ -874,6 +874,8 @@
         }
 
         .conditions-hint .good { color: var(--status-live); }
+        .conditions-hint .fair { color: var(--status-warning); }
+        .conditions-hint .choppy { color: var(--status-error); }
 
         /* === Data Table === */
         .data-table {
@@ -909,6 +911,45 @@
 
         .data-table tr.row-good td {
             color: var(--status-live);
+        }
+
+        .data-table tr.row-fair td {
+            color: var(--status-warning);
+        }
+
+        .data-table tr.row-choppy td {
+            color: var(--status-error);
+        }
+
+        .conditions-legend {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .conditions-legend .cond-key {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .conditions-legend .cond-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+
+        .cond-swatch.clean { background: #44ff88; }
+        .cond-swatch.fair { background: #ffce56; }
+        .cond-swatch.choppy { background: #ff4444; }
+
+        @media (max-width: 600px) {
+            .conditions-legend .cond-label { display: none; }
+            .conditions-legend { gap: 6px; }
         }
 
         /* === Charts === */
@@ -1344,6 +1385,11 @@
                     <div class="panel-header">
                         <span class="panel-title">Wave &amp; Wind Forecast</span>
                         <span class="panel-location"></span>
+                        <div class="conditions-legend">
+                            <span class="cond-key"><span class="cond-swatch clean"></span><span class="cond-label">Clean</span></span>
+                            <span class="cond-key"><span class="cond-swatch fair"></span><span class="cond-label">Fair</span></span>
+                            <span class="cond-key"><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div class="chart-wrap">
@@ -1539,7 +1585,9 @@
                     </div>
                     <div class="panel-content">
                         <p class="conditions-hint">
-                            <span class="good">&#10003;</span> = Offshore/calm wind (NW &plusmn;45&deg; or &lt;3 mph) &mdash; good conditions
+                            <span class="good">&#10003; Clean</span> = Offshore/calm wind &nbsp;
+                            <span class="fair">&#9679; Fair</span> = Cross-shore/light onshore &nbsp;
+                            <span class="choppy">&#10007; Choppy</span> = Onshore wind
                         </p>
                         <table class="data-table">
                             <thead>
@@ -2560,6 +2608,53 @@
             }
         };
 
+        // Surf condition background shading plugin — colored bands by wind condition
+        const surfConditionPlugin = {
+            id: 'surfConditions',
+            beforeDraw(chart) {
+                if (!window._surfConditions || !window._surfConditions.length) return;
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!chartArea) return;
+                const { left, right, top, bottom } = chartArea;
+                const height = bottom - top;
+                const conditions = window._surfConditions;
+                const dataset = chart.data.datasets[0];
+                if (!dataset || !dataset.data || !dataset.data.length) return;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(left, top, right - left, height);
+                ctx.clip();
+
+                // Group consecutive same-condition hours into bands
+                let bandStart = 0;
+                for (let i = 0; i <= conditions.length; i++) {
+                    if (i < conditions.length && conditions[i] === conditions[bandStart]) continue;
+                    // Draw band from bandStart to i
+                    const cond = conditions[bandStart];
+                    const colors = {
+                        clean:  'rgba(68, 255, 136, 0.08)',
+                        fair:   'rgba(255, 206, 86, 0.08)',
+                        choppy: 'rgba(255, 68, 68, 0.08)'
+                    };
+                    const color = colors[cond];
+                    if (color) {
+                        const startTime = dataset.data[bandStart].x;
+                        const endTime = dataset.data[Math.min(i, conditions.length - 1)].x;
+                        const x1 = Math.max(x.getPixelForValue(startTime), left);
+                        const x2 = Math.min(x.getPixelForValue(endTime), right);
+                        if (x2 > x1) {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x1, top, x2 - x1, height);
+                        }
+                    }
+                    bandStart = i;
+                }
+
+                ctx.restore();
+            }
+        };
+
         // Linked tooltip helper — mirrors hover position from one chart to the other
         function syncTooltip(sourceChart, targetChart, event) {
             if (!targetChart || !targetChart.canvas) return;
@@ -2699,24 +2794,48 @@
                         return dirs[Math.round(deg / 22.5) % 16];
                     }
 
-                    // Check if wind is offshore (good for surfing)
-                    const OFFSHORE_DIRECTION = 315;
-                    const OFFSHORE_TOLERANCE = 45;
+                    // Surf condition classification based on wind direction relative to beach
+                    // BEACH_FACING_DIRECTION: the compass direction the beach faces (perpendicular to shoreline, pointing seaward).
+                    // Surf City, NC faces SE (135°). Onshore wind comes FROM 135°, offshore FROM 315° (NW).
+                    const BEACH_FACING_DIRECTION = 135;
                     const CALM_WIND_THRESHOLD = 5;
+                    const LIGHT_ONSHORE_THRESHOLD = 10;
 
-                    function isOffshoreWind(windDirection, windSpeed) {
+                    const CONDITION_COLORS = {
+                        clean:  { bg: 'rgba(68, 255, 136, 0.08)', label: 'Offshore / Clean' },
+                        fair:   { bg: 'rgba(255, 206, 86, 0.08)',  label: 'Cross-shore / Fair' },
+                        choppy: { bg: 'rgba(255, 68, 68, 0.08)',   label: 'Onshore / Choppy' },
+                        unknown:{ bg: 'rgba(0, 0, 0, 0)',          label: 'Unknown' }
+                    };
+
+                    function classifySurfCondition(windDirection, windSpeed) {
+                        // Calm wind is always clean
                         if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD) {
-                            return true;
+                            return 'clean';
                         }
-
                         if (windDirection === null || windDirection === undefined) {
-                            return false;
+                            return 'unknown';
                         }
-
-                        let diff = Math.abs(windDirection - OFFSHORE_DIRECTION);
+                        // Angle between wind direction and onshore (beach-facing) direction
+                        let diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
                         if (diff > 180) diff = 360 - diff;
+                        // diff=0 means pure onshore, diff=180 means pure offshore
+                        if (diff >= 135) {
+                            return 'clean';   // offshore ±45°
+                        }
+                        if (diff >= 45) {
+                            return 'fair';    // cross-shore
+                        }
+                        // Onshore zone (diff < 45°): light onshore is fair, stronger is choppy
+                        if (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD) {
+                            return 'fair';
+                        }
+                        return 'choppy';
+                    }
 
-                        return diff <= OFFSHORE_TOLERANCE;
+                    // Backward-compatible wrapper
+                    function isOffshoreWind(windDirection, windSpeed) {
+                        return classifySurfCondition(windDirection, windSpeed) === 'clean';
                     }
 
                     // Filter to 5am-9pm and sample every 3 hours
@@ -2744,9 +2863,11 @@
                         const windDir = item.wind_direction !== null ? `${degToCompass(item.wind_direction)} (${item.wind_direction.toFixed(0)}°)` : '-';
                         const windSpeed = item.wind_speed !== null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
 
-                        const offshore = isOffshoreWind(item.wind_direction, item.wind_speed);
-                        const rowClass = offshore ? 'row-good' : '';
-                        const offshoreIndicator = offshore ? ' &#10003;' : '';
+                        const condition = classifySurfCondition(item.wind_direction, item.wind_speed);
+                        const rowClassMap = { clean: 'row-good', fair: 'row-fair', choppy: 'row-choppy' };
+                        const indicatorMap = { clean: ' &#10003;', fair: ' &#9679;', choppy: ' &#10007;' };
+                        const rowClass = rowClassMap[condition] || '';
+                        const offshoreIndicator = indicatorMap[condition] || '';
 
                         const row = `<tr class="${rowClass}">
                             <td>${dateStr}</td>
@@ -2760,8 +2881,11 @@
                     });
                     const ctx = document.getElementById('waveChart').getContext('2d');
 
-                    // Store wind directions for the custom plugin
+                    // Store wind directions and surf conditions for custom plugins
                     const windDirections = data.map(item => item.wind_direction);
+                    window._surfConditions = data.map(item =>
+                        classifySurfCondition(item.wind_direction, item.wind_speed)
+                    );
 
                     // Custom plugin to draw wind direction arrows
                     const windArrowPlugin = {
@@ -2814,7 +2938,7 @@
 
                     waveChart = new Chart(ctx, {
                         type: 'line',
-                        plugins: [dayNightPlugin, windArrowPlugin],
+                        plugins: [surfConditionPlugin, dayNightPlugin, windArrowPlugin],
                         data: {
                             datasets: [
                                 {
@@ -2925,11 +3049,17 @@
                                         title: formatLocalTooltipTitle,
                                         afterBody: function(context) {
                                             const index = context[0].dataIndex;
+                                            const lines = [];
                                             const dir = windDirections[index];
                                             if (dir !== null && dir !== undefined) {
-                                                return `Wind Direction: ${dir.toFixed(0)}°`;
+                                                lines.push(`Wind Direction: ${dir.toFixed(0)}°`);
                                             }
-                                            return '';
+                                            if (window._surfConditions && window._surfConditions[index]) {
+                                                const cond = window._surfConditions[index];
+                                                const label = CONDITION_COLORS[cond] ? CONDITION_COLORS[cond].label : cond;
+                                                lines.push(`Conditions: ${label}`);
+                                            }
+                                            return lines.join('\n');
                                         }
                                     }
                                 },
