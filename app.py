@@ -15,6 +15,38 @@ try:
 except ImportError:
     pass
 
+
+def _retry_request(request_fn, max_retries=2):
+    """
+    Retry wrapper for HTTP requests.
+    Calls request_fn() up to (1 + max_retries) times.
+    Retries on 5xx responses, connection errors, and timeouts.
+    Does NOT retry on 4xx (client) errors.
+    Returns the response on success; re-raises the last exception on failure.
+    """
+    last_exc = None
+    last_resp = None
+    for attempt in range(1 + max_retries):
+        try:
+            resp = request_fn()
+            if resp.status_code < 500:
+                return resp
+            # 5xx — retry
+            last_resp = resp
+            if attempt < max_retries:
+                print(f"  Retry {attempt+1}/{max_retries}: HTTP {resp.status_code}")
+                time.sleep(1)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            last_resp = None
+            if attempt < max_retries:
+                print(f"  Retry {attempt+1}/{max_retries}: {type(exc).__name__}")
+                time.sleep(1)
+    if last_exc is not None:
+        raise last_exc
+    return last_resp
+
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -92,10 +124,21 @@ def cached(key, fn, ttl=CACHE_TTL):
         _cache[key] = {'data': result, 'time': now}
     return result
 
+DEFAULT_LAT = 34.42711
+DEFAULT_LON = -77.54608
+
+def validate_lat_lon():
+    """Parse and validate lat/lon from request args. Returns (lat, lon) or a 400 Response."""
+    lat = request.args.get('lat', DEFAULT_LAT, type=float)
+    lon = request.args.get('lon', DEFAULT_LON, type=float)
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return jsonify({"error": "lat must be between -90 and 90, lon must be between -180 and 180."}), 400
+    return lat, lon
+
 def get_point_weather_data(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point.
-    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to ERDDAP.
+    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to Open-Meteo Marine.
     Enriches result with air and water temperature from Open-Meteo.
     """
     if _in_gfswave_atlantic_coverage(latitude, longitude):
@@ -103,14 +146,16 @@ def get_point_weather_data(latitude, longitude):
             result = _get_point_from_nomads(latitude, longitude)
             if result:
                 _enrich_with_temperatures(result, latitude, longitude)
+                _enrich_with_wind(result, latitude, longitude)
                 return result
-            print("NOMADS point forecast returned no data, falling back to ERDDAP")
+            print("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
         except Exception as e:
-            print(f"NOMADS point forecast failed, falling back to ERDDAP: {e}")
+            print(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
             traceback.print_exc()
-    result = _get_point_from_erddap(latitude, longitude)
+    result = _get_point_from_open_meteo(latitude, longitude)
     if result:
         _enrich_with_temperatures(result, latitude, longitude)
+        _enrich_with_wind(result, latitude, longitude)
     return result
 
 
@@ -123,23 +168,23 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     try:
         # Air temperature
         air_temp = None
-        resp = requests.get(
+        resp = _retry_request(lambda: requests.get(
             "https://api.open-meteo.com/v1/forecast",
             params={"latitude": latitude, "longitude": longitude,
                     "current": "temperature_2m", "timezone": "auto"},
             timeout=10
-        )
+        ))
         if resp.ok:
             air_temp = resp.json().get("current", {}).get("temperature_2m")
 
         # Sea surface temperature
         water_temp = None
-        resp = requests.get(
+        resp = _retry_request(lambda: requests.get(
             "https://marine-api.open-meteo.com/v1/marine",
             params={"latitude": latitude, "longitude": longitude,
                     "current": "sea_surface_temperature"},
             timeout=10
-        )
+        ))
         if resp.ok:
             water_temp = resp.json().get("current", {}).get("sea_surface_temperature")
 
@@ -150,10 +195,142 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     except Exception as e:
         print(f"  Temperature fetch failed (non-critical): {e}")
 
+
+def _enrich_with_wind(forecast, latitude, longitude):
+    """
+    Replace wind_speed / wind_direction in the forecast list with Open-Meteo
+    hourly data.  Keeps existing (NOMADS / Open-Meteo) values for any hours where
+    Open-Meteo data is missing or the request fails entirely.
+    Non-critical — silently skips on failure.
+    """
+    try:
+        resp = _retry_request(lambda: requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": latitude, "longitude": longitude,
+                "hourly": "wind_speed_10m,wind_direction_10m",
+                "wind_speed_unit": "kmh",
+                "timezone": "UTC",
+                "forecast_days": 7,
+            },
+            timeout=10,
+        ))
+        if not resp.ok:
+            print(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), keeping original wind")
+            return
+        om = resp.json().get("hourly", {})
+        om_times = om.get("time", [])
+        om_ws = om.get("wind_speed_10m", [])
+        om_wd = om.get("wind_direction_10m", [])
+        # Build time-keyed lookup (Open-Meteo returns "2025-03-01T00:00")
+        om_lookup = {}
+        for idx, t_str in enumerate(om_times):
+            om_lookup[t_str] = idx
+        matched = 0
+        for entry in forecast:
+            # forecast times are "2025-03-01 00:00"; Open-Meteo uses "T" separator
+            key = entry["time"].replace(" ", "T")
+            if key in om_lookup:
+                oi = om_lookup[key]
+                if oi < len(om_ws) and om_ws[oi] is not None:
+                    entry["wind_speed"] = round(float(om_ws[oi]), 1)
+                if oi < len(om_wd) and om_wd[oi] is not None:
+                    entry["wind_direction"] = round(float(om_wd[oi]), 1)
+                matched += 1
+        print(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
+    except Exception as e:
+        print(f"  Open-Meteo wind fetch failed (non-critical): {e}")
+
+
+def _get_point_from_open_meteo(latitude, longitude):
+    """
+    Fetches wave forecast for a single point using Open-Meteo Marine API.
+    Returns forecast list with wave data, or None on failure.
+    Wind speed/direction are left as None (filled later by _enrich_with_wind).
+    """
+    try:
+        print(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
+        resp = _retry_request(lambda: requests.get(
+            "https://marine-api.open-meteo.com/v1/marine",
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "hourly": "wave_height,wave_period,wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction",
+                "forecast_days": 7,
+                "timezone": "UTC",
+            },
+            timeout=30,
+        ))
+        if not resp.ok:
+            print(f"  Open-Meteo Marine HTTP {resp.status_code}")
+            return None
+
+        data = resp.json()
+        hourly = data.get("hourly", {})
+        times = hourly.get("time", [])
+        if not times:
+            print("  Open-Meteo Marine returned no hourly data")
+            return None
+
+        wh = hourly.get("wave_height", [])
+        wp = hourly.get("wave_period", [])
+        wd = hourly.get("wave_direction", [])
+        wwh = hourly.get("wind_wave_height", [])
+        wwp = hourly.get("wind_wave_period", [])
+        wwd = hourly.get("wind_wave_direction", [])
+
+        # Compute sunrise/sunset for each unique date
+        sunrise_map = {}
+        sunset_map = {}
+        for t_str in times:
+            date_key = t_str[:10]  # "YYYY-MM-DD"
+            if date_key not in sunrise_map:
+                dt = datetime.strptime(date_key, "%Y-%m-%d")
+                sr, ss = _sunrise_sunset(latitude, longitude, dt.date())
+                sunrise_map[date_key] = sr
+                sunset_map[date_key] = ss
+
+        def _val(arr, idx):
+            if idx < len(arr) and arr[idx] is not None:
+                return round(float(arr[idx]), 2)
+            return None
+
+        forecast = []
+        for i, t_str in enumerate(times):
+            date_key = t_str[:10]
+            # Open-Meteo times are "YYYY-MM-DDTHH:MM"; convert to space-separated
+            time_str = t_str.replace("T", " ")
+            forecast.append({
+                "time": time_str,
+                "wave_height": _val(wh, i),
+                "wave_period": _val(wp, i),
+                "wave_direction": _val(wd, i),
+                "wind_wave_height": _val(wwh, i),
+                "wind_wave_period": _val(wwp, i),
+                "wind_wave_direction": _val(wwd, i),
+                "wind_speed": None,
+                "wind_direction": None,
+                "sunrise": sunrise_map.get(date_key),
+                "sunset": sunset_map.get(date_key),
+            })
+
+        print(f"  Open-Meteo Marine: {len(forecast)} hourly entries")
+        return forecast
+
+    except Exception as e:
+        print(f"Error fetching point forecast from Open-Meteo Marine: {e}")
+        traceback.print_exc()
+        return None
+
+
 def _get_point_from_erddap(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point using ERDDAP.
     WW3 for waves, GFS for wind, local computation for sunrise/sunset.
+
+    NOTE: No longer called from the main forecast path (replaced by
+    _get_point_from_open_meteo). Kept for potential future use as an
+    alternative data source.
     """
     try:
         # Convert longitude to 0-360 for ERDDAP
@@ -662,7 +839,7 @@ def _parse_opendap_ascii(text, variable_names):
 def _get_point_from_nomads(lat, lon):
     """
     Fetch point forecast from NOMADS GFS-Wave Atlantic 0.16deg.
-    Returns forecast list in the same format as _get_point_from_erddap.
+    Returns forecast list in the same format as _get_point_from_open_meteo.
     """
     base_url = _find_latest_nomads_cycle()
     if not base_url:
@@ -681,8 +858,7 @@ def _get_point_from_nomads(lat, lon):
     lat_slice = f"[{lat_lo}:1:{lat_hi}]"
     lon_slice = f"[{lon_lo}:1:{lon_hi}]"
 
-    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "wvhgtsfc", "wvpersfc",
-                 "ugrdsfc", "vgrdsfc"]
+    variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "wvhgtsfc", "wvpersfc"]
 
     print(f"Point forecast: fetching NOMADS GFS-Wave for ({lat}, {lon})...")
     data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
@@ -714,8 +890,6 @@ def _get_point_from_nomads(lat, lon):
     dirpw = data['grids']['dirpwsfc'][:, best_li, best_loi]
     wvhgt = data['grids']['wvhgtsfc'][:, best_li, best_loi]
     wvper = data['grids']['wvpersfc'][:, best_li, best_loi]
-    ugrd = data['grids']['ugrdsfc'][:, best_li, best_loi]
-    vgrd = data['grids']['vgrdsfc'][:, best_li, best_loi]
 
     # Interpolate 3-hourly to hourly
     src_secs = np.array([(t - time_dts[0]).total_seconds() for t in time_dts])
@@ -731,12 +905,6 @@ def _get_point_from_nomads(lat, lon):
     dirpw_h = np.interp(tgt_secs, src_secs, dirpw)
     wvhgt_h = np.interp(tgt_secs, src_secs, wvhgt)
     wvper_h = np.interp(tgt_secs, src_secs, wvper)
-    ugrd_h = np.interp(tgt_secs, src_secs, ugrd)
-    vgrd_h = np.interp(tgt_secs, src_secs, vgrd)
-
-    # Compute wind speed and direction from U/V
-    wind_speed = np.sqrt(ugrd_h**2 + vgrd_h**2) * 3.6  # m/s to km/h
-    wind_dir = (270 - np.degrees(np.arctan2(vgrd_h, ugrd_h))) % 360
 
     # Compute sunrise/sunset for each day
     sunrise_map = {}
@@ -759,8 +927,8 @@ def _get_point_from_nomads(lat, lon):
             "wave_direction": round(float(dirpw_h[i]), 1) if not np.isnan(dirpw_h[i]) else None,
             "wind_wave_height": round(float(wvhgt_h[i]), 2) if not np.isnan(wvhgt_h[i]) else None,
             "wind_wave_period": round(float(wvper_h[i]), 1) if not np.isnan(wvper_h[i]) else None,
-            "wind_speed": round(float(wind_speed[i]), 1),
-            "wind_direction": round(float(wind_dir[i]), 1),
+            "wind_speed": None,
+            "wind_direction": None,
             "sunrise": sunrise_map.get(date_key),
             "sunset": sunset_map.get(date_key),
         })
@@ -836,6 +1004,23 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
         vgrd[t] = _fill_nan_nearest(vgrd[t])
     wind_speed = np.sqrt(ugrd**2 + vgrd**2) * 3.6  # m/s -> km/h
     wind_dir = (270 - np.degrees(np.arctan2(vgrd, ugrd))) % 360
+
+    # Detect stale wind: NOMADS repeats the last valid wind grid for later timesteps.
+    # Require 2+ consecutive identical grids before declaring staleness.
+    consecutive_same = 0
+    stale_start = None
+    for t in range(1, wind_speed.shape[0]):
+        if np.allclose(wind_speed[t], wind_speed[t - 1], atol=0.01) and \
+           np.allclose(wind_dir[t], wind_dir[t - 1], atol=0.01):
+            consecutive_same += 1
+            if consecutive_same >= 2 and stale_start is None:
+                stale_start = t - 1  # first stale timestep
+        else:
+            consecutive_same = 0
+    if stale_start is not None:
+        print(f"  Wind staleness detected at timestep {stale_start}/{wind_speed.shape[0]}, zeroing stale wind data")
+        wind_speed[stale_start:] = 0.0
+        wind_dir[stale_start:] = 0.0
 
     # Replace remaining NaN with 0 for JSON serialization
     wave_height = np.nan_to_num(wave_height, nan=0.0)
@@ -993,9 +1178,10 @@ def forecast():
     Provides weather forecast data for a single point as JSON.
     Accepts optional lat/lon query parameters.
     """
-    # Get lat/lon from query params, default to Surf City, North Carolina
-    lat = request.args.get('lat', 34.42711, type=float)
-    lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    lat, lon = result
 
     cache_key = f"forecast:{lat:.4f},{lon:.4f}"
     data = cached(cache_key, lambda: get_point_weather_data(lat, lon))
@@ -1012,9 +1198,10 @@ def map_forecast():
     Provides gridded weather forecast data as JSON for a specified bounding box.
     Accepts optional lat/lon query parameters to center the bounding box.
     """
-    # Get center lat/lon from query params, default to Surf City, North Carolina
-    center_lat = request.args.get('lat', 34.42711, type=float)
-    center_lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    center_lat, center_lon = result
 
     # Round to reduce URL length
     center_lat = round(center_lat, 2)
@@ -1244,9 +1431,10 @@ def ocean_basin():
     Provides wave data for the ocean basin around the forecast location.
     Accepts optional lat/lon query parameters.
     """
-    # Get center lat/lon from query params (used only for map centering, not data bounds)
-    center_lat = request.args.get('lat', 34.42711, type=float)
-    center_lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    center_lat, center_lon = result
 
     # Global data is the same for all locations — single cache entry
     cache_key = "basin:global"
@@ -1386,9 +1574,10 @@ def tides():
     Provides tide prediction data as JSON for the nearest station to the forecast location.
     Accepts optional lat/lon query parameters.
     """
-    # Get lat/lon from query params, default to Surf City, North Carolina
-    target_lat = request.args.get('lat', 34.42711, type=float)
-    target_lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    target_lat, target_lon = result
 
     cache_key = f"tides:{target_lat:.4f},{target_lon:.4f}"
 
@@ -1410,8 +1599,10 @@ def tides():
 
 @app.route('/api/webcams')
 def webcams():
-    lat = request.args.get('lat', 34.42711, type=float)
-    lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    lat, lon = result
     cache_key = f"webcams:{lat:.2f},{lon:.2f}"
     cameras = cached(cache_key, lambda: find_nearest_cameras(lat, lon, count=50))
     return jsonify({"cameras": cameras or []})
@@ -1797,8 +1988,10 @@ def get_buoy_data(lat, lon):
 
 @app.route('/api/buoys')
 def buoys_endpoint():
-    lat = request.args.get('lat', 34.42711, type=float)
-    lon = request.args.get('lon', -77.54608, type=float)
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    lat, lon = result
     cache_key = f"buoys:{lat:.4f},{lon:.4f}"
     data = cached(cache_key, lambda: get_buoy_data(lat, lon))
     if data:
