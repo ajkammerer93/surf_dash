@@ -109,6 +109,220 @@ def _load_cdip_stations():
 NDBC_STATIONS = _load_ndbc_stations()
 CDIP_STATIONS = _load_cdip_stations()
 
+
+def _load_coastline_data():
+    """Load preprocessed coastline data from coastline_data.npz."""
+    path = os.path.join(os.path.dirname(__file__), 'coastline_data.npz')
+    try:
+        data = np.load(path)
+        result = {
+            'seg_start': data['seg_start'],     # (N, 2) [lat, lon]
+            'seg_end': data['seg_end'],          # (N, 2) [lat, lon]
+            'seg_mid': data['seg_mid'],          # (N, 2) [lat, lon]
+            'land_vertices': data['land_vertices'],       # (M, 2)
+            'land_parts_offsets': data['land_parts_offsets'],  # (P+1,)
+            'land_bboxes': data['land_bboxes'],           # (P, 4) [lat_min, lat_max, lon_min, lon_max]
+        }
+        print(f"Loaded coastline data: {len(result['seg_start'])} segments, "
+              f"{len(result['land_bboxes'])} land polygons")
+        return result
+    except Exception as e:
+        print(f"Warning: could not load coastline_data.npz: {e}")
+        return None
+
+COASTLINE_DATA = _load_coastline_data()
+
+
+def _vectorized_haversine(lat1, lon1, lat2_arr, lon2_arr):
+    """Haversine distance from (lat1, lon1) to arrays of (lat2, lon2). Returns km."""
+    lat1_r = np.radians(lat1)
+    lon1_r = np.radians(lon1)
+    lat2_r = np.radians(lat2_arr)
+    lon2_r = np.radians(lon2_arr)
+    dlat = lat2_r - lat1_r
+    dlon = lon2_r - lon1_r
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1_r) * np.cos(lat2_r) * np.sin(dlon / 2) ** 2
+    return 6371.0 * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+
+
+def _bearing(lat1, lon1, lat2, lon2):
+    """Initial bearing from (lat1,lon1) to (lat2,lon2) in degrees [0, 360)."""
+    lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
+    lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
+    dlon = lon2_r - lon1_r
+    x = math.sin(dlon) * math.cos(lat2_r)
+    y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(dlon)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
+def _offset_point(lat, lon, bearing_deg, dist_km):
+    """Approximate point offset from (lat, lon) along bearing by dist_km."""
+    # Simple flat-earth approximation good enough for ~5-10 km offsets
+    bearing_rad = math.radians(bearing_deg)
+    dlat = (dist_km / 111.32) * math.cos(bearing_rad)
+    dlon = (dist_km / (111.32 * math.cos(math.radians(lat)))) * math.sin(bearing_rad)
+    return lat + dlat, lon + dlon
+
+
+def _point_to_segment_distance(plat, plon, slat1, slon1, slat2, slon2):
+    """Approximate distance (km) from point to line segment using flat-earth projection."""
+    cos_lat = math.cos(math.radians(plat))
+    # Project to km-scale flat coordinates
+    px = (plon - slon1) * 111.32 * cos_lat
+    py = (plat - slat1) * 111.32
+    sx = (slon2 - slon1) * 111.32 * cos_lat
+    sy = (slat2 - slat1) * 111.32
+    seg_len_sq = sx * sx + sy * sy
+    if seg_len_sq < 1e-12:
+        return math.sqrt(px * px + py * py)
+    t = max(0.0, min(1.0, (px * sx + py * sy) / seg_len_sq))
+    dx = px - t * sx
+    dy = py - t * sy
+    return math.sqrt(dx * dx + dy * dy)
+
+
+def _point_in_polygon(plat, plon, verts_lat, verts_lon):
+    """Ray-casting point-in-polygon test."""
+    n = len(verts_lat)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        yi, yj = verts_lat[i], verts_lat[j]
+        xi, xj = verts_lon[i], verts_lon[j]
+        if ((yi > plat) != (yj > plat)) and \
+           (plon < (xj - xi) * (plat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_in_land(plat, plon, coastline_data):
+    """Check if a point is inside any land polygon, using bounding box pre-filtering."""
+    bboxes = coastline_data['land_bboxes']
+    offsets = coastline_data['land_parts_offsets']
+    verts = coastline_data['land_vertices']
+
+    # Vectorized bbox check
+    mask = ((bboxes[:, 0] <= plat) & (plat <= bboxes[:, 1]) &
+            (bboxes[:, 2] <= plon) & (plon <= bboxes[:, 3]))
+    candidates = np.where(mask)[0]
+
+    for idx in candidates:
+        start = offsets[idx]
+        end = offsets[idx + 1]
+        ring = verts[start:end]
+        if _point_in_polygon(plat, plon, ring[:, 0], ring[:, 1]):
+            return True
+    return False
+
+
+def compute_beach_facing_direction(lat, lon):
+    """Compute the compass direction a beach faces at (lat, lon).
+
+    Returns dict with beach_facing_direction, coastline_bearing,
+    distance_to_coast_km, confidence — or None if inland / data unavailable.
+    """
+    if COASTLINE_DATA is None:
+        return None
+
+    seg_mid = COASTLINE_DATA['seg_mid']
+    seg_start = COASTLINE_DATA['seg_start']
+    seg_end = COASTLINE_DATA['seg_end']
+
+    # 1. Coarse filter: bounding box on midpoints within ~2 degrees
+    BOX_DEG = 2.0
+    mask = ((np.abs(seg_mid[:, 0] - lat) < BOX_DEG) &
+            (np.abs(seg_mid[:, 1] - lon) < BOX_DEG))
+    candidates = np.where(mask)[0]
+
+    if len(candidates) == 0:
+        # Widen search to 5 degrees
+        BOX_DEG = 5.0
+        mask = ((np.abs(seg_mid[:, 0] - lat) < BOX_DEG) &
+                (np.abs(seg_mid[:, 1] - lon) < BOX_DEG))
+        candidates = np.where(mask)[0]
+        if len(candidates) == 0:
+            return None  # Truly inland or far from any coast
+
+    # 2. Vectorized haversine to candidate midpoints
+    dists = _vectorized_haversine(lat, lon,
+                                  seg_mid[candidates, 0],
+                                  seg_mid[candidates, 1])
+
+    # Reject if nearest coast is > 200 km
+    min_dist = float(np.min(dists))
+    if min_dist > 200:
+        return None
+
+    # 3. Fine rank: point-to-segment distance for top ~20
+    top_k = min(20, len(candidates))
+    top_indices = np.argpartition(dists, top_k)[:top_k]
+
+    best_dist = float('inf')
+    best_seg_idx = None
+    for idx in top_indices:
+        ci = candidates[idx]
+        d = _point_to_segment_distance(
+            lat, lon,
+            float(seg_start[ci, 0]), float(seg_start[ci, 1]),
+            float(seg_end[ci, 0]), float(seg_end[ci, 1])
+        )
+        if d < best_dist:
+            best_dist = d
+            best_seg_idx = ci
+
+    # 4. Tangent bearing along nearest segment
+    s0_lat, s0_lon = float(seg_start[best_seg_idx, 0]), float(seg_start[best_seg_idx, 1])
+    s1_lat, s1_lon = float(seg_end[best_seg_idx, 0]), float(seg_end[best_seg_idx, 1])
+    coastline_bearing = _bearing(s0_lat, s0_lon, s1_lat, s1_lon)
+
+    # 5. Two perpendicular candidates (±90° from coastline)
+    perp_a = (coastline_bearing + 90) % 360
+    perp_b = (coastline_bearing - 90) % 360
+
+    # 6. Ocean/land disambiguation: sample test points along each perpendicular
+    for offset_km in [5, 10, 20]:
+        pt_a_lat, pt_a_lon = _offset_point(lat, lon, perp_a, offset_km)
+        pt_b_lat, pt_b_lon = _offset_point(lat, lon, perp_b, offset_km)
+
+        a_land = _point_in_land(pt_a_lat, pt_a_lon, COASTLINE_DATA)
+        b_land = _point_in_land(pt_b_lat, pt_b_lon, COASTLINE_DATA)
+
+        if a_land and not b_land:
+            beach_facing = perp_b
+            confidence = 'high' if offset_km <= 10 else 'medium'
+            break
+        elif b_land and not a_land:
+            beach_facing = perp_a
+            confidence = 'high' if offset_km <= 10 else 'medium'
+            break
+        elif not a_land and not b_land:
+            # Both ocean (island?) — pick direction away from nearest land bbox center
+            # Fallback: use the perpendicular closest to "away from continent center"
+            continue
+    else:
+        # All attempts inconclusive — use heuristic: pick perpendicular pointing
+        # more toward equator / open ocean. This handles small islands.
+        # If query point is in northern hemisphere, prefer the southward perpendicular
+        if lat > 0:
+            # Prefer the perpendicular with more southward component
+            a_south = math.cos(math.radians(perp_a))  # cos of bearing: 1=N, -1=S
+            b_south = math.cos(math.radians(perp_b))
+            beach_facing = perp_a if a_south < b_south else perp_b
+        else:
+            a_north = math.cos(math.radians(perp_a))
+            b_north = math.cos(math.radians(perp_b))
+            beach_facing = perp_a if a_north > b_north else perp_b
+        confidence = 'low'
+
+    return {
+        'beach_facing_direction': round(beach_facing, 1),
+        'coastline_bearing': round(coastline_bearing, 1),
+        'distance_to_coast_km': round(best_dist, 2),
+        'confidence': confidence,
+    }
+
+
 # Simple time-based response cache
 _cache = {}
 CACHE_TTL = 900  # 15 minutes
@@ -1998,6 +2212,23 @@ def buoys_endpoint():
         return jsonify(data)
     else:
         return jsonify({"error": "Could not retrieve buoy data."}), 500
+
+
+ORIENTATION_CACHE_TTL = 86400  # 24 hours (coastline doesn't change)
+
+@app.route('/api/beach-orientation')
+def beach_orientation():
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    lat, lon = result
+    cache_key = f"orientation:{lat:.4f},{lon:.4f}"
+    data = cached(cache_key, lambda: compute_beach_facing_direction(lat, lon),
+                  ttl=ORIENTATION_CACHE_TTL)
+    if data:
+        return jsonify(data)
+    else:
+        return jsonify({"error": "Could not determine beach orientation. Location may be too far inland."}), 404
 
 
 if __name__ == '__main__':
