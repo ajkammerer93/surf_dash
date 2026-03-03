@@ -1115,7 +1115,18 @@
             padding: 1px 5px;
             border-radius: 3px;
             margin-left: 6px;
-            display: inline-block;
+            display: inline-flex;
+            align-items: baseline;
+            gap: 3px;
+            cursor: help;
+        }
+
+        .session-score-label {
+            font-size: 8px;
+            font-weight: 400;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .session-score-prime { background: rgba(68,255,136,0.15); color: var(--status-live); }
@@ -1933,7 +1944,7 @@
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
-                        <span class="panel-title">Session Planner</span>
+                        <span class="panel-title" title="Scores each 3-hour window based on wave height, swell period, wind conditions, and tide movement. Higher is better.">Session Planner</span>
                         <span class="panel-badge" id="session-planner-badge">Analyzing</span>
                     </div>
                     <div class="panel-content">
@@ -5167,10 +5178,18 @@
                     timeEl.textContent = timeStr;
                     block.appendChild(timeEl);
 
-                    var scoreEl = document.createElement('span');
-                    scoreEl.className = 'session-score session-score-' + w.rating;
-                    scoreEl.textContent = w.score;
-                    block.appendChild(scoreEl);
+                    var scoreWrap = document.createElement('span');
+                    scoreWrap.className = 'session-score session-score-' + w.rating;
+                    scoreWrap.title = 'Surf Score: 0-100 based on wave height, swell period, wind quality, and tide. 75+ = Prime, 55+ = Good, 35+ = Fair.';
+                    var scoreNum = document.createElement('span');
+                    scoreNum.className = 'session-score-num';
+                    scoreNum.textContent = w.score;
+                    var scoreLabel = document.createElement('span');
+                    scoreLabel.className = 'session-score-label';
+                    scoreLabel.textContent = 'surf score';
+                    scoreWrap.appendChild(scoreNum);
+                    scoreWrap.appendChild(scoreLabel);
+                    block.appendChild(scoreWrap);
 
                     var summaryEl = document.createElement('div');
                     summaryEl.className = 'session-summary';
