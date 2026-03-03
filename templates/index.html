@@ -633,6 +633,16 @@
             cursor: pointer;
         }
 
+        /* === Orientation Warning === */
+        .orientation-warning {
+            font-size: 9px;
+            color: var(--status-warning);
+            padding: 4px 8px;
+            margin-top: 4px;
+            border-top: 1px solid var(--border);
+            cursor: help;
+        }
+
         /* === Basin Narrative Overlay === */
         .basin-narrative {
             position: absolute;
@@ -642,7 +652,7 @@
             background: rgba(10, 10, 10, 0.85);
             color: var(--text);
             font-size: 10px;
-            padding: 6px 10px;
+            padding: 6px 24px 6px 10px;
             border-radius: 4px;
             pointer-events: none;
             z-index: 500;
@@ -651,6 +661,24 @@
 
         .basin-narrative strong {
             color: var(--accent);
+        }
+
+        .basin-narrative-close {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 12px;
+            cursor: pointer;
+            pointer-events: auto;
+            padding: 2px 4px;
+            line-height: 1;
+        }
+
+        .basin-narrative-close:hover {
+            color: var(--text);
         }
 
         /* === Skill Level Menu === */
@@ -1146,6 +1174,42 @@
             margin-left: 4px;
         }
 
+        .session-info-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid var(--text-muted);
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-left: 6px;
+            flex-shrink: 0;
+        }
+
+        .session-info-btn:hover {
+            border-color: var(--text);
+            color: var(--text);
+        }
+
+        .session-info-tip {
+            position: absolute;
+            top: 100%;
+            left: 8px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 10px;
+            color: var(--text-dim);
+            z-index: 100;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+
         .conditions-legend {
             display: flex;
             align-items: center;
@@ -1560,17 +1624,17 @@
                     <div class="skill-level-item" data-level="beginner" onclick="setSkillLevel('beginner')">
                         <span class="skill-dot" style="background:#44ff88"></span>
                         <span class="skill-item-label">Beginner</span>
-                        <span class="skill-item-desc">Learning to stand, whitewater</span>
+                        <span class="skill-item-desc">0-3 ft, whitewater</span>
                     </div>
                     <div class="skill-level-item" data-level="intermediate" onclick="setSkillLevel('intermediate')">
                         <span class="skill-dot" style="background:#4488ff"></span>
                         <span class="skill-item-label">Intermediate</span>
-                        <span class="skill-item-desc">Green waves, turns</span>
+                        <span class="skill-item-desc">2-6 ft, green waves</span>
                     </div>
                     <div class="skill-level-item" data-level="advanced" onclick="setSkillLevel('advanced')">
                         <span class="skill-dot" style="background:#ff4444"></span>
                         <span class="skill-item-label">Advanced</span>
-                        <span class="skill-item-desc">Big waves, barrels, airs</span>
+                        <span class="skill-item-desc">4+ ft, barrels &amp; airs</span>
                     </div>
                     <div class="skill-level-item" data-level="all" onclick="setSkillLevel('all')">
                         <span class="skill-dot" style="background:#888"></span>
@@ -1703,6 +1767,7 @@
                                 <span class="stat-value" id="current_water_temp">-</span>
                             </li>
                         </ul>
+                        <div class="orientation-warning" id="orientation-warning" style="display:none" title="Beach orientation unavailable — wind classification (clean/fair/choppy) is approximate">&#x26A0; Wind classification approximate</div>
                         <div class="chart-unavailable" id="current-conditions-error" style="display:none">Conditions data unavailable</div>
                     </div>
                 </div>
@@ -1944,8 +2009,17 @@
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
-                        <span class="panel-title" title="Scores each 3-hour window based on wave height, swell period, wind conditions, and tide movement. Higher is better.">Session Planner</span>
+                        <span class="panel-title">Session Planner</span>
+                        <span class="session-info-btn" id="session-info-btn" onclick="toggleSessionInfo()" title="What is Surf Score?">?</span>
                         <span class="panel-badge" id="session-planner-badge">Analyzing</span>
+                        <div class="session-info-tip" id="session-info-tip" style="display:none">
+                            <strong>Surf Score</strong> (0-100) rates each 3-hour window:<br>
+                            Wave height &amp; swell period + wind quality + tide movement.<br>
+                            <span style="color:var(--status-live)">75+ Prime</span> &middot;
+                            <span style="color:#4488ff">55+ Good</span> &middot;
+                            <span style="color:var(--status-warning)">35+ Fair</span> &middot;
+                            <span style="color:var(--text-muted)">&lt;35 Poor</span>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div id="session-planner-grid">
@@ -2423,20 +2497,21 @@
             if (ft < 0.5) return 'Flat \u2014 no rideable waves';
             if (ft < 1.5) return 'Ankle to knee \u2014 longboard only';
             if (ft < 3) return 'Waist to chest \u2014 fun for most';
-            if (ft < 5) return 'Chest to head \u2014 intermediate+';
+            if (ft < 5) return 'Chest to head \u2014 solid conditions';
             if (ft < 8) return 'Overhead \u2014 experienced surfers';
             return 'Double overhead+ \u2014 experts only';
         }
 
         function describeWavePeriod(periodSeconds) {
             if (periodSeconds == null) return '';
-            if (periodSeconds < 6) return 'Short period \u2014 weak, mushy waves';
+            if (periodSeconds < 6) return 'Short period \u2014 weak, crumbly waves';
             if (periodSeconds < 9) return 'Wind swell \u2014 moderate energy';
             if (periodSeconds < 12) return 'Medium swell \u2014 decent shape';
             if (periodSeconds < 16) return 'Ground swell \u2014 clean, powerful lines';
             return 'Long-period swell \u2014 heavy, well-organized';
         }
 
+        // Note: classifySurfConditionGlobal operates in km/h; thresholds below are in mph after conversion
         function describeWindCondition(windSpeedKmh, windDirection) {
             var mph = windSpeedKmh * KMH_TO_MPH;
             var cond = classifySurfConditionGlobal(windDirection, windSpeedKmh);
@@ -2470,7 +2545,7 @@
                 if (ft >= 1 && ft <= 2.5) score += 20;
                 else if (ft < 0.5) score -= 30;
                 else if (ft > 3.5) score -= 25;
-                else if (ft > 2.5) score -= 5;
+                else if (ft > 2.5) score -= 15;
             } else if (level === 'intermediate') {
                 if (ft >= 2 && ft <= 5) score += 20;
                 else if (ft < 1) score -= 30;
@@ -2494,9 +2569,9 @@
             else if (cond === 'fair') score += 10;
             else if (cond === 'choppy') score -= 15;
 
+            // Tide: award points for any movement (optimal tide direction is break-dependent)
             if (tideHeight != null && tidePrev != null) {
-                if (tideHeight > tidePrev) score += 10;
-                else score += 3;
+                score += 5;
             }
 
             return Math.max(0, Math.min(100, score));
@@ -2519,6 +2594,7 @@
                 tideLookup[key] = t.height;
             });
 
+            // Score each daylight hour
             var scored = [];
             window._forecastData.forEach(function(item) {
                 var d = new Date(item.time);
@@ -2536,24 +2612,35 @@
                 });
             });
 
+            // Fixed 3-hour windows aligned to standard slots
+            var SLOTS = [5, 8, 11, 14, 17];
             var blocks = [];
-            var i = 0;
-            while (i < scored.length) {
-                var block = [scored[i]];
-                var startDay = scored[i].time.toDateString();
-                var startHour = scored[i].time.getHours();
-                i++;
-                while (i < scored.length && block.length < 3 &&
-                       scored[i].time.toDateString() === startDay &&
-                       scored[i].time.getHours() < startHour + 3) {
-                    block.push(scored[i]);
-                    i++;
-                }
+
+            // Group scored hours by day
+            var dayGroups = {};
+            scored.forEach(function(s) {
+                var dayKey = s.time.toDateString();
+                if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
+                dayGroups[dayKey].push(s);
+            });
+
+            Object.keys(dayGroups).forEach(function(dayKey) {
+                var dayItems = dayGroups[dayKey];
+                SLOTS.forEach(function(slotStart) {
+                    var slotEnd = slotStart + 3;
+                    var block = dayItems.filter(function(s) {
+                        var h = s.time.getHours();
+                        return h >= slotStart && h < slotEnd;
+                    });
+                    if (block.length === 0) return;
 
                 var avgScore = block.reduce(function(s, b) { return s + b.score; }, 0) / block.length;
                 var avgWH = block.reduce(function(s, b) { return s + (b.waveHeight || 0); }, 0) / block.length;
                 var avgWP = block.reduce(function(s, b) { return s + (b.wavePeriod || 0); }, 0) / block.length;
-                var windCond = classifySurfConditionGlobal(block[0].windDir, block[0].windSpeed);
+                // Worst-case wind condition across all hours in the block
+                var windConds = block.map(function(b) { return classifySurfConditionGlobal(b.windDir, b.windSpeed); });
+                var windCond = windConds.indexOf('choppy') !== -1 ? 'choppy' :
+                               (windConds.indexOf('fair') !== -1 ? 'fair' : 'clean');
 
                 var rating;
                 if (avgScore >= 75) rating = 'prime';
@@ -2561,14 +2648,21 @@
                 else if (avgScore >= 35) rating = 'fair';
                 else rating = 'poor';
 
+                // Use fixed slot boundaries for startTime/endTime
+                var slotStartTime = new Date(block[0].time);
+                slotStartTime.setHours(slotStart, 0, 0, 0);
+                var slotEndTime = new Date(block[0].time);
+                slotEndTime.setHours(slotEnd, 0, 0, 0);
+
                 blocks.push({
-                    startTime: block[0].time,
-                    endTime: new Date(block[block.length - 1].time.getTime() + 3600000),
+                    startTime: slotStartTime,
+                    endTime: slotEndTime,
                     rating: rating,
                     score: Math.round(avgScore),
                     summary: buildWindowSummary(avgWH, avgWP, windCond)
                 });
-            }
+                }); // end SLOTS.forEach
+            }); // end dayGroups.forEach
 
             return blocks;
         }
@@ -2839,6 +2933,45 @@
             });
         }
 
+        // Rebuild the daylight forecast table from cached data (used on skill level change)
+        function rebuildForecastTable() {
+            if (!window._forecastData) return;
+            var data = window._forecastData;
+            var tableBody = document.getElementById('forecast-table');
+            if (!tableBody) return;
+            tableBody.textContent = '';
+            var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            function dc(deg) { return (deg === null || deg === undefined) ? '-' : dirs[Math.round(deg / 22.5) % 16]; }
+            var condMap = { clean: 'row-good', fair: 'row-fair', choppy: 'row-choppy' };
+            var indMap = { clean: ' \u2713', fair: ' \u25CF', choppy: ' \u2717' };
+            var lastKey = '';
+            data.forEach(function(item) {
+                var d = new Date(item.time);
+                var h = d.getHours();
+                if (h < 5 || h > 21 || h % 3 !== 0) return;
+                var key = d.toDateString() + '-' + h;
+                if (key === lastKey) return;
+                lastKey = key;
+                var cond = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
+                var windMph = item.wind_speed != null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
+                var windDir = item.wind_direction != null ? dc(item.wind_direction) + ' (' + item.wind_direction.toFixed(0) + '\u00B0)' : '-';
+                var condText = [
+                    item.wave_height != null ? describeWaveHeight(item.wave_height) : '',
+                    item.wave_period != null ? describeWavePeriod(item.wave_period) : ''
+                ].filter(Boolean).join('; ');
+                var tr = document.createElement('tr');
+                tr.className = condMap[cond] || '';
+                tr.innerHTML = '<td>' + d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}) + '</td>' +
+                    '<td>' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:true}) + '</td>' +
+                    '<td>' + (item.wave_height != null ? (item.wave_height * M_TO_FT).toFixed(1) : '-') + '</td>' +
+                    '<td>' + (item.wave_period != null ? item.wave_period.toFixed(1) : '-') + '</td>' +
+                    '<td>' + windMph + '</td>' +
+                    '<td>' + windDir + (indMap[cond] || '') + '</td>' +
+                    '<td class="cond-summary">' + condText + '</td>';
+                tableBody.appendChild(tr);
+            });
+        }
+
         function setSkillLevel(level) {
             currentSkillLevel = level;
             localStorage.setItem('skill-level', level);
@@ -2850,7 +2983,8 @@
                 var c = window._forecastData[0];
                 if (c.wave_height != null) document.getElementById('ctx_wave_height').textContent = describeWaveHeight(c.wave_height);
             }
-            // Re-render session planner
+            // Re-render daylight table and session planner
+            rebuildForecastTable();
             if (_forecastLoaded && _tidesLoaded) renderSessionPlanner();
         }
         let locationMap = null;
@@ -3402,6 +3536,9 @@
                     // Update beach facing direction if orientation was resolved
                     if (orientation && orientation.beach_facing_direction != null) {
                         BEACH_FACING_DIRECTION = orientation.beach_facing_direction;
+                        window._orientationAvailable = true;
+                    } else {
+                        window._orientationAvailable = false;
                     }
 
                     if (data.error) {
@@ -3458,6 +3595,10 @@
                     document.getElementById('ctx_wave_period').textContent = current.wave_period != null ? describeWavePeriod(current.wave_period) : '';
                     document.getElementById('ctx_wind').textContent = (current.wind_speed != null) ? describeWindCondition(current.wind_speed, current.wind_direction) : '';
 
+                    // Show orientation warning if beach direction is approximate
+                    var orientWarn = document.getElementById('orientation-warning');
+                    if (orientWarn) orientWarn.style.display = window._orientationAvailable ? 'none' : '';
+
                     const tableBody = document.getElementById('forecast-table');
                     tableBody.innerHTML = '';
 
@@ -3468,48 +3609,13 @@
                         return dirs[Math.round(deg / 22.5) % 16];
                     }
 
-                    // Surf condition classification based on wind direction relative to beach
-                    // BEACH_FACING_DIRECTION: the compass direction the beach faces (perpendicular to shoreline, pointing seaward).
-                    // Dynamically computed from /api/beach-orientation (default 135° = Surf City, NC).
-                    const CALM_WIND_THRESHOLD = 5;
-                    const LIGHT_ONSHORE_THRESHOLD = 10;
-
+                    // Surf condition classification — uses global classifySurfConditionGlobal()
                     const CONDITION_COLORS = {
                         clean:  { bg: 'rgba(68, 255, 136, 0.08)', label: 'Offshore / Clean' },
                         fair:   { bg: 'rgba(255, 206, 86, 0.08)',  label: 'Cross-shore / Fair' },
                         choppy: { bg: 'rgba(255, 68, 68, 0.08)',   label: 'Onshore / Choppy' },
                         unknown:{ bg: 'rgba(0, 0, 0, 0)',          label: 'Unknown' }
                     };
-
-                    function classifySurfCondition(windDirection, windSpeed) {
-                        // Calm wind is always clean
-                        if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD) {
-                            return 'clean';
-                        }
-                        if (windDirection === null || windDirection === undefined) {
-                            return 'unknown';
-                        }
-                        // Angle between wind direction and onshore (beach-facing) direction
-                        let diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
-                        if (diff > 180) diff = 360 - diff;
-                        // diff=0 means pure onshore, diff=180 means pure offshore
-                        if (diff >= 135) {
-                            return 'clean';   // offshore ±45°
-                        }
-                        if (diff >= 45) {
-                            return 'fair';    // cross-shore
-                        }
-                        // Onshore zone (diff < 45°): light onshore is fair, stronger is choppy
-                        if (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD) {
-                            return 'fair';
-                        }
-                        return 'choppy';
-                    }
-
-                    // Backward-compatible wrapper
-                    function isOffshoreWind(windDirection, windSpeed) {
-                        return classifySurfCondition(windDirection, windSpeed) === 'clean';
-                    }
 
                     // Filter to 5am-9pm and sample every 3 hours
                     let lastShownHour = -999;
@@ -3536,7 +3642,7 @@
                         const windDir = item.wind_direction !== null ? `${degToCompass(item.wind_direction)} (${item.wind_direction.toFixed(0)}°)` : '-';
                         const windSpeed = item.wind_speed !== null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
 
-                        const condition = classifySurfCondition(item.wind_direction, item.wind_speed);
+                        const condition = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
                         const rowClassMap = { clean: 'row-good', fair: 'row-fair', choppy: 'row-choppy' };
                         const indicatorMap = { clean: ' &#10003;', fair: ' &#9679;', choppy: ' &#10007;' };
                         const rowClass = rowClassMap[condition] || '';
@@ -3564,7 +3670,7 @@
                     const windDirections = data.map(item => item.wind_direction);
                     const waveDirections = data.map(item => item.wave_direction);
                     window._surfConditions = data.map(item =>
-                        classifySurfCondition(item.wind_direction, item.wind_speed)
+                        classifySurfConditionGlobal(item.wind_direction, item.wind_speed)
                     );
 
                     // Custom plugin to draw wind direction arrows
@@ -3793,10 +3899,11 @@
                             const label = CONDITION_COLORS[cond] ? CONDITION_COLORS[cond].label : cond;
                             extraLines.push('Conditions: ' + label);
                         }
-                        // Interpreter descriptions
+                        // Interpreter descriptions (with skill level label)
                         if (window._forecastData && window._forecastData[index]) {
                             const fi = window._forecastData[index];
-                            if (fi.wave_height != null) extraLines.push(describeWaveHeight(fi.wave_height));
+                            const skillTag = currentSkillLevel !== 'all' ? ' (' + SKILL_LABELS[currentSkillLevel] + ')' : '';
+                            if (fi.wave_height != null) extraLines.push(describeWaveHeight(fi.wave_height) + skillTag);
                             if (fi.wave_period != null) extraLines.push(describeWavePeriod(fi.wave_period));
                             if (fi.wind_speed != null) extraLines.push(describeWindCondition(fi.wind_speed, fi.wind_direction));
                         }
@@ -4383,10 +4490,15 @@
                         return;
                     }
                     el.textContent = '';
-                    var strong = document.createElement('strong');
-                    strong.textContent = narr.swell_type === 'ground swell' ? 'Ground Swell' : 'Wind Swell';
-                    el.appendChild(strong);
-                    el.appendChild(document.createTextNode(' \u2014 ' + narr.narrative));
+                    // Close button
+                    var closeBtn = document.createElement('button');
+                    closeBtn.className = 'basin-narrative-close';
+                    closeBtn.textContent = '\u00D7';
+                    closeBtn.title = 'Dismiss';
+                    closeBtn.onclick = function() { el.style.display = 'none'; };
+                    el.appendChild(closeBtn);
+                    // Narrative text (no duplicate swell type label)
+                    el.appendChild(document.createTextNode(narr.narrative));
                     el.style.display = '';
                 })
                 .catch(function() {
@@ -5123,6 +5235,19 @@
         // Tide data loaded via staggered init in loadPointForecast listener
 
         // === Session Planner ===
+        function toggleSessionInfo() {
+            var tip = document.getElementById('session-info-tip');
+            if (tip) tip.style.display = tip.style.display === 'none' ? '' : 'none';
+        }
+
+        // Close session info tip on outside click
+        document.addEventListener('click', function(e) {
+            var tip = document.getElementById('session-info-tip');
+            if (tip && tip.style.display !== 'none' && !e.target.closest('.session-info-btn') && !e.target.closest('.session-info-tip')) {
+                tip.style.display = 'none';
+            }
+        });
+
         function checkSessionPlannerReady() {
             if (_forecastLoaded && _tidesLoaded) {
                 renderSessionPlanner();
@@ -5168,7 +5293,7 @@
                 dayMap[day].forEach(function(w) {
                     var block = document.createElement('div');
                     block.className = 'session-block session-' + w.rating;
-                    if (w.rating === 'poor') block.style.opacity = '0.5';
+                    if (w.rating === 'poor') block.style.opacity = '0.65';
 
                     var timeStr = w.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
                         + ' – ' + w.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });

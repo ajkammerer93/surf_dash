@@ -2345,14 +2345,18 @@ def swell_narrative():
         is_ground_swell = wave_period >= 10
         swell_type = 'Ground swell' if is_ground_swell else 'Wind swell'
 
-        # Estimated source distance using group velocity
+        # Estimated source distance range using group velocity
         # Group velocity (m/s) = 1.56 * period (deep water approximation)
+        # Travel time is unknown, so show 1-3 day range
         estimated_source_km = None
+        source_range_km = None
         if wave_period > 0:
             group_speed_ms = 1.56 * wave_period
             group_speed_kmh = group_speed_ms * 3.6
-            # Assume 1-3 day travel: use 2 days as midpoint
-            estimated_source_km = round(group_speed_kmh * 48)
+            near_km = round(group_speed_kmh * 24)   # 1-day travel
+            far_km = round(group_speed_kmh * 72)     # 3-day travel
+            estimated_source_km = round(group_speed_kmh * 48)  # midpoint for API
+            source_range_km = (near_km, far_km)
 
         # Trend: compare avg wave height of first 24h vs next 24h
         first_24 = [d['wave_height'] for d in data[:24] if d.get('wave_height') is not None]
@@ -2374,8 +2378,8 @@ def swell_narrative():
         parts = []
         parts.append(f"{swell_type} from the {source_label}")
         parts.append(f"at {wave_period:.0f}s period" if wave_period else "")
-        if estimated_source_km and is_ground_swell:
-            parts.append(f"originating ~{estimated_source_km:,} km away")
+        if source_range_km and is_ground_swell:
+            parts.append(f"originating {source_range_km[0]:,}\u2013{source_range_km[1]:,} km away")
         trend_labels = {'building': 'Building over the next 24h',
                         'fading': 'Fading over the next 24h',
                         'steady': 'Holding steady'}
