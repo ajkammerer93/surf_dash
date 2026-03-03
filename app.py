@@ -1,4 +1,5 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
+from urllib.parse import quote as url_quote
 import requests
 import re
 import numpy as np
@@ -1381,9 +1382,89 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
 @app.route('/')
 def index():
     """
-    Renders the main dashboard page.
+    Renders the main dashboard page with SEO meta tags.
     """
-    return render_template('index.html', version=APP_VERSION)
+    lat = request.args.get('lat', DEFAULT_LAT, type=float)
+    lon = request.args.get('lon', DEFAULT_LON, type=float)
+    name = request.args.get('name', 'Surf City, North Carolina')
+
+    page_title = f"Surf Forecast for {name} | Free Surf Forecast"
+    meta_description = (
+        f"Free 7-day surf forecast for {name}. "
+        "Wave height, wave period, wind speed and direction, tide predictions, "
+        "and live surf cameras. No ads, no sign-up."
+    )
+
+    # Build canonical URL with location params
+    canonical_params = f"?lat={lat}&lon={lon}&name={name}" if (lat != DEFAULT_LAT or lon != DEFAULT_LON) else ""
+    canonical_url = f"https://freesurfforecast.com/{canonical_params}"
+
+    return render_template(
+        'index.html',
+        version=APP_VERSION,
+        page_title=page_title,
+        meta_description=meta_description,
+        canonical_url=canonical_url,
+        og_title=page_title,
+        og_description=meta_description,
+        location_name=name,
+        location_lat=lat,
+        location_lon=lon,
+    )
+
+@app.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt for search engine crawlers."""
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /api/\n"
+        "\n"
+        "Sitemap: https://freesurfforecast.com/sitemap.xml\n"
+    )
+    return Response(content, mimetype='text/plain')
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """Generate sitemap.xml from surf camera locations."""
+    cameras_path = os.path.join(os.path.dirname(__file__), 'surf_cameras.json')
+    try:
+        with open(cameras_path, 'r') as f:
+            cameras = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        cameras = []
+
+    # Deduplicate by lat/lon (some cameras share coordinates)
+    seen = set()
+    unique_locations = []
+    for cam in cameras:
+        key = (round(cam['lat'], 4), round(cam['lon'], 4))
+        if key not in seen:
+            seen.add(key)
+            unique_locations.append(cam)
+
+    urls = ['<?xml version="1.0" encoding="UTF-8"?>']
+    urls.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+
+    # Root URL
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/</loc>')
+    urls.append('    <priority>1.0</priority>')
+    urls.append('  </url>')
+
+    # Location URLs from camera list
+    for loc in unique_locations:
+        loc_url = f"https://freesurfforecast.com/?lat={loc['lat']}&amp;lon={loc['lon']}&amp;name={url_quote(loc['name'])}"
+        urls.append('  <url>')
+        urls.append(f'    <loc>{loc_url}</loc>')
+        urls.append('    <priority>0.7</priority>')
+        urls.append('  </url>')
+
+    urls.append('</urlset>')
+
+    return Response('\n'.join(urls), mimetype='application/xml')
+
 
 # Route for the API to get point forecast data
 @app.route('/api/forecast')
