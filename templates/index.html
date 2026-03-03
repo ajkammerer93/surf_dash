@@ -633,6 +633,87 @@
             cursor: pointer;
         }
 
+        /* === Basin Narrative Overlay === */
+        .basin-narrative {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            background: rgba(10, 10, 10, 0.85);
+            color: var(--text);
+            font-size: 10px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 500;
+            line-height: 1.4;
+        }
+
+        .basin-narrative strong {
+            color: var(--accent);
+        }
+
+        /* === Skill Level Menu === */
+        .skill-level-menu {
+            position: relative;
+            display: inline-block;
+        }
+
+        .skill-level-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 0;
+            z-index: 1100;
+            min-width: 200px;
+        }
+
+        .skill-level-dropdown.open {
+            display: block;
+        }
+
+        .skill-level-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--text-dim);
+            transition: background 0.1s;
+            white-space: nowrap;
+        }
+
+        .skill-level-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+        }
+
+        .skill-level-item.active {
+            color: var(--accent);
+        }
+
+        .skill-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .skill-item-label {
+            font-weight: 600;
+        }
+
+        .skill-item-desc {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
         /* === Map Home Button === */
         .map-home-btn {
             width: 26px;
@@ -768,6 +849,20 @@
             font-weight: 600;
             color: var(--accent);
             font-variant-numeric: tabular-nums;
+        }
+
+        .stat-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .stat-context {
+            display: block;
+            font-size: 9px;
+            font-style: italic;
+            color: var(--text-muted);
+            line-height: 1.3;
         }
 
         /* === Buoy Panel === */
@@ -953,6 +1048,91 @@
 
         .data-table tr.row-choppy td {
             color: var(--status-error);
+        }
+
+        .cond-summary {
+            font-size: 9px;
+            color: var(--text-muted);
+            max-width: 180px;
+        }
+
+        /* === Session Planner === */
+        #session-planner-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 4px 0;
+        }
+
+        .session-planner-loading {
+            color: var(--text-muted);
+            font-size: 11px;
+            padding: 12px;
+        }
+
+        .session-day {
+            flex: 1 1 140px;
+            min-width: 130px;
+            max-width: 200px;
+        }
+
+        .session-day-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .session-block {
+            border-left: 3px solid var(--border);
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            border-radius: 0 4px 4px 0;
+            background: rgba(255,255,255,0.02);
+            position: relative;
+        }
+
+        .session-prime { border-left-color: var(--status-live); }
+        .session-good { border-left-color: #4488ff; }
+        .session-fair { border-left-color: var(--status-warning); }
+        .session-poor { border-left-color: var(--text-muted); }
+
+        .session-best {
+            background: rgba(68, 255, 136, 0.06);
+        }
+
+        .session-time {
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            color: var(--text);
+        }
+
+        .session-score {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 6px;
+            display: inline-block;
+        }
+
+        .session-score-prime { background: rgba(68,255,136,0.15); color: var(--status-live); }
+        .session-score-good { background: rgba(68,136,255,0.15); color: #4488ff; }
+        .session-score-fair { background: rgba(255,170,0,0.15); color: var(--status-warning); }
+        .session-score-poor { background: rgba(102,102,102,0.15); color: var(--text-muted); }
+
+        .session-summary {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            line-height: 1.3;
+        }
+
+        .session-skill-badge {
+            font-size: 10px;
+            margin-left: 4px;
         }
 
         .conditions-legend {
@@ -1360,6 +1540,34 @@
         </div>
         <div class="header-right">
             <span class="header-clock" id="header-clock"></span>
+            <div class="skill-level-menu">
+                <button class="header-btn" id="skill-level-btn">
+                    <span class="btn-text" id="skill-level-label">All Levels</span>
+                    <span class="btn-icon-only" title="Skill Level">&#x1F3C4;</span>
+                </button>
+                <div class="skill-level-dropdown" id="skill-level-dropdown">
+                    <div class="skill-level-item" data-level="beginner" onclick="setSkillLevel('beginner')">
+                        <span class="skill-dot" style="background:#44ff88"></span>
+                        <span class="skill-item-label">Beginner</span>
+                        <span class="skill-item-desc">Learning to stand, whitewater</span>
+                    </div>
+                    <div class="skill-level-item" data-level="intermediate" onclick="setSkillLevel('intermediate')">
+                        <span class="skill-dot" style="background:#4488ff"></span>
+                        <span class="skill-item-label">Intermediate</span>
+                        <span class="skill-item-desc">Green waves, turns</span>
+                    </div>
+                    <div class="skill-level-item" data-level="advanced" onclick="setSkillLevel('advanced')">
+                        <span class="skill-dot" style="background:#ff4444"></span>
+                        <span class="skill-item-label">Advanced</span>
+                        <span class="skill-item-desc">Big waves, barrels, airs</span>
+                    </div>
+                    <div class="skill-level-item" data-level="all" onclick="setSkillLevel('all')">
+                        <span class="skill-dot" style="background:#888"></span>
+                        <span class="skill-item-label">All Levels</span>
+                        <span class="skill-item-desc">Universal scoring</span>
+                    </div>
+                </div>
+            </div>
             <div class="panel-toggle-menu">
                 <button class="header-btn" id="panels-toggle-btn">
                     <span class="btn-text">Panels &#9662;</span>
@@ -1448,11 +1656,17 @@
                         <ul class="stat-list" id="current-conditions-stats">
                             <li class="stat-item">
                                 <span class="stat-label">Wave Height</span>
-                                <span class="stat-value" id="current_wave_height">- ft</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_wave_height">- ft</span>
+                                    <span class="stat-context" id="ctx_wave_height"></span>
+                                </span>
                             </li>
                             <li class="stat-item">
                                 <span class="stat-label">Wave Period</span>
-                                <span class="stat-value" id="current_wave_period">- s</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_wave_period">- s</span>
+                                    <span class="stat-context" id="ctx_wave_period"></span>
+                                </span>
                             </li>
                             <li class="stat-item">
                                 <span class="stat-label">Wave Direction</span>
@@ -1460,7 +1674,10 @@
                             </li>
                             <li class="stat-item">
                                 <span class="stat-label">Wind Speed</span>
-                                <span class="stat-value" id="current_wind_speed">-</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_wind_speed">-</span>
+                                    <span class="stat-context" id="ctx_wind"></span>
+                                </span>
                             </li>
                             <li class="stat-item">
                                 <span class="stat-label">Wind Direction</span>
@@ -1631,8 +1848,9 @@
                         </div>
                     </div>
                     <div class="panel-content">
-                        <div id="map-basin" class="map-container">
+                        <div id="map-basin" class="map-container" style="position:relative">
                             <div class="map-loading">Loading ocean data...</div>
+                            <div class="basin-narrative" id="basin-narrative" style="display:none"></div>
                         </div>
                     </div>
                 </div>
@@ -1733,10 +1951,28 @@
                                     <th>Period (s)</th>
                                     <th>Wind (mph)</th>
                                     <th>Wind Dir</th>
+                                    <th>Conditions</th>
                                 </tr>
                             </thead>
                             <tbody id="forecast-table"></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session Planner -->
+        <div class="grid-stack-item" data-panel-id="session-planner" gs-x="0" gs-y="36" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Session Planner</span>
+                        <span class="panel-badge" id="session-planner-badge">Analyzing</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="session-planner-grid">
+                            <div class="session-planner-loading">Waiting for forecast data...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1890,7 +2126,8 @@
             'buoys': 'Buoy Observations',
             'wave-wind-chart': 'Wave & Wind Forecast',
             'tides': 'Tidal Predictions',
-            'daylight': 'Daylight Forecast'
+            'daylight': 'Daylight Forecast',
+            'session-planner': 'Session Planner'
         };
 
         function getHiddenPanels() {
@@ -1998,7 +2235,22 @@
                 if (dropdown && !e.target.closest('.panel-toggle-menu')) {
                     dropdown.classList.remove('open');
                 }
+                const skillDropdown = document.getElementById('skill-level-dropdown');
+                if (skillDropdown && !e.target.closest('.skill-level-menu')) {
+                    skillDropdown.classList.remove('open');
+                }
             });
+
+            // Skill level toggle button
+            document.getElementById('skill-level-btn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                const dropdown = document.getElementById('skill-level-dropdown');
+                dropdown.classList.toggle('open');
+                updateSkillDropdownActive();
+            });
+
+            // Initialize skill level label from saved state
+            updateSkillLevelLabel();
         });
 
         // === Panel Fullscreen ===
@@ -2111,6 +2363,200 @@
         const M_TO_FT = 3.28084;
         const KMH_TO_MPH = 0.621371;
         const KM_TO_MI = 0.621371;
+
+        // === Surf Condition Thresholds (global for reuse in scoring/descriptions) ===
+        const CALM_WIND_THRESHOLD_GLOBAL = 5;
+        const LIGHT_ONSHORE_THRESHOLD_GLOBAL = 10;
+
+        // Global classifier — delegates to the inner one after first load, or runs standalone
+        function classifySurfConditionGlobal(windDirection, windSpeed) {
+            if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD_GLOBAL) return 'clean';
+            if (windDirection === null || windDirection === undefined) return 'unknown';
+            var diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
+            if (diff > 180) diff = 360 - diff;
+            if (diff >= 135) return 'clean';
+            if (diff >= 45) return 'fair';
+            if (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD_GLOBAL) return 'fair';
+            return 'choppy';
+        }
+
+        // === Forecast Literacy: Interpreter Functions (global scope) ===
+        function describeWaveHeight(heightMeters, skillLevel) {
+            var ft = heightMeters * M_TO_FT;
+            var level = skillLevel || currentSkillLevel || 'all';
+            if (level === 'beginner') {
+                if (ft < 0.5) return 'Flat \u2014 no rideable waves';
+                if (ft < 1.5) return 'Ankle high \u2014 great for learning';
+                if (ft < 2.5) return 'Knee to waist \u2014 ideal for beginners';
+                if (ft < 3.5) return 'Waist to chest \u2014 challenging for beginners';
+                return 'Too powerful \u2014 wait for smaller surf';
+            }
+            if (level === 'intermediate') {
+                if (ft < 1) return 'Flat \u2014 longboard or skip it';
+                if (ft < 2) return 'Small \u2014 longboard recommended';
+                if (ft < 4) return 'Fun size \u2014 ideal conditions';
+                if (ft < 6) return 'Chest to head \u2014 solid session';
+                return 'Overhead+ \u2014 experienced surfers only';
+            }
+            if (level === 'advanced') {
+                if (ft < 2) return 'Small \u2014 longboard day';
+                if (ft < 4) return 'Fun size \u2014 shortboard friendly';
+                if (ft < 6) return 'Head high \u2014 go time';
+                if (ft < 10) return 'Overhead \u2014 pumping';
+                return 'Double overhead+ \u2014 heavy conditions';
+            }
+            if (ft < 0.5) return 'Flat \u2014 no rideable waves';
+            if (ft < 1.5) return 'Ankle to knee \u2014 longboard only';
+            if (ft < 3) return 'Waist to chest \u2014 fun for most';
+            if (ft < 5) return 'Chest to head \u2014 intermediate+';
+            if (ft < 8) return 'Overhead \u2014 experienced surfers';
+            return 'Double overhead+ \u2014 experts only';
+        }
+
+        function describeWavePeriod(periodSeconds) {
+            if (periodSeconds == null) return '';
+            if (periodSeconds < 6) return 'Short period \u2014 weak, mushy waves';
+            if (periodSeconds < 9) return 'Wind swell \u2014 moderate energy';
+            if (periodSeconds < 12) return 'Medium swell \u2014 decent shape';
+            if (periodSeconds < 16) return 'Ground swell \u2014 clean, powerful lines';
+            return 'Long-period swell \u2014 heavy, well-organized';
+        }
+
+        function describeWindCondition(windSpeedKmh, windDirection) {
+            var mph = windSpeedKmh * KMH_TO_MPH;
+            var cond = classifySurfConditionGlobal(windDirection, windSpeedKmh);
+            if (mph < 3) return 'Glassy \u2014 no wind texture';
+            if (cond === 'clean') {
+                if (mph < 10) return 'Light offshore \u2014 clean faces';
+                return 'Moderate offshore \u2014 textured but clean';
+            }
+            if (cond === 'fair') {
+                if (mph < 8) return 'Light cross-shore \u2014 minor texture';
+                return 'Cross-shore \u2014 some bump';
+            }
+            if (mph < 10) return 'Light onshore \u2014 slightly bumpy';
+            if (mph < 18) return 'Onshore \u2014 choppy, disorganized';
+            return 'Strong onshore \u2014 blown out';
+        }
+
+        // === Session Planner: Scoring Engine (global scope) ===
+        function scoreHour(forecastItem, tideHeight, tidePrev) {
+            var ft = forecastItem.wave_height != null ? forecastItem.wave_height * M_TO_FT : 0;
+            var period = forecastItem.wave_period || 0;
+            var windSpeed = forecastItem.wind_speed || 0;
+            var windDir = forecastItem.wind_direction;
+            var hour = new Date(forecastItem.time).getHours();
+            var level = currentSkillLevel || 'all';
+
+            if (hour < 5 || hour > 20) return 5;
+
+            var score = 50;
+            if (level === 'beginner') {
+                if (ft >= 1 && ft <= 2.5) score += 20;
+                else if (ft < 0.5) score -= 30;
+                else if (ft > 3.5) score -= 25;
+                else if (ft > 2.5) score -= 5;
+            } else if (level === 'intermediate') {
+                if (ft >= 2 && ft <= 5) score += 20;
+                else if (ft < 1) score -= 30;
+                else if (ft > 7) score -= 15;
+            } else if (level === 'advanced') {
+                if (ft >= 3 && ft <= 8) score += 20;
+                else if (ft < 2) score -= 20;
+                else if (ft > 10) score -= 5;
+            } else {
+                if (ft >= 2 && ft <= 4) score += 20;
+                else if (ft < 0.5) score -= 40;
+                else if (ft > 6) score -= 10;
+            }
+
+            if (period >= 12) score += 15;
+            else if (period >= 9) score += 8;
+            else if (period < 6) score -= 10;
+
+            var cond = classifySurfConditionGlobal(windDir, windSpeed);
+            if (cond === 'clean') score += 25;
+            else if (cond === 'fair') score += 10;
+            else if (cond === 'choppy') score -= 15;
+
+            if (tideHeight != null && tidePrev != null) {
+                if (tideHeight > tidePrev) score += 10;
+                else score += 3;
+            }
+
+            return Math.max(0, Math.min(100, score));
+        }
+
+        function buildWindowSummary(avgWH, avgWP, windCond) {
+            var whDesc = avgWH < 0.5 ? 'flat' : (avgWH * M_TO_FT).toFixed(0) + 'ft';
+            var wpDesc = avgWP >= 12 ? 'ground swell' : (avgWP >= 9 ? 'medium swell' : 'wind swell');
+            var windDesc = windCond === 'clean' ? 'clean faces' : (windCond === 'fair' ? 'moderate texture' : 'choppy');
+            return whDesc + ' ' + wpDesc + ', ' + windDesc;
+        }
+
+        function computeSessionWindows() {
+            if (!window._forecastData || !window._tideData) return [];
+
+            var tideLookup = {};
+            window._tideData.forEach(function(t) {
+                var d = new Date(t.time);
+                var key = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + d.getHours();
+                tideLookup[key] = t.height;
+            });
+
+            var scored = [];
+            window._forecastData.forEach(function(item) {
+                var d = new Date(item.time);
+                var hour = d.getHours();
+                if (hour < 5 || hour > 20) return;
+                var key = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + hour;
+                var prevKey = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + (hour - 1);
+                scored.push({
+                    time: d,
+                    score: scoreHour(item, tideLookup[key] || null, tideLookup[prevKey] || null),
+                    waveHeight: item.wave_height,
+                    wavePeriod: item.wave_period,
+                    windSpeed: item.wind_speed,
+                    windDir: item.wind_direction
+                });
+            });
+
+            var blocks = [];
+            var i = 0;
+            while (i < scored.length) {
+                var block = [scored[i]];
+                var startDay = scored[i].time.toDateString();
+                var startHour = scored[i].time.getHours();
+                i++;
+                while (i < scored.length && block.length < 3 &&
+                       scored[i].time.toDateString() === startDay &&
+                       scored[i].time.getHours() < startHour + 3) {
+                    block.push(scored[i]);
+                    i++;
+                }
+
+                var avgScore = block.reduce(function(s, b) { return s + b.score; }, 0) / block.length;
+                var avgWH = block.reduce(function(s, b) { return s + (b.waveHeight || 0); }, 0) / block.length;
+                var avgWP = block.reduce(function(s, b) { return s + (b.wavePeriod || 0); }, 0) / block.length;
+                var windCond = classifySurfConditionGlobal(block[0].windDir, block[0].windSpeed);
+
+                var rating;
+                if (avgScore >= 75) rating = 'prime';
+                else if (avgScore >= 55) rating = 'good';
+                else if (avgScore >= 35) rating = 'fair';
+                else rating = 'poor';
+
+                blocks.push({
+                    startTime: block[0].time,
+                    endTime: new Date(block[block.length - 1].time.getTime() + 3600000),
+                    rating: rating,
+                    score: Math.round(avgScore),
+                    summary: buildWindowSummary(avgWH, avgWP, windCond)
+                });
+            }
+
+            return blocks;
+        }
 
         // === Unified Map Data Globals ===
         let basinGridData = null;
@@ -2357,6 +2803,41 @@
 
         let currentLocation = getInitialLocation();
         let selectedLocation = null;
+        let currentSkillLevel = localStorage.getItem('skill-level') || 'all';
+        let _forecastLoaded = false;
+        let _tidesLoaded = false;
+
+        const SKILL_LABELS = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced', all: 'All Levels' };
+
+        function updateSkillLevelLabel() {
+            var labelEl = document.getElementById('skill-level-label');
+            if (labelEl) labelEl.textContent = SKILL_LABELS[currentSkillLevel] || 'All Levels';
+        }
+
+        function updateSkillDropdownActive() {
+            document.querySelectorAll('.skill-level-item').forEach(function(el) {
+                if (el.getAttribute('data-level') === currentSkillLevel) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function setSkillLevel(level) {
+            currentSkillLevel = level;
+            localStorage.setItem('skill-level', level);
+            updateSkillLevelLabel();
+            updateSkillDropdownActive();
+            document.getElementById('skill-level-dropdown').classList.remove('open');
+            // Re-render context descriptions if forecast data available
+            if (window._forecastData && window._forecastData.length) {
+                var c = window._forecastData[0];
+                if (c.wave_height != null) document.getElementById('ctx_wave_height').textContent = describeWaveHeight(c.wave_height);
+            }
+            // Re-render session planner
+            if (_forecastLoaded && _tidesLoaded) renderSessionPlanner();
+        }
         let locationMap = null;
         let locationMarker = null;
 
@@ -2675,6 +3156,11 @@
             localDataReady = false;
             basinRendered = false;
             localRendered = false;
+            // Reset session planner state
+            _forecastLoaded = false;
+            _tidesLoaded = false;
+            window._forecastData = null;
+            window._tideData = null;
             // Show loading state on maps (skip buoy map — managed separately)
             document.querySelectorAll('.map-container:not(.buoy-map)').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
@@ -2689,7 +3175,7 @@
             // Show loading state on charts and daylight table
             showChartUnavailable('waveChart', 'Loading forecast...');
             showChartUnavailable('tideChart', 'Loading tides...');
-            document.getElementById('forecast-table').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:16px">Loading forecast...</td></tr>';
+            document.getElementById('forecast-table').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px">Loading forecast...</td></tr>';
 
             // Reload lightweight endpoints in parallel
             loadPointForecast();
@@ -2915,6 +3401,9 @@
                     document.getElementById('current-conditions-stats').style.display = '';
                     document.getElementById('current-conditions-error').style.display = 'none';
 
+                    // Store forecast data globally for session planner and tooltips
+                    window._forecastData = data;
+
                     // Update timezone offset and extract sunrise/sunset for day/night shading
                     window.utcOffsetHours = Math.round(currentLocation.lon / 15);
                     window.sunTimes = [];
@@ -2948,6 +3437,12 @@
                     const waterC = current.water_temperature;
                     document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F` : '-';
                     document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F` : '-';
+
+                    // Populate context descriptions for current conditions
+                    document.getElementById('ctx_wave_height').textContent = current.wave_height != null ? describeWaveHeight(current.wave_height) : '';
+                    document.getElementById('ctx_wave_period').textContent = current.wave_period != null ? describeWavePeriod(current.wave_period) : '';
+                    document.getElementById('ctx_wind').textContent = (current.wind_speed != null) ? describeWindCondition(current.wind_speed, current.wind_direction) : '';
+
                     const tableBody = document.getElementById('forecast-table');
                     tableBody.innerHTML = '';
 
@@ -3032,6 +3527,11 @@
                         const rowClass = rowClassMap[condition] || '';
                         const offshoreIndicator = indicatorMap[condition] || '';
 
+                        const condSummary = [
+                            item.wave_height != null ? describeWaveHeight(item.wave_height) : '',
+                            item.wave_period != null ? describeWavePeriod(item.wave_period) : ''
+                        ].filter(Boolean).join('; ');
+
                         const row = `<tr class="${rowClass}">
                             <td>${dateStr}</td>
                             <td>${timeStr}</td>
@@ -3039,6 +3539,7 @@
                             <td>${item.wave_period != null ? item.wave_period.toFixed(1) : '-'}</td>
                             <td>${windSpeed}</td>
                             <td>${windDir}${offshoreIndicator}</td>
+                            <td class="cond-summary">${condSummary}</td>
                         </tr>`;
                         tableBody.innerHTML += row;
                     });
@@ -3277,6 +3778,13 @@
                             const label = CONDITION_COLORS[cond] ? CONDITION_COLORS[cond].label : cond;
                             extraLines.push('Conditions: ' + label);
                         }
+                        // Interpreter descriptions
+                        if (window._forecastData && window._forecastData[index]) {
+                            const fi = window._forecastData[index];
+                            if (fi.wave_height != null) extraLines.push(describeWaveHeight(fi.wave_height));
+                            if (fi.wave_period != null) extraLines.push(describeWavePeriod(fi.wave_period));
+                            if (fi.wind_speed != null) extraLines.push(describeWindCondition(fi.wind_speed, fi.wind_direction));
+                        }
                         extraLines.forEach((line, i) => {
                             if (i > 0) extraDiv.appendChild(document.createElement('br'));
                             extraDiv.appendChild(document.createTextNode(line));
@@ -3447,6 +3955,10 @@
                     });
 
                     syncChartTimeAxes();
+
+                    // Signal session planner
+                    _forecastLoaded = true;
+                    checkSessionPlannerReady();
                 })
                 .catch(error => {
                     console.error('Error fetching point forecast data:', error);
@@ -3828,13 +4340,44 @@
             basinDataReady = false;
             basinRendered = false;
 
-            // Reset container HTML
-            document.getElementById('map-basin').innerHTML = '<div class="map-loading">Loading ocean data...</div>';
+            // Reset container HTML (preserve narrative overlay)
+            var basinContainer = document.getElementById('map-basin');
+            var narrativeEl = document.getElementById('basin-narrative');
+            basinContainer.textContent = '';
+            var loadingDiv = document.createElement('div');
+            loadingDiv.className = 'map-loading';
+            loadingDiv.textContent = 'Loading ocean data...';
+            basinContainer.appendChild(loadingDiv);
+            if (narrativeEl) {
+                narrativeEl.style.display = 'none';
+                basinContainer.appendChild(narrativeEl);
+            }
 
             const params = new URLSearchParams({
                 lat: currentLocation.lat,
                 lon: currentLocation.lon
             });
+
+            // Fetch swell narrative in parallel (non-blocking)
+            fetch(`/api/swell-narrative?${params}`)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(narr) {
+                    var el = document.getElementById('basin-narrative');
+                    if (!el || !narr || !narr.narrative) {
+                        if (el) el.style.display = 'none';
+                        return;
+                    }
+                    el.textContent = '';
+                    var strong = document.createElement('strong');
+                    strong.textContent = narr.swell_type === 'ground swell' ? 'Ground Swell' : 'Wind Swell';
+                    el.appendChild(strong);
+                    el.appendChild(document.createTextNode(' \u2014 ' + narr.narrative));
+                    el.style.display = '';
+                })
+                .catch(function() {
+                    var el = document.getElementById('basin-narrative');
+                    if (el) el.style.display = 'none';
+                });
 
             return fetch(`/api/ocean-basin?${params}`)
                 .then(response => response.json())
@@ -4549,6 +5092,11 @@
                     });
 
                     syncChartTimeAxes();
+
+                    // Store tide data and signal session planner
+                    window._tideData = tideData.hourly;
+                    _tidesLoaded = true;
+                    checkSessionPlannerReady();
                 })
                 .catch(error => {
                     console.error('Error fetching tide data:', error);
@@ -4558,6 +5106,105 @@
         }
 
         // Tide data loaded via staggered init in loadPointForecast listener
+
+        // === Session Planner ===
+        function checkSessionPlannerReady() {
+            if (_forecastLoaded && _tidesLoaded) {
+                renderSessionPlanner();
+            }
+        }
+
+        function renderSessionPlanner() {
+            const grid = document.getElementById('session-planner-grid');
+            const badge = document.getElementById('session-planner-badge');
+            if (!grid) return;
+
+            const windows = computeSessionWindows();
+            if (!windows.length) {
+                grid.textContent = '';
+                const msg = document.createElement('div');
+                msg.className = 'session-planner-loading';
+                msg.textContent = 'No session windows available';
+                grid.appendChild(msg);
+                badge.textContent = 'No data';
+                return;
+            }
+
+            // Group windows by day
+            const dayMap = {};
+            windows.forEach(function(w) {
+                const dayKey = w.startTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                if (!dayMap[dayKey]) dayMap[dayKey] = [];
+                dayMap[dayKey].push(w);
+            });
+
+            grid.textContent = '';
+            var bestWindow = windows.reduce(function(best, w) { return w.score > best.score ? w : best; }, windows[0]);
+
+            Object.keys(dayMap).forEach(function(day) {
+                var dayCol = document.createElement('div');
+                dayCol.className = 'session-day';
+
+                var dayLabel = document.createElement('div');
+                dayLabel.className = 'session-day-label';
+                dayLabel.textContent = day;
+                dayCol.appendChild(dayLabel);
+
+                dayMap[day].forEach(function(w) {
+                    var block = document.createElement('div');
+                    block.className = 'session-block session-' + w.rating;
+                    if (w.rating === 'poor') block.style.opacity = '0.5';
+
+                    var timeStr = w.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                        + ' – ' + w.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+                    var timeEl = document.createElement('div');
+                    timeEl.className = 'session-time';
+                    timeEl.textContent = timeStr;
+                    block.appendChild(timeEl);
+
+                    var scoreEl = document.createElement('span');
+                    scoreEl.className = 'session-score session-score-' + w.rating;
+                    scoreEl.textContent = w.score;
+                    block.appendChild(scoreEl);
+
+                    var summaryEl = document.createElement('div');
+                    summaryEl.className = 'session-summary';
+                    summaryEl.textContent = w.summary;
+                    block.appendChild(summaryEl);
+
+                    // Skill badges
+                    if (currentSkillLevel !== 'all') {
+                        var iconEl = document.createElement('span');
+                        iconEl.className = 'session-skill-badge';
+                        if (w.rating === 'prime' || w.rating === 'good') {
+                            iconEl.textContent = '\u2713';
+                            iconEl.title = 'Ideal for ' + currentSkillLevel;
+                            iconEl.style.color = 'var(--status-live)';
+                        } else if (w.rating === 'poor') {
+                            iconEl.textContent = '\u26A0';
+                            iconEl.title = 'May exceed ' + currentSkillLevel + ' skill level';
+                            iconEl.style.color = 'var(--status-warning)';
+                        }
+                        if (iconEl.textContent) block.appendChild(iconEl);
+                    }
+
+                    if (w === bestWindow) {
+                        block.classList.add('session-best');
+                    }
+
+                    dayCol.appendChild(block);
+                });
+
+                grid.appendChild(dayCol);
+            });
+
+            var primeCount = windows.filter(function(w) { return w.rating === 'prime'; }).length;
+            var goodCount = windows.filter(function(w) { return w.rating === 'good'; }).length;
+            if (primeCount > 0) badge.textContent = primeCount + ' Prime';
+            else if (goodCount > 0) badge.textContent = goodCount + ' Good';
+            else badge.textContent = 'Fair';
+        }
 
         // === Surf Cams (Dynamic) ===
         var activeCamInstances = {};

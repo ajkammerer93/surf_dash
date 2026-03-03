@@ -2312,5 +2312,91 @@ def beach_orientation():
         return jsonify({"error": "Could not determine beach orientation. Location may be too far inland."}), 404
 
 
+@app.route('/api/swell-narrative')
+def swell_narrative():
+    """Generate a plain-English narrative about swell origin, type, and trend."""
+    result = validate_lat_lon()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
+        return result
+    lat, lon = result
+
+    cache_key = f"swell-narrative:{lat:.4f},{lon:.4f}"
+
+    def _compute():
+        # Reuse cached forecast data
+        forecast_key = f"forecast:{lat:.4f},{lon:.4f}"
+        data = cached(forecast_key, lambda: get_point_weather_data(lat, lon))
+        if not data or len(data) < 2:
+            return None
+
+        # Extract swell parameters from first entry
+        wave_dir = data[0].get('wave_direction')
+        wave_period = data[0].get('wave_period', 0)
+        wave_height = data[0].get('wave_height', 0)
+
+        # Compass direction label
+        compass_dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                        'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+        source_label = 'unknown'
+        if wave_dir is not None:
+            source_label = compass_dirs[round(wave_dir / 22.5) % 16]
+
+        # Swell type classification
+        is_ground_swell = wave_period >= 10
+        swell_type = 'Ground swell' if is_ground_swell else 'Wind swell'
+
+        # Estimated source distance using group velocity
+        # Group velocity (m/s) = 1.56 * period (deep water approximation)
+        estimated_source_km = None
+        if wave_period > 0:
+            group_speed_ms = 1.56 * wave_period
+            group_speed_kmh = group_speed_ms * 3.6
+            # Assume 1-3 day travel: use 2 days as midpoint
+            estimated_source_km = round(group_speed_kmh * 48)
+
+        # Trend: compare avg wave height of first 24h vs next 24h
+        first_24 = [d['wave_height'] for d in data[:24] if d.get('wave_height') is not None]
+        next_24 = [d['wave_height'] for d in data[24:48] if d.get('wave_height') is not None]
+
+        trend = 'steady'
+        if first_24 and next_24:
+            avg_first = sum(first_24) / len(first_24)
+            avg_next = sum(next_24) / len(next_24)
+            diff_pct = (avg_next - avg_first) / max(avg_first, 0.01) * 100
+            if diff_pct > 15:
+                trend = 'building'
+            elif diff_pct < -15:
+                trend = 'fading'
+
+        # Build narrative sentence
+        m_to_ft = 3.28084
+        height_ft = round(wave_height * m_to_ft, 1)
+        parts = []
+        parts.append(f"{swell_type} from the {source_label}")
+        parts.append(f"at {wave_period:.0f}s period" if wave_period else "")
+        if estimated_source_km and is_ground_swell:
+            parts.append(f"originating ~{estimated_source_km:,} km away")
+        trend_labels = {'building': 'Building over the next 24h',
+                        'fading': 'Fading over the next 24h',
+                        'steady': 'Holding steady'}
+        parts.append(trend_labels[trend])
+        narrative = '. '.join(p for p in parts if p) + '.'
+
+        return {
+            'narrative': narrative,
+            'swell_direction': wave_dir,
+            'swell_type': swell_type.lower(),
+            'is_building': trend == 'building',
+            'trend': trend,
+            'estimated_source_km': estimated_source_km
+        }
+
+    data = cached(cache_key, _compute)
+    if data:
+        return jsonify(data)
+    else:
+        return jsonify({"error": "Could not generate swell narrative."}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
