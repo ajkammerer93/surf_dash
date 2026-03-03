@@ -874,6 +874,8 @@
         }
 
         .conditions-hint .good { color: var(--status-live); }
+        .conditions-hint .fair { color: var(--status-warning); }
+        .conditions-hint .choppy { color: var(--status-error); }
 
         /* === Data Table === */
         .data-table {
@@ -911,11 +913,104 @@
             color: var(--status-live);
         }
 
+        .data-table tr.row-fair td {
+            color: var(--status-warning);
+        }
+
+        .data-table tr.row-choppy td {
+            color: var(--status-error);
+        }
+
+        .conditions-legend {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .conditions-legend .cond-key {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .conditions-legend .cond-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+
+        .cond-swatch.clean { background: #44ff88; }
+        .cond-swatch.fair { background: #ffce56; }
+        .cond-swatch.choppy { background: #ff4444; }
+
+        @media (max-width: 600px) {
+            .conditions-legend .cond-label { display: none; }
+            .conditions-legend { gap: 6px; }
+        }
+
         /* === Charts === */
         .chart-wrap {
             position: relative;
             width: 100%;
             height: 100%;
+        }
+
+        /* === Wave chart external tooltip === */
+        .wave-tooltip {
+            position: absolute;
+            pointer-events: none;
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: #ccc;
+            z-index: 100;
+            transition: opacity 0.15s ease;
+            max-width: 360px;
+        }
+        .wave-tooltip .tt-title {
+            font-weight: 600;
+            color: #eee;
+            margin-bottom: 4px;
+            white-space: nowrap;
+        }
+        .wave-tooltip .tt-line {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            line-height: 1.5;
+            white-space: nowrap;
+        }
+        .wave-tooltip .tt-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+        .wave-tooltip .tt-extra {
+            margin-top: 3px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 3px;
+            color: #aaa;
+            line-height: 1.5;
+        }
+        .wave-tooltip-diagram {
+            width: 120px;
+            height: 120px;
+            flex-shrink: 0;
+        }
+        @media (max-width: 480px) {
+            .wave-tooltip-diagram { display: none; }
+            .wave-tooltip { max-width: 220px; }
         }
 
         /* === Modal (custom, no Bootstrap) === */
@@ -1344,6 +1439,11 @@
                     <div class="panel-header">
                         <span class="panel-title">Wave &amp; Wind Forecast</span>
                         <span class="panel-location"></span>
+                        <div class="conditions-legend">
+                            <span class="cond-key" title="Offshore wind (NW &#xB1;45&#xB0;) or calm (&lt;3 mph). Glassy or lightly textured surface."><span class="cond-swatch clean"></span><span class="cond-label">Clean</span></span>
+                            <span class="cond-key" title="Cross-shore wind or light onshore (&lt;6 mph). Moderate texture, still surfable."><span class="cond-swatch fair"></span><span class="cond-label">Fair</span></span>
+                            <span class="cond-key" title="Onshore wind &#x2265;6 mph (SE &#xB1;45&#xB0;). Bumpy, disorganized surface conditions."><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div class="chart-wrap">
@@ -1539,7 +1639,9 @@
                     </div>
                     <div class="panel-content">
                         <p class="conditions-hint">
-                            <span class="good">&#10003;</span> = Offshore/calm wind (NW &plusmn;45&deg; or &lt;3 mph) &mdash; good conditions
+                            <span class="good">&#10003; Clean</span> = Offshore/calm wind &nbsp;
+                            <span class="fair">&#9679; Fair</span> = Cross-shore/light onshore &nbsp;
+                            <span class="choppy">&#10007; Choppy</span> = Onshore wind
                         </p>
                         <table class="data-table">
                             <thead>
@@ -2503,6 +2605,9 @@
             loadOceanBasinMaps().then(() => loadLocalMaps());
         }
 
+        // Beach facing direction — updated dynamically from /api/beach-orientation
+        let BEACH_FACING_DIRECTION = 135;  // default (Surf City, NC)
+
         // Point data and main chart script
         window.sunTimes = [];
         window.utcOffsetHours = Math.round(currentLocation.lon / 15);
@@ -2555,6 +2660,53 @@
                         ctx.fillRect(nightStart, top, nightEnd - nightStart, height);
                     }
                 });
+
+                ctx.restore();
+            }
+        };
+
+        // Surf condition strip plugin — thin colored bar at chart top
+        const surfConditionPlugin = {
+            id: 'surfConditions',
+            beforeDraw(chart) {
+                if (!window._surfConditions || !window._surfConditions.length) return;
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!chartArea) return;
+                const { left, right, top } = chartArea;
+                const stripHeight = 10;
+                const conditions = window._surfConditions;
+                const dataset = chart.data.datasets[0];
+                if (!dataset || !dataset.data || !dataset.data.length) return;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(left, top, right - left, stripHeight);
+                ctx.clip();
+
+                const colors = {
+                    clean:  'rgba(68, 255, 136, 0.7)',
+                    fair:   'rgba(255, 206, 86, 0.7)',
+                    choppy: 'rgba(255, 68, 68, 0.7)'
+                };
+
+                // Group consecutive same-condition hours into bands
+                let bandStart = 0;
+                for (let i = 0; i <= conditions.length; i++) {
+                    if (i < conditions.length && conditions[i] === conditions[bandStart]) continue;
+                    const cond = conditions[bandStart];
+                    const color = colors[cond];
+                    if (color) {
+                        const startTime = dataset.data[bandStart].x;
+                        const endTime = dataset.data[Math.min(i, conditions.length - 1)].x;
+                        const x1 = Math.max(x.getPixelForValue(startTime), left);
+                        const x2 = Math.min(x.getPixelForValue(endTime), right);
+                        if (x2 > x1) {
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x1, top, x2 - x1, stripHeight);
+                        }
+                    }
+                    bandStart = i;
+                }
 
                 ctx.restore();
             }
@@ -2641,9 +2793,21 @@
                 lon: currentLocation.lon
             });
 
-            fetch(`/api/forecast?${params}`)
-                .then(response => response.json())
-                .then(data => {
+            // Fetch beach orientation in parallel (non-blocking)
+            const orientationPromise = fetch(`/api/beach-orientation?${params}`)
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null);
+
+            // Wait for both orientation and forecast before rendering
+            Promise.all([
+                orientationPromise,
+                fetch(`/api/forecast?${params}`).then(r => r.json())
+            ]).then(([orientation, data]) => {
+                    // Update beach facing direction if orientation was resolved
+                    if (orientation && orientation.beach_facing_direction != null) {
+                        BEACH_FACING_DIRECTION = orientation.beach_facing_direction;
+                    }
+
                     if (data.error) {
                         console.error('API Error (Point Data):', data.error);
                         showChartUnavailable('waveChart', 'Forecast data unavailable');
@@ -2699,24 +2863,47 @@
                         return dirs[Math.round(deg / 22.5) % 16];
                     }
 
-                    // Check if wind is offshore (good for surfing)
-                    const OFFSHORE_DIRECTION = 315;
-                    const OFFSHORE_TOLERANCE = 45;
+                    // Surf condition classification based on wind direction relative to beach
+                    // BEACH_FACING_DIRECTION: the compass direction the beach faces (perpendicular to shoreline, pointing seaward).
+                    // Dynamically computed from /api/beach-orientation (default 135° = Surf City, NC).
                     const CALM_WIND_THRESHOLD = 5;
+                    const LIGHT_ONSHORE_THRESHOLD = 10;
 
-                    function isOffshoreWind(windDirection, windSpeed) {
+                    const CONDITION_COLORS = {
+                        clean:  { bg: 'rgba(68, 255, 136, 0.08)', label: 'Offshore / Clean' },
+                        fair:   { bg: 'rgba(255, 206, 86, 0.08)',  label: 'Cross-shore / Fair' },
+                        choppy: { bg: 'rgba(255, 68, 68, 0.08)',   label: 'Onshore / Choppy' },
+                        unknown:{ bg: 'rgba(0, 0, 0, 0)',          label: 'Unknown' }
+                    };
+
+                    function classifySurfCondition(windDirection, windSpeed) {
+                        // Calm wind is always clean
                         if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD) {
-                            return true;
+                            return 'clean';
                         }
-
                         if (windDirection === null || windDirection === undefined) {
-                            return false;
+                            return 'unknown';
                         }
-
-                        let diff = Math.abs(windDirection - OFFSHORE_DIRECTION);
+                        // Angle between wind direction and onshore (beach-facing) direction
+                        let diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
                         if (diff > 180) diff = 360 - diff;
+                        // diff=0 means pure onshore, diff=180 means pure offshore
+                        if (diff >= 135) {
+                            return 'clean';   // offshore ±45°
+                        }
+                        if (diff >= 45) {
+                            return 'fair';    // cross-shore
+                        }
+                        // Onshore zone (diff < 45°): light onshore is fair, stronger is choppy
+                        if (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD) {
+                            return 'fair';
+                        }
+                        return 'choppy';
+                    }
 
-                        return diff <= OFFSHORE_TOLERANCE;
+                    // Backward-compatible wrapper
+                    function isOffshoreWind(windDirection, windSpeed) {
+                        return classifySurfCondition(windDirection, windSpeed) === 'clean';
                     }
 
                     // Filter to 5am-9pm and sample every 3 hours
@@ -2744,9 +2931,11 @@
                         const windDir = item.wind_direction !== null ? `${degToCompass(item.wind_direction)} (${item.wind_direction.toFixed(0)}°)` : '-';
                         const windSpeed = item.wind_speed !== null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
 
-                        const offshore = isOffshoreWind(item.wind_direction, item.wind_speed);
-                        const rowClass = offshore ? 'row-good' : '';
-                        const offshoreIndicator = offshore ? ' &#10003;' : '';
+                        const condition = classifySurfCondition(item.wind_direction, item.wind_speed);
+                        const rowClassMap = { clean: 'row-good', fair: 'row-fair', choppy: 'row-choppy' };
+                        const indicatorMap = { clean: ' &#10003;', fair: ' &#9679;', choppy: ' &#10007;' };
+                        const rowClass = rowClassMap[condition] || '';
+                        const offshoreIndicator = indicatorMap[condition] || '';
 
                         const row = `<tr class="${rowClass}">
                             <td>${dateStr}</td>
@@ -2760,8 +2949,12 @@
                     });
                     const ctx = document.getElementById('waveChart').getContext('2d');
 
-                    // Store wind directions for the custom plugin
+                    // Store wind/wave directions and surf conditions for custom plugins
                     const windDirections = data.map(item => item.wind_direction);
+                    const waveDirections = data.map(item => item.wave_direction);
+                    window._surfConditions = data.map(item =>
+                        classifySurfCondition(item.wind_direction, item.wind_speed)
+                    );
 
                     // Custom plugin to draw wind direction arrows
                     const windArrowPlugin = {
@@ -2803,7 +2996,223 @@
                         }
                     };
 
-                    // Destroy existing chart if it exists
+                    // --- Tooltip direction diagram ---
+                    function drawTooltipDiagram(canvas, windDir, waveDir) {
+                        const dpr = window.devicePixelRatio || 1;
+                        const size = 120;
+                        canvas.width = size * dpr;
+                        canvas.height = size * dpr;
+                        canvas.style.width = size + 'px';
+                        canvas.style.height = size + 'px';
+                        const ctx = canvas.getContext('2d');
+                        ctx.scale(dpr, dpr);
+
+                        const cx = size / 2, cy = size / 2, r = size / 2 - 2;
+
+                        // Clip to circle
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                        ctx.clip();
+
+                        // Compass-to-canvas: for compass bearing d (0=N,90=E),
+                        // canvas vector is (sin(d), -cos(d))
+                        // Coastline runs perpendicular to beach facing dir (NE-SW for 135° facing)
+                        const coastRad = (BEACH_FACING_DIRECTION - 90) * Math.PI / 180;
+                        const cDx = Math.sin(coastRad);   // coastline x component
+                        const cDy = -Math.cos(coastRad);  // coastline y component
+                        // Inland direction: opposite of beach facing (NW for 135° facing)
+                        const landRad = (BEACH_FACING_DIRECTION + 180) * Math.PI / 180;
+                        const lDx = Math.sin(landRad);
+                        const lDy = -Math.cos(landRad);
+
+                        // Fill entire circle as ocean first
+                        ctx.fillStyle = 'rgba(15, 40, 80, 0.9)';
+                        ctx.fillRect(0, 0, size, size);
+
+                        // Fill land half: inland side of coastline
+                        ctx.beginPath();
+                        ctx.moveTo(cx + cDx * r * 1.5, cy + cDy * r * 1.5);
+                        ctx.lineTo(cx - cDx * r * 1.5, cy - cDy * r * 1.5);
+                        ctx.lineTo(cx - cDx * r * 1.5 + lDx * r * 3,
+                                   cy - cDy * r * 1.5 + lDy * r * 3);
+                        ctx.lineTo(cx + cDx * r * 1.5 + lDx * r * 3,
+                                   cy + cDy * r * 1.5 + lDy * r * 3);
+                        ctx.closePath();
+                        ctx.fillStyle = 'rgba(30, 70, 30, 0.9)';
+                        ctx.fill();
+
+                        // Coastline stroke
+                        ctx.beginPath();
+                        ctx.moveTo(cx + cDx * r, cy + cDy * r);
+                        ctx.lineTo(cx - cDx * r, cy - cDy * r);
+                        ctx.strokeStyle = 'rgba(160, 160, 140, 0.8)';
+                        ctx.lineWidth = 2.5;
+                        ctx.stroke();
+
+                        ctx.restore();
+
+                        // Helper to draw an arrow from center outward
+                        function drawArrow(dir, color, dashed) {
+                            if (dir === null || dir === undefined) return;
+                            // Meteorological: direction is where it comes FROM
+                            // Arrow points in the direction it's GOING TO (opposite)
+                            const goingTo = (dir + 180) % 360;
+                            const rad = goingTo * Math.PI / 180;
+                            const len = r * 0.65;
+                            const tipX = cx + Math.sin(rad) * len;
+                            const tipY = cy - Math.cos(rad) * len;
+                            const tailX = cx - Math.sin(rad) * len * 0.3;
+                            const tailY = cy + Math.cos(rad) * len * 0.3;
+
+                            ctx.save();
+                            ctx.strokeStyle = color;
+                            ctx.fillStyle = color;
+                            ctx.lineWidth = 2;
+
+                            if (dashed) ctx.setLineDash([4, 3]);
+                            ctx.beginPath();
+                            ctx.moveTo(tailX, tailY);
+                            ctx.lineTo(tipX, tipY);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+
+                            // Arrowhead
+                            const headLen = 8;
+                            const headAngle = 0.45;
+                            ctx.beginPath();
+                            ctx.moveTo(tipX, tipY);
+                            ctx.lineTo(tipX - headLen * Math.sin(rad - headAngle),
+                                       tipY + headLen * Math.cos(rad - headAngle));
+                            ctx.lineTo(tipX - headLen * Math.sin(rad + headAngle),
+                                       tipY + headLen * Math.cos(rad + headAngle));
+                            ctx.closePath();
+                            ctx.fill();
+                            ctx.restore();
+                        }
+
+                        drawArrow(waveDir, 'rgba(0, 220, 255, 0.9)', false);
+                        drawArrow(windDir, 'rgba(255, 210, 70, 0.9)', true);
+
+                        // "N" compass indicator at top
+                        ctx.save();
+                        ctx.font = 'bold 10px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                        ctx.fillText('N', cx, 11);
+                        ctx.restore();
+
+                        // Legend at bottom
+                        ctx.save();
+                        ctx.font = '9px sans-serif';
+                        ctx.textAlign = 'center';
+                        if (windDir !== null && windDir !== undefined) {
+                            ctx.fillStyle = 'rgba(255, 210, 70, 0.9)';
+                            ctx.fillText('Wind', cx - 22, size - 4);
+                        }
+                        if (waveDir !== null && waveDir !== undefined) {
+                            ctx.fillStyle = 'rgba(0, 220, 255, 0.9)';
+                            ctx.fillText('Swell', cx + 22, size - 4);
+                        }
+                        ctx.restore();
+                    }
+
+                    // --- External tooltip handler for wave chart ---
+                    function waveChartExternalTooltip(context) {
+                        const { chart, tooltip } = context;
+                        const container = chart.canvas.parentNode;
+
+                        let el = container.querySelector('.wave-tooltip');
+                        if (!el) {
+                            el = document.createElement('div');
+                            el.className = 'wave-tooltip';
+                            container.appendChild(el);
+                        }
+
+                        if (tooltip.opacity === 0) {
+                            el.style.opacity = '0';
+                            return;
+                        }
+
+                        const index = tooltip.dataPoints ? tooltip.dataPoints[0].dataIndex : null;
+                        if (index === null) { el.style.opacity = '0'; return; }
+
+                        // Build text section via DOM (safe, no innerHTML with untrusted data)
+                        el.textContent = '';
+                        const textDiv = document.createElement('div');
+                        textDiv.className = 'tt-text';
+
+                        // Title
+                        const titleLines = tooltip.title || [];
+                        if (titleLines.length) {
+                            const titleEl = document.createElement('div');
+                            titleEl.className = 'tt-title';
+                            titleEl.textContent = titleLines.join(' ');
+                            textDiv.appendChild(titleEl);
+                        }
+
+                        // Body lines (dataset values)
+                        (tooltip.body || []).forEach((bodyItem, i) => {
+                            const colors = tooltip.labelColors[i];
+                            const bg = colors ? colors.borderColor : '#888';
+                            const lineEl = document.createElement('div');
+                            lineEl.className = 'tt-line';
+                            const swatch = document.createElement('span');
+                            swatch.className = 'tt-swatch';
+                            swatch.style.background = bg;
+                            lineEl.appendChild(swatch);
+                            lineEl.appendChild(document.createTextNode(bodyItem.lines.join(' ')));
+                            textDiv.appendChild(lineEl);
+                        });
+
+                        // Extra info
+                        const extraDiv = document.createElement('div');
+                        extraDiv.className = 'tt-extra';
+                        const windD = windDirections[index];
+                        const waveD = waveDirections[index];
+                        const extraLines = [];
+                        if (windD !== null && windD !== undefined) {
+                            extraLines.push('Wind Dir: ' + windD.toFixed(0) + '\u00B0 (' + degToCompass(windD) + ')');
+                        }
+                        if (waveD !== null && waveD !== undefined) {
+                            extraLines.push('Swell Dir: ' + waveD.toFixed(0) + '\u00B0 (' + degToCompass(waveD) + ')');
+                        }
+                        if (window._surfConditions && window._surfConditions[index]) {
+                            const cond = window._surfConditions[index];
+                            const label = CONDITION_COLORS[cond] ? CONDITION_COLORS[cond].label : cond;
+                            extraLines.push('Conditions: ' + label);
+                        }
+                        extraLines.forEach((line, i) => {
+                            if (i > 0) extraDiv.appendChild(document.createElement('br'));
+                            extraDiv.appendChild(document.createTextNode(line));
+                        });
+                        textDiv.appendChild(extraDiv);
+                        el.appendChild(textDiv);
+
+                        // Diagram canvas
+                        const diagCanvas = document.createElement('canvas');
+                        diagCanvas.className = 'wave-tooltip-diagram';
+                        el.appendChild(diagCanvas);
+                        drawTooltipDiagram(diagCanvas, windDirections[index], waveDirections[index]);
+
+                        // Position tooltip clamped within chart area
+                        const chartArea = chart.chartArea;
+                        let left = tooltip.caretX + 12;
+                        let top = tooltip.caretY - el.offsetHeight / 2;
+
+                        const elW = el.offsetWidth || 300;
+                        const elH = el.offsetHeight || 150;
+                        if (left + elW > container.offsetWidth - 5) {
+                            left = tooltip.caretX - elW - 12;
+                        }
+                        if (top < chartArea.top) top = chartArea.top;
+                        if (top + elH > chartArea.bottom) top = chartArea.bottom - elH;
+
+                        el.style.left = left + 'px';
+                        el.style.top = top + 'px';
+                        el.style.opacity = '1';
+                    }
+
                     // Compute time range for sync
                     const waveTimes = data.map(item => new Date(item.time));
                     waveTimeRange = { min: waveTimes[0], max: waveTimes[waveTimes.length - 1] };
@@ -2814,7 +3223,7 @@
 
                     waveChart = new Chart(ctx, {
                         type: 'line',
-                        plugins: [dayNightPlugin, windArrowPlugin],
+                        plugins: [surfConditionPlugin, dayNightPlugin, windArrowPlugin],
                         data: {
                             datasets: [
                                 {
@@ -2921,16 +3330,10 @@
                                     labels: { color: '#888' }
                                 },
                                 tooltip: {
+                                    enabled: false,
+                                    external: waveChartExternalTooltip,
                                     callbacks: {
-                                        title: formatLocalTooltipTitle,
-                                        afterBody: function(context) {
-                                            const index = context[0].dataIndex;
-                                            const dir = windDirections[index];
-                                            if (dir !== null && dir !== undefined) {
-                                                return `Wind Direction: ${dir.toFixed(0)}°`;
-                                            }
-                                            return '';
-                                        }
+                                        title: formatLocalTooltipTitle
                                     }
                                 },
                             }
@@ -2940,6 +3343,8 @@
                     // Dismiss linked tooltip when mouse leaves wave chart
                     document.getElementById('waveChart').addEventListener('mouseleave', () => {
                         clearSyncedTooltip(tideChart);
+                        const ttEl = document.getElementById('waveChart').parentNode.querySelector('.wave-tooltip');
+                        if (ttEl) ttEl.style.opacity = '0';
                     });
 
                     syncChartTimeAxes();
