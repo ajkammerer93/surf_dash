@@ -1928,8 +1928,25 @@
             </div>
         </div>
 
-        <!-- Daylight Forecast -->
-        <div class="grid-stack-item" data-panel-id="daylight" gs-x="0" gs-y="30" gs-w="12" gs-h="6">
+        <!-- Session Planner -->
+        <div class="grid-stack-item" data-panel-id="session-planner" gs-x="0" gs-y="30" gs-w="12" gs-h="5">
+            <div class="grid-stack-item-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Session Planner</span>
+                        <span class="panel-badge" id="session-planner-badge">Analyzing</span>
+                    </div>
+                    <div class="panel-content">
+                        <div id="session-planner-grid">
+                            <div class="session-planner-loading">Waiting for forecast data...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daylight Forecast (hidden by default) -->
+        <div class="grid-stack-item" data-panel-id="daylight" gs-x="0" gs-y="35" gs-w="12" gs-h="6">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -1956,23 +1973,6 @@
                             </thead>
                             <tbody id="forecast-table"></tbody>
                         </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Session Planner -->
-        <div class="grid-stack-item" data-panel-id="session-planner" gs-x="0" gs-y="36" gs-w="12" gs-h="5">
-            <div class="grid-stack-item-content">
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Session Planner</span>
-                        <span class="panel-badge" id="session-planner-badge">Analyzing</span>
-                    </div>
-                    <div class="panel-content">
-                        <div id="session-planner-grid">
-                            <div class="session-planner-loading">Waiting for forecast data...</div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -2130,11 +2130,15 @@
             'session-planner': 'Session Planner'
         };
 
+        const DEFAULT_HIDDEN_PANELS = ['daylight'];
+
         function getHiddenPanels() {
             try {
-                return JSON.parse(localStorage.getItem('hidden-panels')) || [];
+                var stored = localStorage.getItem('hidden-panels');
+                if (stored === null) return DEFAULT_HIDDEN_PANELS.slice();
+                return JSON.parse(stored) || [];
             } catch (e) {
-                return [];
+                return DEFAULT_HIDDEN_PANELS.slice();
             }
         }
 
