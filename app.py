@@ -1117,7 +1117,10 @@ def _get_point_from_nomads(lat, lon):
 
     htsgw_h = np.interp(tgt_secs, src_secs, htsgw)
     perpw_h = np.interp(tgt_secs, src_secs, perpw)
-    dirpw_h = np.interp(tgt_secs, src_secs, dirpw)
+    # Circular interpolation for direction (handles 0/360 wrap)
+    sin_dir = np.interp(tgt_secs, src_secs, np.sin(np.radians(dirpw)))
+    cos_dir = np.interp(tgt_secs, src_secs, np.cos(np.radians(dirpw)))
+    dirpw_h = np.degrees(np.arctan2(sin_dir, cos_dir)) % 360
     wvhgt_h = np.interp(tgt_secs, src_secs, wvhgt)
     wvper_h = np.interp(tgt_secs, src_secs, wvper)
 
@@ -2341,17 +2344,22 @@ def swell_narrative():
         if wave_dir is not None:
             source_label = compass_dirs[round(wave_dir / 22.5) % 16]
 
-        # Swell type classification
-        is_ground_swell = wave_period >= 10
-        swell_type = 'Ground swell' if is_ground_swell else 'Wind swell'
+        # Swell type classification (3-tier)
+        if wave_period >= 12:
+            swell_type = 'Ground swell'
+        elif wave_period >= 9:
+            swell_type = 'Medium-period swell'
+        else:
+            swell_type = 'Wind swell'
+        is_ground_swell = wave_period >= 12
 
-        # Estimated source distance range using group velocity
-        # Group velocity (m/s) = 1.56 * period (deep water approximation)
-        # Travel time is unknown, so show 1-3 day range
+        # Estimated source distance range using deep-water group velocity
+        # Group velocity (m/s) = g*T / (4*pi) ≈ 0.78 * T
+        # (Phase velocity is 1.56*T; group velocity is half that in deep water)
         estimated_source_km = None
         source_range_km = None
         if wave_period > 0:
-            group_speed_ms = 1.56 * wave_period
+            group_speed_ms = 0.78 * wave_period
             group_speed_kmh = group_speed_ms * 3.6
             near_km = round(group_speed_kmh * 24)   # 1-day travel
             far_km = round(group_speed_kmh * 72)     # 3-day travel
@@ -2366,11 +2374,13 @@ def swell_narrative():
         if first_24 and next_24:
             avg_first = sum(first_24) / len(first_24)
             avg_next = sum(next_24) / len(next_24)
-            diff_pct = (avg_next - avg_first) / max(avg_first, 0.01) * 100
-            if diff_pct > 15:
-                trend = 'building'
-            elif diff_pct < -15:
-                trend = 'fading'
+            # Only compute trend when waves are meaningful (>0.3m ≈ 1ft)
+            if avg_first > 0.3:
+                diff_pct = (avg_next - avg_first) / avg_first * 100
+                if diff_pct > 15:
+                    trend = 'building'
+                elif diff_pct < -15:
+                    trend = 'fading'
 
         # Build narrative sentence
         m_to_ft = 3.28084

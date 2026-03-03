@@ -654,8 +654,7 @@
             font-size: 10px;
             padding: 6px 24px 6px 10px;
             border-radius: 4px;
-            pointer-events: none;
-            z-index: 500;
+            z-index: 1000;
             line-height: 1.4;
         }
 
@@ -672,9 +671,13 @@
             color: var(--text-muted);
             font-size: 12px;
             cursor: pointer;
-            pointer-events: auto;
-            padding: 2px 4px;
+            padding: 8px 10px;
+            min-width: 44px;
+            min-height: 44px;
             line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .basin-narrative-close:hover {
@@ -887,9 +890,8 @@
 
         .stat-context {
             display: block;
-            font-size: 9px;
-            font-style: italic;
-            color: var(--text-muted);
+            font-size: 10px;
+            color: var(--text-dim);
             line-height: 1.3;
         }
 
@@ -1079,7 +1081,7 @@
         }
 
         .cond-summary {
-            font-size: 9px;
+            font-size: 10px;
             color: var(--text-muted);
             max-width: 180px;
         }
@@ -1122,13 +1124,15 @@
             position: relative;
         }
 
+        .session-block:hover { background: rgba(255,255,255,0.04); }
+
         .session-prime { border-left-color: var(--status-live); }
         .session-good { border-left-color: #4488ff; }
         .session-fair { border-left-color: var(--status-warning); }
         .session-poor { border-left-color: var(--text-muted); }
 
         .session-best {
-            background: rgba(68, 255, 136, 0.06);
+            background: rgba(68, 255, 136, 0.1);
         }
 
         .session-time {
@@ -1150,9 +1154,9 @@
         }
 
         .session-score-label {
-            font-size: 8px;
+            font-size: 9px;
             font-weight: 400;
-            opacity: 0.7;
+            opacity: 0.85;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -1165,7 +1169,7 @@
         .session-summary {
             font-size: 9px;
             color: var(--text-muted);
-            margin-top: 2px;
+            margin-top: 4px;
             line-height: 1.3;
         }
 
@@ -1205,7 +1209,7 @@
             padding: 8px 12px;
             font-size: 10px;
             color: var(--text-dim);
-            z-index: 100;
+            z-index: 1100;
             max-width: 300px;
             line-height: 1.5;
         }
@@ -1616,27 +1620,27 @@
         <div class="header-right">
             <span class="header-clock" id="header-clock"></span>
             <div class="skill-level-menu">
-                <button class="header-btn" id="skill-level-btn">
+                <button class="header-btn" id="skill-level-btn" aria-haspopup="listbox" aria-expanded="false">
                     <span class="btn-text" id="skill-level-label">All Levels</span>
                     <span class="btn-icon-only" title="Skill Level">&#x1F3C4;</span>
                 </button>
-                <div class="skill-level-dropdown" id="skill-level-dropdown">
-                    <div class="skill-level-item" data-level="beginner" onclick="setSkillLevel('beginner')">
+                <div class="skill-level-dropdown" id="skill-level-dropdown" role="listbox" aria-label="Skill level">
+                    <div class="skill-level-item" data-level="beginner" role="option" tabindex="0" onclick="setSkillLevel('beginner')">
                         <span class="skill-dot" style="background:#44ff88"></span>
                         <span class="skill-item-label">Beginner</span>
                         <span class="skill-item-desc">0-3 ft, whitewater</span>
                     </div>
-                    <div class="skill-level-item" data-level="intermediate" onclick="setSkillLevel('intermediate')">
+                    <div class="skill-level-item" data-level="intermediate" role="option" tabindex="0" onclick="setSkillLevel('intermediate')">
                         <span class="skill-dot" style="background:#4488ff"></span>
                         <span class="skill-item-label">Intermediate</span>
                         <span class="skill-item-desc">2-6 ft, green waves</span>
                     </div>
-                    <div class="skill-level-item" data-level="advanced" onclick="setSkillLevel('advanced')">
+                    <div class="skill-level-item" data-level="advanced" role="option" tabindex="0" onclick="setSkillLevel('advanced')">
                         <span class="skill-dot" style="background:#ff4444"></span>
                         <span class="skill-item-label">Advanced</span>
                         <span class="skill-item-desc">4+ ft, barrels &amp; airs</span>
                     </div>
-                    <div class="skill-level-item" data-level="all" onclick="setSkillLevel('all')">
+                    <div class="skill-level-item" data-level="all" role="option" tabindex="0" onclick="setSkillLevel('all')">
                         <span class="skill-dot" style="background:#888"></span>
                         <span class="skill-item-label">All Levels</span>
                         <span class="skill-item-desc">Universal scoring</span>
@@ -1814,9 +1818,9 @@
                         <span class="panel-title">Wave &amp; Wind Forecast</span>
                         <span class="panel-location"></span>
                         <div class="conditions-legend">
-                            <span class="cond-key" title="Offshore wind (NW &#xB1;45&#xB0;) or calm (&lt;3 mph). Glassy or lightly textured surface."><span class="cond-swatch clean"></span><span class="cond-label">Clean</span></span>
-                            <span class="cond-key" title="Cross-shore wind or light onshore (&lt;6 mph). Moderate texture, still surfable."><span class="cond-swatch fair"></span><span class="cond-label">Fair</span></span>
-                            <span class="cond-key" title="Onshore wind &#x2265;6 mph (SE &#xB1;45&#xB0;). Bumpy, disorganized surface conditions."><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
+                            <span class="cond-key" id="legend-clean" title="Offshore wind or calm. Glassy or lightly textured surface."><span class="cond-swatch clean"></span><span class="cond-label">Clean</span></span>
+                            <span class="cond-key" id="legend-fair" title="Cross-shore wind or light onshore. Moderate texture, still surfable."><span class="cond-swatch fair"></span><span class="cond-label">Fair</span></span>
+                            <span class="cond-key" id="legend-choppy" title="Onshore wind. Bumpy, disorganized surface conditions."><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
                         </div>
                     </div>
                     <div class="panel-content">
@@ -2010,7 +2014,7 @@
                 <div class="panel">
                     <div class="panel-header">
                         <span class="panel-title">Session Planner</span>
-                        <span class="session-info-btn" id="session-info-btn" onclick="toggleSessionInfo()" title="What is Surf Score?">?</span>
+                        <span class="session-info-btn" id="session-info-btn" onclick="toggleSessionInfo()" title="What is Surf Score?" aria-label="What is Surf Score?" role="button" tabindex="0">?</span>
                         <span class="panel-badge" id="session-planner-badge">Analyzing</span>
                         <div class="session-info-tip" id="session-info-tip" style="display:none">
                             <strong>Surf Score</strong> (0-100) rates each 3-hour window:<br>
@@ -2038,7 +2042,7 @@
                         <span class="panel-title">Daylight Forecast</span>
                         <span class="panel-location"></span>
                     </div>
-                    <div class="panel-content">
+                    <div class="panel-content" style="overflow-x: auto;">
                         <p class="conditions-hint">
                             <span class="good">&#10003; Clean</span> = Offshore/calm wind &nbsp;
                             <span class="fair">&#9679; Fair</span> = Cross-shore/light onshore &nbsp;
@@ -2331,11 +2335,40 @@
             });
 
             // Skill level toggle button
-            document.getElementById('skill-level-btn').addEventListener('click', function(e) {
+            var skillBtn = document.getElementById('skill-level-btn');
+            skillBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                const dropdown = document.getElementById('skill-level-dropdown');
-                dropdown.classList.toggle('open');
+                var dropdown = document.getElementById('skill-level-dropdown');
+                var isOpen = dropdown.classList.toggle('open');
+                skillBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
                 updateSkillDropdownActive();
+                if (isOpen) {
+                    var active = dropdown.querySelector('.skill-level-item.active') || dropdown.querySelector('.skill-level-item');
+                    if (active) active.focus();
+                }
+            });
+
+            // Keyboard navigation for skill dropdown
+            document.getElementById('skill-level-dropdown').addEventListener('keydown', function(e) {
+                var items = Array.from(this.querySelectorAll('.skill-level-item'));
+                var idx = items.indexOf(document.activeElement);
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    items[(idx + 1) % items.length].focus();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    items[(idx - 1 + items.length) % items.length].focus();
+                } else if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (idx >= 0) {
+                        var level = items[idx].getAttribute('data-level');
+                        setSkillLevel(level);
+                    }
+                } else if (e.key === 'Escape') {
+                    this.classList.remove('open');
+                    skillBtn.setAttribute('aria-expanded', 'false');
+                    skillBtn.focus();
+                }
             });
 
             // Initialize skill level label from saved state
@@ -2457,6 +2490,14 @@
         const CALM_WIND_THRESHOLD_GLOBAL = 5;
         const LIGHT_ONSHORE_THRESHOLD_GLOBAL = 10;
 
+        // Global condition label mapping
+        const CONDITION_LABELS = {
+            clean: 'Offshore / Clean',
+            fair: 'Cross-shore / Fair',
+            choppy: 'Onshore / Choppy',
+            unknown: 'Unknown'
+        };
+
         // Global classifier — delegates to the inner one after first load, or runs standalone
         function classifySurfConditionGlobal(windDirection, windSpeed) {
             if (windSpeed !== null && windSpeed < CALM_WIND_THRESHOLD_GLOBAL) return 'clean';
@@ -2490,7 +2531,8 @@
             if (level === 'advanced') {
                 if (ft < 2) return 'Small \u2014 longboard day';
                 if (ft < 4) return 'Fun size \u2014 shortboard friendly';
-                if (ft < 6) return 'Head high \u2014 go time';
+                if (ft < 5) return 'Chest to shoulder \u2014 solid';
+                if (ft < 7) return 'Head high \u2014 go time';
                 if (ft < 10) return 'Overhead \u2014 pumping';
                 return 'Double overhead+ \u2014 heavy conditions';
             }
@@ -2502,8 +2544,15 @@
             return 'Double overhead+ \u2014 experts only';
         }
 
-        function describeWavePeriod(periodSeconds) {
+        function describeWavePeriod(periodSeconds, skillLevel) {
             if (periodSeconds == null) return '';
+            var level = skillLevel || currentSkillLevel || 'all';
+            if (level === 'beginner') {
+                if (periodSeconds < 6) return 'Waves break apart quickly';
+                if (periodSeconds < 9) return 'Short-range waves';
+                if (periodSeconds < 12) return 'Moderate waves \u2014 decent for practicing';
+                return 'Deep-ocean waves \u2014 smooth and strong (may be too much)';
+            }
             if (periodSeconds < 6) return 'Short period \u2014 weak, crumbly waves';
             if (periodSeconds < 9) return 'Wind swell \u2014 moderate energy';
             if (periodSeconds < 12) return 'Medium swell \u2014 decent shape';
@@ -2512,13 +2561,36 @@
         }
 
         // Note: classifySurfConditionGlobal operates in km/h; thresholds below are in mph after conversion
-        function describeWindCondition(windSpeedKmh, windDirection) {
+        function describeWindCondition(windSpeedKmh, windDirection, skillLevel) {
             var mph = windSpeedKmh * KMH_TO_MPH;
             var cond = classifySurfConditionGlobal(windDirection, windSpeedKmh);
-            if (mph < 3) return 'Glassy \u2014 no wind texture';
+            var level = skillLevel || currentSkillLevel || 'all';
+
+            // Check actual offshore angle (not just classifier which lumps calm into clean)
+            var isActuallyOffshore = false;
+            if (windDirection !== null && windDirection !== undefined) {
+                var diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
+                if (diff > 180) diff = 360 - diff;
+                isActuallyOffshore = diff >= 135;
+            }
+
+            if (level === 'beginner') {
+                if (mph < 3) return 'Nearly calm \u2014 smooth surface';
+                if (cond === 'clean') return 'Wind from land \u2014 nice and smooth';
+                if (cond === 'fair') return 'Some wind chop \u2014 still OK';
+                return 'Very windy \u2014 not great for learning';
+            }
+
+            // Calm wind: distinguish actual offshore vs. simply calm
+            if (mph < 3) {
+                if (isActuallyOffshore) return 'Glassy \u2014 no wind texture';
+                return 'Nearly calm \u2014 smooth surface';
+            }
             if (cond === 'clean') {
                 if (mph < 10) return 'Light offshore \u2014 clean faces';
-                return 'Moderate offshore \u2014 textured but clean';
+                if (mph < 18) return 'Moderate offshore \u2014 textured but clean';
+                if (mph < 25) return 'Strong offshore \u2014 spray off the lips';
+                return 'Howling offshore \u2014 hard to paddle out';
             }
             if (cond === 'fair') {
                 if (mph < 8) return 'Light cross-shore \u2014 minor texture';
@@ -2551,8 +2623,11 @@
                 else if (ft < 1) score -= 30;
                 else if (ft > 7) score -= 15;
             } else if (level === 'advanced') {
-                if (ft >= 3 && ft <= 8) score += 20;
+                if (ft >= 4 && ft <= 10) score += 20;
+                else if (ft >= 3 && ft < 4) score += 10;
                 else if (ft < 2) score -= 20;
+                else if (ft > 15) score -= 25;
+                else if (ft > 12) score -= 15;
                 else if (ft > 10) score -= 5;
             } else {
                 if (ft >= 2 && ft <= 4) score += 20;
@@ -2565,21 +2640,38 @@
             else if (period < 6) score -= 10;
 
             var cond = classifySurfConditionGlobal(windDir, windSpeed);
-            if (cond === 'clean') score += 25;
-            else if (cond === 'fair') score += 10;
-            else if (cond === 'choppy') score -= 15;
+            var mph = windSpeed * KMH_TO_MPH;
+            if (cond === 'clean') {
+                if (mph < 15) score += 25;
+                else if (mph < 25) score += 15;
+                else score += 5;
+            } else if (cond === 'fair') {
+                score += 10;
+            } else if (cond === 'choppy') {
+                if (mph >= 20) score -= 25;
+                else score -= 15;
+            }
 
-            // Tide: award points for any movement (optimal tide direction is break-dependent)
+            // Tide: moving tide is generally better than slack
             if (tideHeight != null && tidePrev != null) {
-                score += 5;
+                var tideChange = Math.abs(tideHeight - tidePrev);
+                if (tideChange > 0.05) score += 7;
+                else score -= 3;
             }
 
             return Math.max(0, Math.min(100, score));
         }
 
         function buildWindowSummary(avgWH, avgWP, windCond) {
-            var whDesc = avgWH < 0.5 ? 'flat' : (avgWH * M_TO_FT).toFixed(0) + 'ft';
-            var wpDesc = avgWP >= 12 ? 'ground swell' : (avgWP >= 9 ? 'medium swell' : 'wind swell');
+            var level = currentSkillLevel || 'all';
+            var ft = avgWH * M_TO_FT;
+            if (level === 'beginner') {
+                var whDesc = ft < 0.5 ? 'Flat' : ft < 2 ? 'Small waves, good for practicing' : ft < 3.5 ? 'Medium waves, challenging' : 'Too big for beginners';
+                var windDesc = windCond === 'clean' ? 'smooth water' : (windCond === 'fair' ? 'a little choppy' : 'very choppy');
+                return whDesc + ', ' + windDesc;
+            }
+            var whDesc = avgWH < 0.5 ? 'flat' : ft.toFixed(0) + 'ft';
+            var wpDesc = avgWP >= 12 ? 'ground swell' : (avgWP >= 9 ? 'medium swell' : 'short-period swell');
             var windDesc = windCond === 'clean' ? 'clean faces' : (windCond === 'fair' ? 'moderate texture' : 'choppy');
             return whDesc + ' ' + wpDesc + ', ' + windDesc;
         }
@@ -2933,6 +3025,22 @@
             });
         }
 
+        // Update legend tooltips with compass labels based on beach orientation
+        function updateLegendTooltips() {
+            var dirs16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            var facing = BEACH_FACING_DIRECTION;
+            var offshore = (facing + 180) % 360;
+            var onshore = facing;
+            var offshoreLabel = dirs16[Math.round(offshore / 22.5) % 16];
+            var onshoreLabel = dirs16[Math.round(onshore / 22.5) % 16];
+            var cleanEl = document.getElementById('legend-clean');
+            var fairEl = document.getElementById('legend-fair');
+            var choppyEl = document.getElementById('legend-choppy');
+            if (cleanEl) cleanEl.title = 'Offshore wind (' + offshoreLabel + ' \u00B145\u00B0) or calm (<3 mph). Glassy or lightly textured surface.';
+            if (fairEl) fairEl.title = 'Cross-shore wind or light onshore (<6 mph). Moderate texture, still surfable.';
+            if (choppyEl) choppyEl.title = 'Onshore wind (' + onshoreLabel + ' \u00B145\u00B0) \u22656 mph. Bumpy, disorganized surface conditions.';
+        }
+
         // Rebuild the daylight forecast table from cached data (used on skill level change)
         function rebuildForecastTable() {
             if (!window._forecastData) return;
@@ -2978,10 +3086,14 @@
             updateSkillLevelLabel();
             updateSkillDropdownActive();
             document.getElementById('skill-level-dropdown').classList.remove('open');
+            var skillBtnEl = document.getElementById('skill-level-btn');
+            if (skillBtnEl) skillBtnEl.setAttribute('aria-expanded', 'false');
             // Re-render context descriptions if forecast data available
             if (window._forecastData && window._forecastData.length) {
                 var c = window._forecastData[0];
                 if (c.wave_height != null) document.getElementById('ctx_wave_height').textContent = describeWaveHeight(c.wave_height);
+                if (c.wave_period != null) document.getElementById('ctx_wave_period').textContent = describeWavePeriod(c.wave_period);
+                if (c.wind_speed != null) document.getElementById('ctx_wind').textContent = describeWindCondition(c.wind_speed, c.wind_direction);
             }
             // Re-render daylight table and session planner
             rebuildForecastTable();
@@ -3540,6 +3652,7 @@
                     } else {
                         window._orientationAvailable = false;
                     }
+                    updateLegendTooltips();
 
                     if (data.error) {
                         console.error('API Error (Point Data):', data.error);
@@ -3599,71 +3712,8 @@
                     var orientWarn = document.getElementById('orientation-warning');
                     if (orientWarn) orientWarn.style.display = window._orientationAvailable ? 'none' : '';
 
-                    const tableBody = document.getElementById('forecast-table');
-                    tableBody.innerHTML = '';
-
-                    // Helper to convert wind direction to compass
-                    function degToCompass(deg) {
-                        if (deg === null || deg === undefined) return '-';
-                        const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-                        return dirs[Math.round(deg / 22.5) % 16];
-                    }
-
-                    // Surf condition classification — uses global classifySurfConditionGlobal()
-                    const CONDITION_COLORS = {
-                        clean:  { bg: 'rgba(68, 255, 136, 0.08)', label: 'Offshore / Clean' },
-                        fair:   { bg: 'rgba(255, 206, 86, 0.08)',  label: 'Cross-shore / Fair' },
-                        choppy: { bg: 'rgba(255, 68, 68, 0.08)',   label: 'Onshore / Choppy' },
-                        unknown:{ bg: 'rgba(0, 0, 0, 0)',          label: 'Unknown' }
-                    };
-
-                    // Filter to 5am-9pm and sample every 3 hours
-                    let lastShownHour = -999;
-                    data.forEach((item, index) => {
-                        const itemTime = new Date(item.time);
-                        const hour = itemTime.getHours();
-
-                        if (hour < 5 || hour > 21) {
-                            return;
-                        }
-
-                        if (hour % 3 !== 0) {
-                            return;
-                        }
-
-                        const dayHourKey = itemTime.toDateString() + '-' + hour;
-                        if (lastShownHour === dayHourKey) {
-                            return;
-                        }
-                        lastShownHour = dayHourKey;
-
-                        const dateStr = itemTime.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'});
-                        const timeStr = itemTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
-                        const windDir = item.wind_direction !== null ? `${degToCompass(item.wind_direction)} (${item.wind_direction.toFixed(0)}°)` : '-';
-                        const windSpeed = item.wind_speed !== null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
-
-                        const condition = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
-                        const rowClassMap = { clean: 'row-good', fair: 'row-fair', choppy: 'row-choppy' };
-                        const indicatorMap = { clean: ' &#10003;', fair: ' &#9679;', choppy: ' &#10007;' };
-                        const rowClass = rowClassMap[condition] || '';
-                        const offshoreIndicator = indicatorMap[condition] || '';
-
-                        const condSummary = [
-                            item.wave_height != null ? describeWaveHeight(item.wave_height) : '',
-                            item.wave_period != null ? describeWavePeriod(item.wave_period) : ''
-                        ].filter(Boolean).join('; ');
-
-                        const row = `<tr class="${rowClass}">
-                            <td>${dateStr}</td>
-                            <td>${timeStr}</td>
-                            <td>${item.wave_height != null ? (item.wave_height * M_TO_FT).toFixed(1) : '-'}</td>
-                            <td>${item.wave_period != null ? item.wave_period.toFixed(1) : '-'}</td>
-                            <td>${windSpeed}</td>
-                            <td>${windDir}${offshoreIndicator}</td>
-                            <td class="cond-summary">${condSummary}</td>
-                        </tr>`;
-                        tableBody.innerHTML += row;
-                    });
+                    // Build daylight forecast table (reuses shared rebuildForecastTable)
+                    rebuildForecastTable();
                     const ctx = document.getElementById('waveChart').getContext('2d');
 
                     // Store wind/wave directions and surf conditions for custom plugins
@@ -3896,8 +3946,7 @@
                         }
                         if (window._surfConditions && window._surfConditions[index]) {
                             const cond = window._surfConditions[index];
-                            const label = CONDITION_COLORS[cond] ? CONDITION_COLORS[cond].label : cond;
-                            extraLines.push('Conditions: ' + label);
+                            extraLines.push('Conditions: ' + (CONDITION_LABELS[cond] || cond));
                         }
                         // Interpreter descriptions (with skill level label)
                         if (window._forecastData && window._forecastData[index]) {
@@ -4414,11 +4463,17 @@
             const data = basinGridData;
             const center = data.center;
 
-            // Clear loading message
-            document.getElementById('map-basin').innerHTML = '';
+            // Clear loading message but preserve narrative overlay
+            var basinEl = document.getElementById('map-basin');
+            var narrativeKeep = document.getElementById('basin-narrative');
+            if (narrativeKeep) narrativeKeep.remove();
+            basinEl.textContent = '';
 
             // Initialize map centered on the forecast location (zoom 3 for global view)
             mapBasin = L.map('map-basin', {worldCopyJump: true}).setView([center.lat, center.lon], 3);
+
+            // Re-attach narrative overlay on top of the Leaflet map
+            if (narrativeKeep) basinEl.appendChild(narrativeKeep);
 
             addHomeButton(mapBasin, [center.lat, center.lon], 3);
 
