@@ -3,7 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free Surf Forecast</title>
+    <title>{{ page_title }}</title>
+    <meta name="description" content="{{ meta_description }}">
+    <link rel="canonical" href="{{ canonical_url }}">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ og_title }}">
+    <meta property="og:description" content="{{ og_description }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ og_title }}">
+    <meta name="twitter:description" content="{{ og_description }}">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -98,6 +117,8 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin: 0;
+            font-weight: normal;
         }
 
         .header-coords {
@@ -1292,22 +1313,49 @@
             .btn-save-favorite { font-size: 13px; padding: 8px 14px; }
         }
     </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Free Surf Forecast",
+        "url": "https://freesurfforecast.com/",
+        "applicationCategory": "WeatherApplication",
+        "operatingSystem": "All",
+        "description": "{{ meta_description }}",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "contentLocation": {
+            "@type": "Place",
+            "name": "{{ location_name }}",
+            "geo": {
+                "@type": "GeoCoordinates",
+                "latitude": {{ location_lat }},
+                "longitude": {{ location_lon }}
+            }
+        }
+    }
+    </script>
 </head>
 <body>
 
     <!-- Header -->
-    <div class="header">
-        <div class="header-left">
+    <header class="header">
+        <nav class="header-left" aria-label="Site navigation">
             <a href="https://freesurfforecast.com/" class="header-title" style="text-decoration:none;color:inherit;">Free Surf Forecast</a>
-            <button class="share-btn" onclick="copyShareLink()" title="Copy link">&#x1F517;</button>
-            <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener" class="share-btn" title="Instagram" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg></a>
-            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener" class="share-btn" title="GitHub" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a>
+            <button class="share-btn" onclick="copyShareLink()" title="Copy share link" aria-label="Copy share link">&#x1F517;</button>
+            <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener" class="share-btn" title="Instagram" aria-label="Instagram" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg></a>
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener" class="share-btn" title="GitHub" aria-label="GitHub" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a>
             <span class="header-version">{{ version }}</span>
-        </div>
+        </nav>
         <div class="header-center" onclick="openModal()">
-            <span class="header-location" id="location-name">Surf City, North Carolina</span>
+            <h1 class="header-location" id="location-name">{{ location_name }}</h1>
             <span class="header-coords">
-                <span id="display-lat">34.43</span>, <span id="display-lon">-77.54</span>
+                <span id="display-lat">{{ "%.2f"|format(location_lat) }}</span>, <span id="display-lon">{{ "%.2f"|format(location_lon) }}</span>
             </span>
         </div>
         <div class="header-right">
@@ -1319,7 +1367,7 @@
                 </button>
                 <div class="panel-toggle-dropdown" id="panel-toggle-dropdown"></div>
             </div>
-            <button class="header-btn" onclick="openModal()">
+            <button class="header-btn" onclick="openModal()" aria-label="Change location">
                 <span class="btn-text">Change Location</span>
                 <span class="btn-icon-only" title="Change Location">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1328,14 +1376,14 @@
                     </svg>
                 </span>
             </button>
-            <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen">&#x26F6;</button>
+            <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
         </div>
-    </div>
+    </header>
 
     <div class="share-toast" id="share-toast">Link copied to clipboard</div>
 
     <!-- Location Modal -->
-    <div class="modal-overlay" id="locationModal">
+    <div class="modal-overlay" id="locationModal" role="dialog" aria-modal="true" aria-label="Select location">
         <div class="modal-card">
             <div class="modal-top">
                 <span class="modal-title">Select Location</span>
@@ -1365,6 +1413,26 @@
     </div>
 
     <!-- Dashboard Grid -->
+    <main>
+
+    <noscript>
+        <div style="max-width: 720px; margin: 40px auto; padding: 20px; color: #e8e8e8; font-family: sans-serif; line-height: 1.6;">
+            <h2>Surf Forecast for {{ location_name }}</h2>
+            <p>
+                Free Surf Forecast provides a 7-day surf forecast including wave height, wave period,
+                wave direction, wind speed and direction, tide predictions, and live surf cameras for
+                {{ location_name }} and hundreds of other coastal locations.
+            </p>
+            <p>This dashboard requires JavaScript to display interactive charts, maps, and live data.</p>
+            <p>Data sources:</p>
+            <ul>
+                <li><a href="https://open-meteo.com/">Open-Meteo</a> &mdash; Wave and weather forecasts</li>
+                <li><a href="https://tidesandcurrents.noaa.gov/">NOAA CO-OPS</a> &mdash; Tide predictions</li>
+                <li><a href="https://www.ndbc.noaa.gov/">NDBC</a> &mdash; Buoy observations</li>
+            </ul>
+        </div>
+    </noscript>
+
     <div class="grid-stack" id="dashboard-grid">
 
         <!-- Current Conditions -->
@@ -1675,6 +1743,7 @@
         </div>
 
     </div>
+    </main>
 
     <footer class="site-footer">
         <div>&copy; 2026 Surf Dash. All rights reserved.</div>
