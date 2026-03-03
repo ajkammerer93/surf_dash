@@ -314,6 +314,19 @@
             color: var(--text);
             text-decoration: underline;
         }
+        .cam-refresh-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 13px;
+            padding: 0 2px;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .cam-refresh-btn:hover {
+            color: var(--text);
+        }
 
         .site-footer {
             text-align: center;
@@ -1974,6 +1987,19 @@
                 header.querySelectorAll('.panel-badge').forEach(function(badge) {
                     actions.appendChild(badge);
                 });
+
+                // Add refresh button for camera panels
+                const panelItem = header.closest('.grid-stack-item');
+                const panelId = panelItem ? panelItem.getAttribute('data-panel-id') : '';
+                if (panelId === 'cam-1' || panelId === 'cam-2') {
+                    const slotIndex = panelId === 'cam-1' ? 0 : 1;
+                    const refreshBtn = document.createElement('button');
+                    refreshBtn.className = 'cam-refresh-btn';
+                    refreshBtn.textContent = '\u21BB';
+                    refreshBtn.title = 'Refresh stream';
+                    refreshBtn.onclick = function() { refreshCam(slotIndex); };
+                    actions.appendChild(refreshBtn);
+                }
 
                 const btn = document.createElement('button');
                 btn.className = 'panel-btn';
@@ -4462,6 +4488,7 @@
 
         // === Surf Cams (Dynamic) ===
         var activeCamInstances = {};
+        var activeCamSelections = [0, 1];
 
         var CAM_SOURCES = {
             'surfchex.com': { name: 'SurfChex', url: 'https://www.surfchex.com' },
@@ -4489,7 +4516,14 @@
             }
         }
 
+        function refreshCam(slotIndex) {
+            var idx = activeCamSelections[slotIndex];
+            var cam = window.nearbyCameras[idx];
+            if (cam) setCamPanel(slotIndex, cam, idx);
+        }
+
         function setCamPanel(slotIndex, camData, camIndex) {
+            activeCamSelections[slotIndex] = camIndex;
             var panelId = 'cam-' + (slotIndex + 1);
             var titleEl = document.getElementById(panelId + '-title');
             var badgeEl = document.getElementById(panelId + '-badge');
