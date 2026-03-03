@@ -3297,9 +3297,13 @@
 
                         const elW = el.offsetWidth || 300;
                         const elH = el.offsetHeight || 150;
-                        if (left + elW > container.offsetWidth - 5) {
+                        const containerW = container.offsetWidth;
+                        // Flip to left of cursor if it overflows right
+                        if (left + elW > containerW - 5) {
                             left = tooltip.caretX - elW - 12;
                         }
+                        // Clamp to prevent overflow on either side
+                        left = Math.max(5, Math.min(left, containerW - elW - 5));
                         if (top < chartArea.top) top = chartArea.top;
                         if (top + elH > chartArea.bottom) top = chartArea.bottom - elH;
 
@@ -5233,7 +5237,13 @@
 
                 tooltip.innerHTML = 'Period: ' + period.toFixed(1) + 's<br>Direction: ' + angle.toFixed(0) + '\u00B0 ' + compass + '<br>Energy: ' + energy.toFixed(3) + ' m\u00B2/Hz/\u00B0';
                 tooltip.style.display = '';
-                tooltip.style.left = (e.clientX + 12) + 'px';
+                var ttW = tooltip.offsetWidth || 150;
+                var ttLeft = e.clientX + 12;
+                if (ttLeft + ttW > window.innerWidth - 5) {
+                    ttLeft = e.clientX - ttW - 12;
+                }
+                ttLeft = Math.max(5, Math.min(ttLeft, window.innerWidth - ttW - 5));
+                tooltip.style.left = ttLeft + 'px';
                 tooltip.style.top = (e.clientY - 10) + 'px';
             });
 
