@@ -868,6 +868,7 @@
         #current-conditions-stats .stat-item {
             flex-direction: column;
             justify-content: center;
+            align-items: flex-start;
             border-right: 1px solid var(--border);
         }
 
@@ -5104,50 +5105,34 @@
                 if (el) el.style.display = 'none';
                 return;
             }
-            var now = Date.now();
-            var upcoming = data
-                .map(function(d) { return { time: new Date(d.time).getTime(), height: d.height, type: d.type }; })
-                .filter(function(d) { return d.time > now; })
-                .sort(function(a, b) { return a.time - b.time; });
 
-            // Find next high and next low
-            var nextHigh = null, nextLow = null;
-            for (var i = 0; i < upcoming.length; i++) {
-                if (!nextHigh && upcoming[i].type === 'H') nextHigh = upcoming[i];
-                if (!nextLow && upcoming[i].type === 'L') nextLow = upcoming[i];
-                if (nextHigh && nextLow) break;
-            }
+            // Filter to today's high/low tides (local time)
+            var now = new Date();
+            var todayStr = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
+            var today = data.filter(function(d) {
+                var dt = new Date(d.time);
+                return (dt.getFullYear() + '-' + (dt.getMonth() + 1) + '-' + dt.getDate()) === todayStr;
+            }).sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
 
-            if (!nextHigh && !nextLow) { if (el) el.style.display = 'none'; return; }
+            if (!today.length) { if (el) el.style.display = 'none'; return; }
 
             function fmt(d) {
                 var dt = new Date(d.time);
                 var h = dt.getHours(), m = dt.getMinutes();
                 var ampm = h >= 12 ? 'p' : 'a';
                 h = h % 12 || 12;
-                return (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm;
+                var arrow = d.type === 'H' ? '\u25B2' : '\u25BC';
+                return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm;
             }
 
-            // Show nearer event as primary, other as context
-            var primary, secondary;
-            if (nextHigh && nextLow) {
-                if (nextHigh.time < nextLow.time) {
-                    primary = '\u25B2 ' + fmt(nextHigh);
-                    secondary = '\u25BC ' + fmt(nextLow);
-                } else {
-                    primary = '\u25BC ' + fmt(nextLow);
-                    secondary = '\u25B2 ' + fmt(nextHigh);
-                }
-            } else if (nextHigh) {
-                primary = '\u25B2 ' + fmt(nextHigh);
-                secondary = '';
-            } else {
-                primary = '\u25BC ' + fmt(nextLow);
-                secondary = '';
-            }
-
-            document.getElementById('current_tides').textContent = primary;
-            document.getElementById('ctx_tides').textContent = secondary;
+            // First tide as primary value, rest as context lines
+            document.getElementById('current_tides').textContent = fmt(today[0]);
+            var ctxEl = document.getElementById('ctx_tides');
+            ctxEl.textContent = '';
+            today.slice(1).forEach(function(d, i) {
+                if (i > 0) ctxEl.appendChild(document.createElement('br'));
+                ctxEl.appendChild(document.createTextNode(fmt(d)));
+            });
             if (el) el.style.display = '';
         }
 
