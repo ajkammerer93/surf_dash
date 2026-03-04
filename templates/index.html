@@ -24,6 +24,14 @@
     <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <!-- Leaflet Velocity CSS -->
@@ -65,73 +73,50 @@
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-        /* === Header === */
-        .header {
+        /* === Header (two-row on desktop, single-row on mobile) === */
+        .header-wrap {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            height: 40px;
+            z-index: 1200;
+        }
+
+        /* Row 1: brand bar */
+        .header-brand {
+            height: 32px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 12px;
-            z-index: 1200;
-            gap: 12px;
+            padding: 0 14px;
         }
 
-        .header-left {
+        .header-brand-left {
             display: flex;
             align-items: center;
-            gap: 16px;
-            flex-shrink: 0;
+            gap: 14px;
         }
 
         .header-title {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
             letter-spacing: 2px;
             text-transform: uppercase;
             color: var(--accent);
         }
 
-        .header-center {
+        .header-social {
             display: flex;
             align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 3px;
-            transition: background 0.15s;
-            min-width: 0;
-            overflow: hidden;
+            gap: 10px;
         }
 
-        .header-center:hover { background: rgba(255,255,255,0.05); }
-
-        .header-location {
-            font-size: 11px;
-            color: var(--text);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin: 0;
-            font-weight: normal;
-        }
-
-        .header-coords {
-            font-size: 10px;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-
-        .header-right {
+        .header-brand-right {
             display: flex;
             align-items: center;
-            gap: 12px;
-            flex-shrink: 0;
+            gap: 14px;
         }
 
         .header-clock {
@@ -144,9 +129,83 @@
             font-size: 9px;
             color: var(--text-muted);
             letter-spacing: 0.5px;
-            padding: 2px 6px;
+            padding: 1px 6px;
             border: 1px solid var(--border);
             border-radius: 2px;
+        }
+
+        /* Row 2: toolbar */
+        .header-toolbar {
+            height: 36px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            gap: 10px;
+        }
+
+        .header-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .header-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .header-location-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 3px 10px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+            background: transparent;
+            transition: all 0.15s;
+            min-width: 0;
+            font-family: var(--font-body);
+        }
+
+        .header-location-btn:hover {
+            border-color: var(--text-muted);
+            background: rgba(255,255,255,0.03);
+        }
+
+        .header-location-btn svg {
+            flex-shrink: 0;
+            color: var(--status-live);
+        }
+
+        .header-location {
+            font-size: 11px;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .header-coords {
+            font-size: 10px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            margin-left: 4px;
+        }
+
+        .header-sep {
+            width: 1px;
+            height: 18px;
+            background: var(--border);
+            flex-shrink: 0;
         }
 
         .header-btn {
@@ -171,7 +230,7 @@
 
         /* === GridStack Dashboard === */
         .grid-stack {
-            margin-top: 40px;
+            margin-top: 68px;
         }
 
         .grid-stack-item-content {
@@ -430,6 +489,62 @@
         .share-toast.show {
             opacity: 1;
         }
+
+        /* === Share Card Modal === */
+        .share-card-preview {
+            text-align: center;
+            margin: 12px 0;
+        }
+        .share-card-preview canvas {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--border);
+        }
+        .share-format-toggle {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .share-format-toggle button {
+            font-family: var(--font-body);
+            font-size: 11px;
+            padding: 4px 12px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .share-format-toggle button.active {
+            border-color: var(--status-live);
+            color: var(--status-live);
+        }
+        .share-card-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        .share-card-actions button {
+            font-family: var(--font-body);
+            font-size: 11px;
+            padding: 6px 16px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-share-download {
+            background: var(--status-live);
+            color: #000;
+            border-color: var(--status-live) !important;
+            font-weight: 600;
+        }
+        .btn-share-download:hover { opacity: 0.85; }
+        .btn-share-native {
+            background: transparent;
+            color: var(--text);
+        }
+        .btn-share-native:hover { border-color: var(--text-dim); }
 
         .panel-badge.warning {
             background: rgba(255, 170, 0, 0.1);
@@ -1604,17 +1719,31 @@
         }
 
         @media (max-width: 700px) {
-            .header-center { display: none; }
-            .header-left .share-btn,
-            .header-left .header-version { display: none; }
+            /* Collapse to single row on mobile */
+            .header-brand { display: none; }
+            .header-toolbar {
+                height: 44px;
+                padding: 0 8px;
+                gap: 6px;
+            }
+            .header-toolbar::before {
+                content: 'FSF';
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                color: var(--accent);
+                flex-shrink: 0;
+            }
+            .header-location-btn .header-coords { display: none; }
+            .header-location-btn svg { display: none; }
+            .header-location-btn { padding: 3px 6px; }
+            .header-location { font-size: 10px; }
+            .header-sep { display: none; }
             .header-clock { display: none; }
-            .header-title { font-size: 11px; letter-spacing: 1px; }
-            .header { gap: 8px; padding: 0 8px; }
-            .header-left { gap: 8px; }
-            .header-right { gap: 6px; }
             .btn-text { display: none; }
             .btn-icon-only { display: inline-flex; align-items: center; justify-content: center; }
             .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; }
+            .grid-stack { margin-top: 44px; }
             .modal-overlay { padding: 10px; }
             .modal-card { max-height: 95vh; }
             #location-map { height: 300px !important; }
@@ -1651,75 +1780,179 @@
         }
     }
     </script>
+
+    <!-- BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://freesurfforecast.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "{{ location_name }}",
+                "item": "{{ canonical_url }}"
+            }
+        ]
+    }
+    </script>
+
+    <!-- FAQPage -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "How do I read a surf forecast?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "A surf forecast shows wave height (in feet), wave period (in seconds), wave direction, wind speed, and wind direction. Longer wave periods (12+ seconds) mean more powerful, well-organized waves. Offshore wind (blowing from land to sea) creates the cleanest conditions."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What is the best wave period for surfing?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Wave periods of 12 seconds or more indicate ground swell — powerful, well-organized waves that travel long distances. Periods of 9-12 seconds are medium-period swell with decent shape. Under 9 seconds is wind swell, which tends to be weaker and less organized."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What does offshore wind mean for surfing?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Offshore wind blows from land toward the ocean, holding up wave faces and creating clean, glassy conditions ideal for surfing. Onshore wind (from ocean to land) creates choppy, disorganized surf. Light winds under 5 mph in any direction also produce good conditions."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "When is the best time to surf?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Early morning typically offers the lightest winds and cleanest conditions. The best sessions depend on the combination of swell size, period, wind direction, and tide. Free Surf Forecast scores 3-hour windows and highlights the best times to paddle out."
+                }
+            }
+        ]
+    }
+    </script>
 </head>
 <body>
 
     <!-- Header -->
-    <header class="header">
-        <nav class="header-left" aria-label="Site navigation">
-            <a href="https://freesurfforecast.com/" class="header-title" style="text-decoration:none;color:inherit;">Free Surf Forecast</a>
-            <button class="share-btn" onclick="copyShareLink()" title="Copy share link" aria-label="Copy share link">&#x1F517;</button>
-            <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener" class="share-btn" title="Instagram" aria-label="Instagram" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg></a>
-            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener" class="share-btn" title="GitHub" aria-label="GitHub" style="text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a>
-            <span class="header-version">{{ version }}</span>
-        </nav>
-        <div class="header-center" onclick="openModal()">
-            <h1 class="header-location" id="location-name">{{ location_name }}</h1>
-            <span class="header-coords">
-                <span id="display-lat">{{ "%.2f"|format(location_lat) }}</span>, <span id="display-lon">{{ "%.2f"|format(location_lon) }}</span>
-            </span>
-        </div>
-        <div class="header-right">
-            <span class="header-clock" id="header-clock"></span>
-            <div class="skill-level-menu">
-                <button class="header-btn" id="skill-level-btn" aria-haspopup="listbox" aria-expanded="false">
-                    <span class="btn-text" id="skill-level-label">All Levels</span>
-                    <span class="btn-icon-only" title="Skill Level">&#x1F3C4;</span>
-                </button>
-                <div class="skill-level-dropdown" id="skill-level-dropdown" role="listbox" aria-label="Skill level">
-                    <div class="skill-level-item" data-level="beginner" role="option" tabindex="0" onclick="setSkillLevel('beginner')">
-                        <span class="skill-dot" style="background:#44ff88"></span>
-                        <span class="skill-item-label">Beginner</span>
-                        <span class="skill-item-desc">0-3 ft, whitewater</span>
-                    </div>
-                    <div class="skill-level-item" data-level="intermediate" role="option" tabindex="0" onclick="setSkillLevel('intermediate')">
-                        <span class="skill-dot" style="background:#4488ff"></span>
-                        <span class="skill-item-label">Intermediate</span>
-                        <span class="skill-item-desc">2-6 ft, green waves</span>
-                    </div>
-                    <div class="skill-level-item" data-level="advanced" role="option" tabindex="0" onclick="setSkillLevel('advanced')">
-                        <span class="skill-dot" style="background:#ff4444"></span>
-                        <span class="skill-item-label">Advanced</span>
-                        <span class="skill-item-desc">4+ ft, barrels &amp; airs</span>
-                    </div>
-                    <div class="skill-level-item" data-level="all" role="option" tabindex="0" onclick="setSkillLevel('all')">
-                        <span class="skill-dot" style="background:#888"></span>
-                        <span class="skill-item-label">All Levels</span>
-                        <span class="skill-item-desc">Universal scoring</span>
-                    </div>
+    <header class="header-wrap">
+        <!-- Row 1: Brand bar -->
+        <div class="header-brand">
+            <div class="header-brand-left">
+                <a href="https://freesurfforecast.com/" class="header-title" style="text-decoration:none;color:inherit;">Free Surf Forecast</a>
+                <div class="header-social">
+                    <button class="share-btn" onclick="copyShareLink()" title="Share link" aria-label="Share link">&#x1F517;</button>
+                    <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener" class="share-btn" title="Instagram" aria-label="Instagram" style="text-decoration:none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg></a>
+                    <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener" class="share-btn" title="GitHub" aria-label="GitHub" style="text-decoration:none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a>
                 </div>
             </div>
-            <div class="panel-toggle-menu">
-                <button class="header-btn" id="panels-toggle-btn">
-                    <span class="btn-text">Panels &#9662;</span>
-                    <span class="btn-icon-only" title="Panels">&#9776;</span>
-                </button>
-                <div class="panel-toggle-dropdown" id="panel-toggle-dropdown"></div>
+            <div class="header-brand-right">
+                <span class="header-clock" id="header-clock"></span>
+                <span class="header-version">{{ version }}</span>
             </div>
-            <button class="header-btn" onclick="openModal()" aria-label="Change location">
-                <span class="btn-text">Change Location</span>
-                <span class="btn-icon-only" title="Change Location">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                        <circle cx="12" cy="9" r="2.5"/>
-                    </svg>
-                </span>
-            </button>
-            <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
         </div>
+        <!-- Row 2: Toolbar -->
+        <nav class="header-toolbar" aria-label="Dashboard controls">
+            <div class="header-toolbar-left">
+                <button class="header-location-btn" onclick="openModal()" aria-label="Change location">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                    <h1 class="header-location" id="location-name">{{ location_name }}</h1>
+                    <span class="header-coords">
+                        <span id="display-lat">{{ "%.2f"|format(location_lat) }}</span>, <span id="display-lon">{{ "%.2f"|format(location_lon) }}</span>
+                    </span>
+                </button>
+                <span class="header-sep"></span>
+                <div class="skill-level-menu">
+                    <button class="header-btn" id="skill-level-btn" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="btn-text" id="skill-level-label">All Levels</span>
+                        <span class="btn-icon-only" title="Skill Level">&#x1F3C4;</span>
+                    </button>
+                    <div class="skill-level-dropdown" id="skill-level-dropdown" role="listbox" aria-label="Skill level">
+                        <div class="skill-level-item" data-level="beginner" role="option" tabindex="0" onclick="setSkillLevel('beginner')">
+                            <span class="skill-dot" style="background:#44ff88"></span>
+                            <span class="skill-item-label">Beginner</span>
+                            <span class="skill-item-desc">0-3 ft, whitewater</span>
+                        </div>
+                        <div class="skill-level-item" data-level="intermediate" role="option" tabindex="0" onclick="setSkillLevel('intermediate')">
+                            <span class="skill-dot" style="background:#4488ff"></span>
+                            <span class="skill-item-label">Intermediate</span>
+                            <span class="skill-item-desc">2-6 ft, green waves</span>
+                        </div>
+                        <div class="skill-level-item" data-level="advanced" role="option" tabindex="0" onclick="setSkillLevel('advanced')">
+                            <span class="skill-dot" style="background:#ff4444"></span>
+                            <span class="skill-item-label">Advanced</span>
+                            <span class="skill-item-desc">4+ ft, barrels &amp; airs</span>
+                        </div>
+                        <div class="skill-level-item" data-level="all" role="option" tabindex="0" onclick="setSkillLevel('all')">
+                            <span class="skill-dot" style="background:#888"></span>
+                            <span class="skill-item-label">All Levels</span>
+                            <span class="skill-item-desc">Universal scoring</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-toggle-menu">
+                    <button class="header-btn" id="panels-toggle-btn">
+                        <span class="btn-text">Panels &#9662;</span>
+                        <span class="btn-icon-only" title="Panels">&#9776;</span>
+                    </button>
+                    <div class="panel-toggle-dropdown" id="panel-toggle-dropdown"></div>
+                </div>
+            </div>
+            <div class="header-toolbar-right">
+                <button class="header-btn" onclick="openShareCardModal()" title="Share Forecast Card" aria-label="Share forecast card">
+                    <span class="btn-text">Share</span>
+                    <span class="btn-icon-only" title="Share Forecast">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    </span>
+                </button>
+                <button class="header-btn" id="pwa-install-btn" onclick="promptPwaInstall()" title="Install App" aria-label="Install app" style="display:none;">
+                    <span class="btn-text">Install</span>
+                    <span class="btn-icon-only" title="Install">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
+                    </span>
+                </button>
+                <button class="header-btn" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
+            </div>
+        </nav>
     </header>
 
     <div class="share-toast" id="share-toast">Link copied to clipboard</div>
+
+    <!-- Share Forecast Card Modal -->
+    <div class="modal-overlay" id="shareCardModal" role="dialog" aria-modal="true" aria-label="Share forecast card">
+        <div class="modal-card" style="max-width:520px;">
+            <div class="modal-top">
+                <span class="modal-title">Share Forecast</span>
+                <button class="modal-close" onclick="closeShareCardModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="share-format-toggle">
+                    <button class="active" onclick="setShareFormat('story')" id="share-fmt-story">Story 9:16</button>
+                    <button onclick="setShareFormat('post')" id="share-fmt-post">Post 1:1</button>
+                </div>
+                <div class="share-card-preview">
+                    <canvas id="share-card-canvas"></canvas>
+                </div>
+                <div class="share-card-actions">
+                    <button class="btn-share-native" onclick="shareForecastCard()" id="btn-share-native" style="display:none;">Share</button>
+                    <button class="btn-share-download" onclick="downloadForecastCard()">Download</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Location Modal -->
     <div class="modal-overlay" id="locationModal" role="dialog" aria-modal="true" aria-label="Select location">
@@ -2136,7 +2369,7 @@
     </main>
 
     <footer class="site-footer">
-        <div>&copy; 2026 Surf Dash. All rights reserved.</div>
+        <div>&copy; 2026 Free Surf Forecast. <a href="/about">About</a></div>
         <div>
             Data:
             <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
@@ -2175,19 +2408,548 @@
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
 
     <script>
-        // === Share Link ===
-        function copyShareLink() {
+        // === Share Link (with Web Share API fallback) ===
+        function _getShareUrl() {
             const url = new URL('https://freesurfforecast.com');
             if (currentLocation) {
                 url.searchParams.set('lat', currentLocation.lat.toFixed(4));
                 url.searchParams.set('lon', currentLocation.lon.toFixed(4));
                 if (currentLocation.name) url.searchParams.set('name', currentLocation.name);
             }
-            navigator.clipboard.writeText(url.toString()).then(function() {
-                const toast = document.getElementById('share-toast');
-                toast.classList.add('show');
-                setTimeout(function() { toast.classList.remove('show'); }, 2000);
-            });
+            return url.toString();
+        }
+
+        function _getShareText() {
+            if (!window._forecastData || !window._forecastData.length) return 'Check the surf forecast';
+            var c = window._forecastData[0];
+            var ft = c.wave_height != null ? (c.wave_height * M_TO_FT).toFixed(1) : '?';
+            var per = c.wave_period != null ? c.wave_period.toFixed(0) : '?';
+            var cond = classifySurfConditionGlobal(c.wind_direction, c.wind_speed);
+            var condLabel = {clean: 'Clean', fair: 'Fair', choppy: 'Choppy', unknown: ''}[cond] || '';
+            var loc = currentLocation && currentLocation.name ? currentLocation.name : '';
+            return ft + 'ft @ ' + per + 's' + (condLabel ? ' - ' + condLabel : '') + (loc ? ' at ' + loc : '');
+        }
+
+        function _showToast(msg) {
+            var toast = document.getElementById('share-toast');
+            toast.textContent = msg || 'Link copied to clipboard';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+
+        function copyShareLink() {
+            var url = _getShareUrl();
+            if (navigator.share) {
+                navigator.share({ title: 'Free Surf Forecast', text: _getShareText(), url: url }).catch(function() {});
+            } else {
+                navigator.clipboard.writeText(url).then(function() { _showToast(); });
+            }
+        }
+
+        // === Share Forecast Card ===
+        var _shareFormat = 'story';
+
+        function openShareCardModal() {
+            document.getElementById('shareCardModal').classList.add('open');
+            // Show native share button if Web Share API supports files
+            var nativeBtn = document.getElementById('btn-share-native');
+            if (navigator.share) nativeBtn.style.display = '';
+            else nativeBtn.style.display = 'none';
+            generateForecastCard(_shareFormat);
+        }
+
+        function closeShareCardModal() {
+            document.getElementById('shareCardModal').classList.remove('open');
+        }
+
+        function setShareFormat(fmt) {
+            _shareFormat = fmt;
+            document.getElementById('share-fmt-story').classList.toggle('active', fmt === 'story');
+            document.getElementById('share-fmt-post').classList.toggle('active', fmt === 'post');
+            generateForecastCard(fmt);
+        }
+
+        function generateForecastCard(format) {
+            var canvas = document.getElementById('share-card-canvas');
+            var W = 1080;
+            var H = format === 'story' ? 1920 : 1080;
+            var isPost = format !== 'story';
+            canvas.width = W;
+            canvas.height = H;
+            var ctx = canvas.getContext('2d');
+
+            // Colors from design tokens
+            var bg = '#0a0a0a';
+            var surface = '#141414';
+            var border = '#2a2a2a';
+            var text = '#e8e8e8';
+            var textDim = '#888888';
+            var accent = '#44ff88';
+
+            // Fonts — system sans-serif for cross-platform canvas consistency
+            var fontStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+            // Background
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, W, H);
+
+            // Helper: draw rounded rect
+            function roundRect(x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            }
+
+            var pad = isPost ? 44 : 60;
+            var y = pad;
+
+            // === Header: branding ===
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pad, y + 18);
+            ctx.quadraticCurveTo(pad + 12, y + 6, pad + 24, y + 18);
+            ctx.quadraticCurveTo(pad + 36, y + 30, pad + 48, y + 18);
+            ctx.stroke();
+
+            ctx.fillStyle = text;
+            ctx.font = 'bold ' + (isPost ? 30 : 36) + 'px ' + fontStack;
+            ctx.fillText('freesurfforecast.com', pad + 58, y + 28);
+
+            ctx.fillStyle = textDim;
+            ctx.font = (isPost ? 24 : 28) + 'px ' + fontStack;
+            var handleText = '@freesurfforecast';
+            var handleW = ctx.measureText(handleText).width;
+            ctx.fillText(handleText, W - pad - handleW, y + 28);
+
+            y += isPost ? 55 : 70;
+
+            // Divider
+            ctx.fillStyle = border;
+            ctx.fillRect(pad, y, W - pad * 2, 1);
+            y += isPost ? 20 : 30;
+
+            // === Location + Date ===
+            var locName = (currentLocation && currentLocation.name) || 'Unknown Location';
+            ctx.fillStyle = text;
+            ctx.font = 'bold ' + (isPost ? 36 : 44) + 'px ' + fontStack;
+            if (ctx.measureText(locName).width > W - pad * 2) {
+                while (ctx.measureText(locName + '...').width > W - pad * 2 && locName.length > 10) {
+                    locName = locName.slice(0, -1);
+                }
+                locName += '...';
+            }
+            ctx.fillText(locName, pad, y + 34);
+
+            var now = new Date();
+            var dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+            var timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            ctx.fillStyle = textDim;
+            ctx.font = (isPost ? 22 : 28) + 'px ' + fontStack;
+            ctx.fillText(dateStr + '  ' + timeStr, pad, y + (isPost ? 66 : 80));
+
+            y += isPost ? 85 : 120;
+
+            // === Hero Conditions ===
+            var fc = window._forecastData && window._forecastData[0];
+            var waveFt = fc && fc.wave_height != null ? (fc.wave_height * M_TO_FT).toFixed(1) : '--';
+            var wavePer = fc && fc.wave_period != null ? fc.wave_period.toFixed(0) : '--';
+            var waveDir = fc && fc.wave_direction != null ? fc.wave_direction.toFixed(0) : '--';
+            var windSpd = fc && fc.wind_speed != null ? (fc.wind_speed * KMH_TO_MPH).toFixed(0) : '--';
+            var windDir = fc && fc.wind_direction != null ? fc.wind_direction.toFixed(0) : '--';
+            var cond = fc ? classifySurfConditionGlobal(fc.wind_direction, fc.wind_speed) : 'unknown';
+            var condLabel = {clean: 'Clean', fair: 'Fair', choppy: 'Choppy', unknown: 'N/A'}[cond];
+            var condColor = {clean: '#44ff88', fair: '#ffaa00', choppy: '#ff4444', unknown: '#888'}[cond];
+
+            var dirs16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            var waveDirLabel = fc && fc.wave_direction != null ? dirs16[Math.round(fc.wave_direction / 22.5) % 16] : '';
+            var windDirLabel = fc && fc.wind_direction != null ? dirs16[Math.round(fc.wind_direction / 22.5) % 16] : '';
+
+            // Hero card
+            var heroH = isPost ? 300 : 480;
+            roundRect(pad, y, W - pad * 2, heroH, 16);
+            ctx.fillStyle = surface;
+            ctx.fill();
+            ctx.strokeStyle = border;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            var heroY = y + (isPost ? 28 : 40);
+            var bigFont = isPost ? 90 : 120;
+
+            // Wave height — big number + "ft" unit
+            // Draw height and unit on separate lines to avoid measureText issues
+            ctx.fillStyle = text;
+            ctx.font = 'bold ' + bigFont + 'px ' + fontStack;
+            ctx.fillText(waveFt, pad + 30, heroY + (isPost ? 72 : 90));
+            ctx.fillStyle = textDim;
+            ctx.font = (isPost ? 28 : 34) + 'px ' + fontStack;
+            ctx.fillText('ft', pad + 30, heroY + (isPost ? 105 : 126));
+
+            // Period + direction — right side
+            ctx.font = (isPost ? 28 : 36) + 'px ' + fontStack;
+            ctx.fillStyle = text;
+            var rightX = W - pad - 30;
+            ctx.textAlign = 'right';
+            ctx.fillText(wavePer + 's period', rightX, heroY + (isPost ? 45 : 55));
+            ctx.fillText(waveDirLabel + ' ' + waveDir + '\u00B0 swell', rightX, heroY + (isPost ? 82 : 100));
+            ctx.textAlign = 'left';
+
+            // Divider inside hero
+            var divY = heroY + (isPost ? 98 : 130);
+            ctx.fillStyle = border;
+            ctx.fillRect(pad + 30, divY, W - pad * 2 - 60, 1);
+
+            // Wind row
+            var windRowY = divY + (isPost ? 42 : 55);
+            ctx.font = (isPost ? 28 : 34) + 'px ' + fontStack;
+            ctx.fillStyle = text;
+            ctx.fillText('Wind', pad + 30, windRowY);
+            ctx.fillStyle = textDim;
+            ctx.fillText(windSpd + ' mph ' + windDirLabel + ' ' + windDir + '\u00B0', pad + 150, windRowY);
+
+            // Condition badge + temps on same row for post format
+            var badgeY = windRowY + (isPost ? 22 : 35);
+            ctx.font = 'bold ' + (isPost ? 26 : 30) + 'px ' + fontStack;
+            var badgeW = ctx.measureText(condLabel).width + 36;
+            roundRect(pad + 30, badgeY, badgeW, isPost ? 40 : 48, 8);
+            ctx.fillStyle = condColor;
+            ctx.globalAlpha = 0.15;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = condColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = condColor;
+            ctx.fillText(condLabel, pad + 48, badgeY + (isPost ? 29 : 34));
+
+            // Temperatures — inline after badge for post
+            var airC = fc ? fc.air_temperature : null;
+            var waterC = fc ? fc.water_temperature : null;
+            var airF = airC != null ? (airC * 9/5 + 32).toFixed(0) + '\u00B0F' : '--';
+            var waterF = waterC != null ? (waterC * 9/5 + 32).toFixed(0) + '\u00B0F' : '--';
+
+            ctx.font = (isPost ? 24 : 30) + 'px ' + fontStack;
+            ctx.fillStyle = textDim;
+            if (isPost) {
+                ctx.fillText('Air ' + airF + '   Water ' + waterF, pad + 50 + badgeW, badgeY + 29);
+            } else {
+                var tempY = badgeY + 70;
+                ctx.fillText('Air ' + airF, pad + 40, tempY + 10);
+                ctx.fillText('Water ' + waterF, pad + 280, tempY + 10);
+            }
+
+            y += heroH + (isPost ? 16 : 30);
+
+            // === Human-readable descriptions ===
+            if (fc) {
+                var descs = [];
+                if (fc.wave_height != null) descs.push(describeWaveHeight(fc.wave_height));
+                if (fc.wave_period != null) descs.push(describeWavePeriod(fc.wave_period));
+                if (fc.wind_speed != null) descs.push(describeWindCondition(fc.wind_speed, fc.wind_direction));
+
+                var descLineH = isPost ? 34 : 45;
+                var descH = (isPost ? 30 : 40) + descs.length * descLineH + (isPost ? 12 : 20);
+                roundRect(pad, y, W - pad * 2, descH, 16);
+                ctx.fillStyle = surface;
+                ctx.fill();
+                ctx.strokeStyle = border;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                var descY = y + (isPost ? 28 : 35);
+                ctx.font = 'bold ' + (isPost ? 22 : 26) + 'px ' + fontStack;
+                ctx.fillStyle = accent;
+                ctx.fillText('CONDITIONS', pad + 24, descY + 5);
+                descY += isPost ? 32 : 40;
+
+                ctx.font = (isPost ? 23 : 28) + 'px ' + fontStack;
+                ctx.fillStyle = text;
+                descs.forEach(function(d) {
+                    ctx.fillText(d, pad + 24, descY + 5);
+                    descY += descLineH;
+                });
+
+                y += descH + (isPost ? 12 : 20);
+            }
+
+            // === 2D Polar Spectrum ===
+            var selBuoyEl = document.getElementById('buoy-selector');
+            var selBuoy = buoyData && buoyData.buoys && selBuoyEl ? buoyData.buoys[parseInt(selBuoyEl.value) || 0] : null;
+            if (selBuoy && selBuoy.spectrum && selBuoy.directional) {
+                var specSize = isPost ? 200 : 300;
+                var specSectH = specSize + (isPost ? 50 : 70);
+                var specCardW = W - pad * 2;
+
+                // Only draw if it fits before footer
+                var _footerH = isPost ? 80 : 120;
+                if (y + specSectH + 16 < H - _footerH) {
+                    roundRect(pad, y, specCardW, specSectH, 16);
+                    ctx.fillStyle = surface;
+                    ctx.fill();
+                    ctx.strokeStyle = border;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Section header
+                    ctx.font = 'bold ' + (isPost ? 22 : 26) + 'px ' + fontStack;
+                    ctx.fillStyle = accent;
+                    ctx.fillText('WAVE SPECTRUM', pad + 24, y + (isPost ? 30 : 38));
+
+                    // Buoy station name
+                    var buoyLabel = selBuoy.station_id || '';
+                    if (selBuoy.name) buoyLabel = selBuoy.name;
+                    ctx.font = (isPost ? 18 : 22) + 'px ' + fontStack;
+                    ctx.fillStyle = textDim;
+                    ctx.textAlign = 'right';
+                    ctx.fillText(buoyLabel, W - pad - 24, y + (isPost ? 30 : 38));
+                    ctx.textAlign = 'left';
+
+                    // Draw polar heatmap into the card
+                    var specCx = pad + specCardW / 2;
+                    var specCy = y + (isPost ? 44 : 56) + specSize / 2;
+                    var specR = specSize / 2 - 8;
+
+                    // Build directional energy grid (same logic as render2DSpectrum)
+                    var sFreqs = selBuoy.spectrum.frequencies;
+                    var sEnergy = selBuoy.spectrum.energy;
+                    var sDir = selBuoy.directional;
+                    var nDir = 72;
+                    var sMaxE = 0;
+                    var sGrid = [];
+
+                    for (var fi = 0; fi < sFreqs.length; fi++) {
+                        var row = [];
+                        for (var di = 0; di < nDir; di++) {
+                            var theta = di * 5 * Math.PI / 180;
+                            var E = sEnergy[fi];
+                            var val;
+                            if (sDir.a1 && sDir.a1.length > fi) {
+                                var a1 = sDir.a1[fi] || 0, b1 = sDir.b1[fi] || 0;
+                                var a2 = sDir.a2[fi] || 0, b2 = sDir.b2[fi] || 0;
+                                val = E * (1 + 2*a1*Math.cos(theta) + 2*b1*Math.sin(theta) + 2*a2*Math.cos(2*theta) + 2*b2*Math.sin(2*theta)) / (2 * Math.PI);
+                            } else if (sDir.directions && sDir.r1 && sDir.directions.length > fi) {
+                                var meanDir = sDir.directions[fi] * Math.PI / 180;
+                                var r1v = sDir.r1[fi] || 0.5;
+                                val = E * (1 + 2 * r1v * Math.cos(theta - meanDir)) / (2 * Math.PI);
+                            } else {
+                                val = E / (2 * Math.PI);
+                            }
+                            val = Math.max(0, val);
+                            if (val > sMaxE) sMaxE = val;
+                            row.push(val);
+                        }
+                        sGrid.push(row);
+                    }
+
+                    if (sMaxE > 0) {
+                        // Clip to circle
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(specCx, specCy, specR + 2, 0, Math.PI * 2);
+                        ctx.clip();
+
+                        // Background circle
+                        ctx.fillStyle = bg;
+                        ctx.beginPath();
+                        ctx.arc(specCx, specCy, specR + 2, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Period rings
+                        var ringPeriods = [5, 10, 15, 20];
+                        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                        ctx.lineWidth = 0.8;
+                        ringPeriods.forEach(function(p) {
+                            var r = (p / 25) * specR;
+                            ctx.beginPath();
+                            ctx.arc(specCx, specCy, r, 0, Math.PI * 2);
+                            ctx.stroke();
+                        });
+
+                        // Heatmap cells
+                        for (var fi = 0; fi < sFreqs.length - 1; fi++) {
+                            var period = 1 / sFreqs[fi];
+                            var periodNext = 1 / sFreqs[fi + 1];
+                            if (period > 25 || period < 1) continue;
+                            var r1 = (period / 25) * specR;
+                            var r2 = (periodNext / 25) * specR;
+                            var rInner = Math.min(r1, r2);
+                            var rOuter = Math.max(r1, r2);
+                            for (var di = 0; di < nDir; di++) {
+                                var val = sGrid[fi][di];
+                                if (val < sMaxE * 0.01) continue;
+                                var frac = Math.min(1, val / sMaxE);
+                                var angle1 = (di * 5 - 90) * Math.PI / 180;
+                                var angle2 = ((di + 1) * 5 - 90) * Math.PI / 180;
+                                ctx.fillStyle = spectrumColor(frac);
+                                ctx.globalAlpha = 0.85;
+                                ctx.beginPath();
+                                ctx.arc(specCx, specCy, rOuter, angle1, angle2);
+                                ctx.arc(specCx, specCy, rInner, angle2, angle1, true);
+                                ctx.closePath();
+                                ctx.fill();
+                            }
+                        }
+                        ctx.globalAlpha = 1;
+                        ctx.restore();
+
+                        // Cardinal labels outside the circle
+                        var cardinals = [['N', 0], ['E', 90], ['S', 180], ['W', 270]];
+                        ctx.fillStyle = '#999';
+                        ctx.font = 'bold ' + (isPost ? 14 : 18) + 'px ' + fontStack;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        cardinals.forEach(function(cd) {
+                            var angle = (cd[1] - 90) * Math.PI / 180;
+                            var lx = specCx + (specR + (isPost ? 14 : 18)) * Math.cos(angle);
+                            var ly = specCy + (specR + (isPost ? 14 : 18)) * Math.sin(angle);
+                            ctx.fillText(cd[0], lx, ly);
+                        });
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'alphabetic';
+
+                        // Period labels on rings
+                        ctx.fillStyle = '#666';
+                        ctx.font = (isPost ? 12 : 14) + 'px ' + fontStack;
+                        ringPeriods.forEach(function(p) {
+                            var r = (p / 25) * specR;
+                            ctx.fillText(p + 's', specCx + 3, specCy - r - 2);
+                        });
+                    }
+
+                    y += specSectH + (isPost ? 12 : 20);
+                }
+            }
+
+            // === Session Windows ===
+            var windows = computeSessionWindows();
+            var todayStr = new Date().toDateString();
+            var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+            var tomorrowStr = tomorrow.toDateString();
+            var maxSessions = isPost ? 2 : 3;
+            var topWindows = windows.filter(function(w) {
+                var ds = w.startTime.toDateString();
+                return ds === todayStr || ds === tomorrowStr;
+            }).sort(function(a, b) { return b.score - a.score; }).slice(0, maxSessions);
+
+            // Only show sessions if they fit (check remaining space before footer)
+            var footerH = isPost ? 80 : 120;
+            var footerY = H - footerH;
+            var sessItemH = isPost ? 50 : 65;
+
+            if (topWindows.length > 0 && (y + 50 + topWindows.length * sessItemH + 16) < footerY) {
+                var sessH = (isPost ? 45 : 60) + topWindows.length * sessItemH;
+                roundRect(pad, y, W - pad * 2, sessH, 16);
+                ctx.fillStyle = surface;
+                ctx.fill();
+                ctx.strokeStyle = border;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.font = 'bold ' + (isPost ? 22 : 26) + 'px ' + fontStack;
+                ctx.fillStyle = accent;
+                ctx.fillText('BEST SESSIONS', pad + 24, y + (isPost ? 30 : 40));
+
+                topWindows.forEach(function(w, i) {
+                    var sy = y + (isPost ? 42 : 60) + i * sessItemH;
+                    var ratingColors = {prime: '#44ff88', good: '#4488ff', fair: '#ffaa00', poor: '#ff4444'};
+                    var rc = ratingColors[w.rating] || textDim;
+                    var dayLabel = w.startTime.toDateString() === todayStr ? 'Today' : 'Tomorrow';
+                    var startH = w.startTime.getHours();
+                    var endH = w.endTime.getHours();
+                    var fmtH = function(h) { return h === 0 ? '12am' : h < 12 ? h + 'am' : h === 12 ? '12pm' : (h-12) + 'pm'; };
+                    var timeLabel = dayLabel + ' ' + fmtH(startH) + '-' + fmtH(endH);
+
+                    ctx.beginPath();
+                    ctx.arc(pad + 38, sy + (isPost ? 15 : 20), isPost ? 6 : 8, 0, Math.PI * 2);
+                    ctx.fillStyle = rc;
+                    ctx.fill();
+
+                    ctx.font = 'bold ' + (isPost ? 24 : 28) + 'px ' + fontStack;
+                    ctx.fillStyle = text;
+                    ctx.fillText(timeLabel, pad + 54, sy + (isPost ? 22 : 28));
+
+                    if (!isPost) {
+                        ctx.font = '26px ' + fontStack;
+                        ctx.fillStyle = textDim;
+                        ctx.fillText(w.summary + '  (' + w.score + '/100)', pad + 65, sy + 56);
+                    } else {
+                        ctx.font = '20px ' + fontStack;
+                        ctx.fillStyle = textDim;
+                        var summaryX = pad + 54 + ctx.measureText(timeLabel).width + 16;
+                        // Reset font for measuring timeLabel with the right font
+                        ctx.font = 'bold 24px ' + fontStack;
+                        summaryX = pad + 54 + ctx.measureText(timeLabel).width + 16;
+                        ctx.font = '20px ' + fontStack;
+                        ctx.fillText(w.summary, summaryX, sy + 22);
+                    }
+                });
+
+                y += sessH + (isPost ? 12 : 20);
+            }
+
+            // === Footer ===
+            ctx.fillStyle = border;
+            ctx.fillRect(pad, footerY, W - pad * 2, 1);
+
+            ctx.font = (isPost ? 22 : 26) + 'px ' + fontStack;
+            ctx.fillStyle = textDim;
+            ctx.fillText('Free 7-day surf forecast. No ads, no sign-up.', pad, footerY + (isPost ? 35 : 45));
+
+            ctx.fillStyle = accent;
+            ctx.font = 'bold ' + (isPost ? 24 : 28) + 'px ' + fontStack;
+            ctx.fillText('freesurfforecast.com', pad, footerY + (isPost ? 65 : 85));
+
+            ctx.textAlign = 'right';
+            ctx.fillStyle = textDim;
+            ctx.font = (isPost ? 22 : 26) + 'px ' + fontStack;
+            ctx.fillText('@freesurfforecast', W - pad, footerY + (isPost ? 65 : 85));
+            ctx.textAlign = 'left';
+        }
+
+        function downloadForecastCard() {
+            var canvas = document.getElementById('share-card-canvas');
+            canvas.toBlob(function(blob) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                var locName = (currentLocation && currentLocation.name) || 'forecast';
+                a.download = 'surf-forecast-' + locName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() + '.png';
+                a.href = url;
+                a.click();
+                setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+            }, 'image/png');
+        }
+
+        function shareForecastCard() {
+            var canvas = document.getElementById('share-card-canvas');
+            canvas.toBlob(function(blob) {
+                var file = new File([blob], 'surf-forecast.png', { type: 'image/png' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    navigator.share({
+                        title: 'Surf Forecast - ' + ((currentLocation && currentLocation.name) || ''),
+                        text: _getShareText(),
+                        files: [file]
+                    }).catch(function() {});
+                } else if (navigator.share) {
+                    // Fallback: share URL only
+                    navigator.share({
+                        title: 'Surf Forecast',
+                        text: _getShareText(),
+                        url: _getShareUrl()
+                    }).catch(function() {});
+                } else {
+                    downloadForecastCard();
+                }
+            }, 'image/png');
         }
 
         // === GridStack Init ===
@@ -6524,6 +7286,36 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             loadNearestCams();
+        });
+
+        // === PWA: Service Worker + Install Prompt ===
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        }
+
+        var _deferredInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            _deferredInstallPrompt = e;
+            // Show install button in header
+            var btn = document.getElementById('pwa-install-btn');
+            if (btn) btn.style.display = '';
+        });
+
+        function promptPwaInstall() {
+            if (!_deferredInstallPrompt) return;
+            _deferredInstallPrompt.prompt();
+            _deferredInstallPrompt.userChoice.then(function() {
+                _deferredInstallPrompt = null;
+                var btn = document.getElementById('pwa-install-btn');
+                if (btn) btn.style.display = 'none';
+            });
+        }
+
+        window.addEventListener('appinstalled', function() {
+            _deferredInstallPrompt = null;
+            var btn = document.getElementById('pwa-install-btn');
+            if (btn) btn.style.display = 'none';
         });
     </script>
 </body>

@@ -1415,6 +1415,24 @@ def index():
         location_lon=lon,
     )
 
+@app.route('/about')
+def about():
+    """Renders the About page."""
+    return render_template('about.html')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve service worker from root scope."""
+    sw_path = os.path.join(app.static_folder, 'sw.js')
+    with open(sw_path, 'r') as f:
+        content = f.read()
+    resp = Response(content, mimetype='application/javascript')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """Serve robots.txt for search engine crawlers."""
@@ -1447,13 +1465,25 @@ def sitemap_xml():
             seen.add(key)
             unique_locations.append(cam)
 
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+
     urls = ['<?xml version="1.0" encoding="UTF-8"?>']
     urls.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
 
     # Root URL
     urls.append('  <url>')
     urls.append('    <loc>https://freesurfforecast.com/</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>daily</changefreq>')
     urls.append('    <priority>1.0</priority>')
+    urls.append('  </url>')
+
+    # About page
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/about</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.5</priority>')
     urls.append('  </url>')
 
     # Location URLs from camera list
@@ -1461,6 +1491,8 @@ def sitemap_xml():
         loc_url = f"https://freesurfforecast.com/?lat={loc['lat']}&amp;lon={loc['lon']}&amp;name={url_quote(loc['name'])}"
         urls.append('  <url>')
         urls.append(f'    <loc>{loc_url}</loc>')
+        urls.append(f'    <lastmod>{today}</lastmod>')
+        urls.append('    <changefreq>daily</changefreq>')
         urls.append('    <priority>0.7</priority>')
         urls.append('  </url>')
 

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About | Free Surf Forecast</title>
+    <meta name="description" content="Free Surf Forecast is an open-source, data-forward surf forecasting dashboard. Real-time wave, wind, and tide data — no ads, no sign-up.">
+    <link rel="canonical" href="https://freesurfforecast.com/about">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="About | Free Surf Forecast">
+    <meta property="og:description" content="Free Surf Forecast is an open-source, data-forward surf forecasting dashboard. Real-time wave, wind, and tide data — no ads, no sign-up.">
+    <meta property="og:url" content="https://freesurfforecast.com/about">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="About | Free Surf Forecast">
+    <meta name="twitter:description" content="Free Surf Forecast is an open-source, data-forward surf forecasting dashboard.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .about-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .about-header a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .about-header a:hover { color: var(--status-live); }
+
+        .about-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            margin-left: 16px;
+        }
+
+        .about-nav a:hover { color: var(--text); }
+
+        .about-content {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 48px 20px 80px;
+        }
+
+        .about-content h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+
+        .about-content .tagline {
+            font-size: 14px;
+            color: var(--status-live);
+            margin-bottom: 36px;
+        }
+
+        .about-content h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-top: 32px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .about-content p {
+            color: var(--text-dim);
+            margin-bottom: 16px;
+        }
+
+        .about-content a {
+            color: var(--status-live);
+            text-decoration: none;
+        }
+
+        .about-content a:hover {
+            text-decoration: underline;
+        }
+
+        .data-sources {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 16px 0;
+        }
+
+        .data-source {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            font-size: 12px;
+        }
+
+        .data-source .label {
+            color: var(--text-muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-source .value {
+            color: var(--text);
+            margin-top: 2px;
+        }
+
+        .about-links {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        .about-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 12px;
+            transition: border-color 0.15s;
+        }
+
+        .about-links a:hover {
+            border-color: var(--text-dim);
+            text-decoration: none;
+        }
+
+        .about-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .about-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        .about-footer a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+
+        @media (max-width: 500px) {
+            .data-sources { grid-template-columns: 1fr; }
+            .about-content h1 { font-size: 22px; }
+        }
+    </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "AboutPage",
+        "name": "About Free Surf Forecast",
+        "url": "https://freesurfforecast.com/about",
+        "description": "Free Surf Forecast is an open-source, data-forward surf forecasting dashboard.",
+        "isPartOf": {
+            "@type": "WebApplication",
+            "name": "Free Surf Forecast",
+            "url": "https://freesurfforecast.com/"
+        }
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://freesurfforecast.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "About",
+                "item": "https://freesurfforecast.com/about"
+            }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <header class="about-header">
+        <a href="/">Free Surf Forecast</a>
+        <nav class="about-nav">
+            <a href="/">Dashboard</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <main class="about-content">
+        <h1>About Free Surf Forecast</h1>
+        <p class="tagline">Free 7-day surf forecast. No ads, no sign-up.</p>
+
+        <h2>The Idea</h2>
+        <p>
+            Free Surf Forecast is a dashboard you can keep open 24/7 to know exactly what's happening at your local break.
+            Wave height, period, direction, wind, tides, buoy data, live cameras — everything on one screen,
+            updated continuously, and completely free.
+        </p>
+
+        <h2>Data-Forward Forecasting</h2>
+        <p>
+            Most surf forecast sites bury the actual data behind editorial opinions or paywalls.
+            We take the opposite approach: raw data from NOAA, NDBC, CDIP, and Open-Meteo
+            presented directly alongside human-readable interpretations so you can make your own call.
+            Session scoring, swell classification, and condition ratings are all transparent —
+            you can see exactly how every number is calculated.
+        </p>
+
+        <h2>Open Source</h2>
+        <p>
+            The entire codebase is public on GitHub. The frontend, backend, scoring algorithms,
+            data pipelines — all of it. If you want to understand how a forecast is generated,
+            suggest a feature, or run your own instance, the code is there.
+        </p>
+
+        <h2>Data Sources</h2>
+        <div class="data-sources">
+            <div class="data-source">
+                <div class="label">Waves & Wind</div>
+                <div class="value">Open-Meteo Marine & GFS</div>
+            </div>
+            <div class="data-source">
+                <div class="label">Tides</div>
+                <div class="value">NOAA CO-OPS</div>
+            </div>
+            <div class="data-source">
+                <div class="label">Buoy Data</div>
+                <div class="value">NDBC & CDIP</div>
+            </div>
+            <div class="data-source">
+                <div class="label">Swell Models</div>
+                <div class="value">WaveWatch III (ERDDAP)</div>
+            </div>
+            <div class="data-source">
+                <div class="label">Maps</div>
+                <div class="value">OpenStreetMap & CARTO</div>
+            </div>
+            <div class="data-source">
+                <div class="label">Cameras</div>
+                <div class="value">Windy, SurfChex, & more</div>
+            </div>
+        </div>
+
+        <div class="about-links">
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                GitHub
+            </a>
+            <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5"/></svg>
+                @freesurfforecast
+            </a>
+            <a href="/">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Open Dashboard
+            </a>
+        </div>
+    </main>
+
+    <footer class="about-footer">
+        <div>&copy; 2026 Free Surf Forecast &nbsp;|&nbsp; <a href="/">Dashboard</a> &nbsp;|&nbsp; <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a> &nbsp;|&nbsp; <a href="https://www.instagram.com/freesurfforecast/" target="_blank" rel="noopener">Instagram</a></div>
+    </footer>
+</body>
+</html>
