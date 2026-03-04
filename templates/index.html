@@ -3715,8 +3715,9 @@
 
                     const current = data[0];
                     document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * M_TO_FT).toFixed(1)} ft` : '-';
-                    document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(2)} s` : '-';
-                    document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${current.wave_direction.toFixed(0)} °` : '-';
+                    document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(1)} s` : '-';
+                    const waveDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+                    document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${waveDirs[Math.round(current.wave_direction / 22.5) % 16]} ${current.wave_direction.toFixed(0)}°` : '-';
                     // Wind (km/h → mph)
                     const KMH_TO_MPH = 0.621371;
                     document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
@@ -5108,30 +5109,32 @@
                 return;
             }
 
-            // Filter to today's high/low tides (local time)
-            var now = new Date();
-            var todayStr = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
-            var today = data.filter(function(d) {
-                var dt = new Date(d.time);
-                return (dt.getFullYear() + '-' + (dt.getMonth() + 1) + '-' + dt.getDate()) === todayStr;
-            }).sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
+            // Next 4 upcoming tide events (may span into tomorrow)
+            var now = Date.now();
+            var upcoming = data
+                .map(function(d) { return { time: new Date(d.time).getTime(), height: d.height, type: d.type }; })
+                .filter(function(d) { return d.time > now; })
+                .sort(function(a, b) { return a.time - b.time; })
+                .slice(0, 4);
 
-            if (!today.length) { if (el) el.style.display = 'none'; return; }
+            if (!upcoming.length) { if (el) el.style.display = 'none'; return; }
 
+            var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             function fmt(d) {
                 var dt = new Date(d.time);
                 var h = dt.getHours(), m = dt.getMinutes();
                 var ampm = h >= 12 ? 'p' : 'a';
                 h = h % 12 || 12;
                 var arrow = d.type === 'H' ? '\u25B2' : '\u25BC';
-                return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm;
+                var date = monthNames[dt.getMonth()] + ' ' + dt.getDate();
+                return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
             }
 
             // First tide as primary value, rest as context lines
-            document.getElementById('current_tides').textContent = fmt(today[0]);
+            document.getElementById('current_tides').textContent = fmt(upcoming[0]);
             var ctxEl = document.getElementById('ctx_tides');
             ctxEl.textContent = '';
-            today.slice(1).forEach(function(d, i) {
+            upcoming.slice(1).forEach(function(d, i) {
                 if (i > 0) ctxEl.appendChild(document.createElement('br'));
                 ctxEl.appendChild(document.createTextNode(fmt(d)));
             });
