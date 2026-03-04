@@ -5350,15 +5350,17 @@
             var W = canvas.width, H = canvas.height;
             var pad = { top: 4, bottom: 4, left: 2, right: 2 };
 
-            // 24-hour window centered on now (±12h)
+            // 24-hour window: start from first available data point, end 24h later
             var now = Date.now();
-            var windowStart = now - 12 * 3600000;
-            var windowEnd = now + 12 * 3600000;
-
-            var points = hourly
+            var allPoints = hourly
                 .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
-                .filter(function(d) { return d.t >= windowStart && d.t <= windowEnd; })
                 .sort(function(a, b) { return a.t - b.t; });
+
+            // Show first 24h of available data (today midnight through tomorrow)
+            var windowStart = allPoints[0].t;
+            var windowEnd = windowStart + 24 * 3600000;
+
+            var points = allPoints.filter(function(d) { return d.t >= windowStart && d.t <= windowEnd; });
 
             if (points.length < 2) return;
 
