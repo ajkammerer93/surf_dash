@@ -859,24 +859,38 @@
             height: 100%;
         }
 
+        #current-conditions-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+        }
+
+        #current-conditions-stats .stat-item {
+            flex-direction: column;
+            justify-content: center;
+            border-right: 1px solid var(--border);
+        }
+
+        #current-conditions-stats .stat-item:nth-child(2n) { border-right: none; }
+        #current-conditions-stats .stat-item:nth-last-child(-n+2) { border-bottom: none; }
+
         .stat-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 2px 4px;
-            flex: 1;
+            padding: 2px 6px;
             border-bottom: 1px solid var(--border);
         }
 
         .stat-item:last-child { border-bottom: none; }
 
         .stat-label {
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text-dim);
         }
 
         .stat-value {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--accent);
             font-variant-numeric: tabular-nums;
@@ -885,14 +899,14 @@
         .stat-right {
             display: flex;
             flex-direction: column;
-            align-items: flex-end;
+            align-items: flex-start;
         }
 
         .stat-context {
             display: block;
-            font-size: 10px;
+            font-size: 9px;
             color: var(--text-dim);
-            line-height: 1.3;
+            line-height: 1.2;
         }
 
         /* === Buoy Panel === */
@@ -1769,6 +1783,13 @@
                             <li class="stat-item">
                                 <span class="stat-label">Water Temp</span>
                                 <span class="stat-value" id="current_water_temp">-</span>
+                            </li>
+                            <li class="stat-item" id="tide-stat-item" style="display:none">
+                                <span class="stat-label">Tides</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_tides">-</span>
+                                    <span class="stat-context" id="ctx_tides"></span>
+                                </span>
                             </li>
                         </ul>
                         <div class="orientation-warning" id="orientation-warning" style="display:none" title="Beach orientation unavailable — wind classification (clean/fair/choppy) is approximate">&#x26A0; Wind classification approximate</div>
@@ -3422,6 +3443,7 @@
             _tidesLoaded = false;
             window._forecastData = null;
             window._tideData = null;
+            window._tideHighLow = null;
             // Show loading state on maps (skip buoy map — managed separately)
             document.querySelectorAll('.map-container:not(.buoy-map)').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
@@ -5075,6 +5097,60 @@
         // Tide chart script
         let tideChart = null;
 
+        function updateConditionsTide() {
+            var data = window._tideHighLow;
+            var el = document.getElementById('tide-stat-item');
+            if (!data || !data.length) {
+                if (el) el.style.display = 'none';
+                return;
+            }
+            var now = Date.now();
+            var upcoming = data
+                .map(function(d) { return { time: new Date(d.time).getTime(), height: d.height, type: d.type }; })
+                .filter(function(d) { return d.time > now; })
+                .sort(function(a, b) { return a.time - b.time; });
+
+            // Find next high and next low
+            var nextHigh = null, nextLow = null;
+            for (var i = 0; i < upcoming.length; i++) {
+                if (!nextHigh && upcoming[i].type === 'H') nextHigh = upcoming[i];
+                if (!nextLow && upcoming[i].type === 'L') nextLow = upcoming[i];
+                if (nextHigh && nextLow) break;
+            }
+
+            if (!nextHigh && !nextLow) { if (el) el.style.display = 'none'; return; }
+
+            function fmt(d) {
+                var dt = new Date(d.time);
+                var h = dt.getHours(), m = dt.getMinutes();
+                var ampm = h >= 12 ? 'p' : 'a';
+                h = h % 12 || 12;
+                return (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm;
+            }
+
+            // Show nearer event as primary, other as context
+            var primary, secondary;
+            if (nextHigh && nextLow) {
+                if (nextHigh.time < nextLow.time) {
+                    primary = '\u25B2 ' + fmt(nextHigh);
+                    secondary = '\u25BC ' + fmt(nextLow);
+                } else {
+                    primary = '\u25BC ' + fmt(nextLow);
+                    secondary = '\u25B2 ' + fmt(nextHigh);
+                }
+            } else if (nextHigh) {
+                primary = '\u25B2 ' + fmt(nextHigh);
+                secondary = '';
+            } else {
+                primary = '\u25BC ' + fmt(nextLow);
+                secondary = '';
+            }
+
+            document.getElementById('current_tides').textContent = primary;
+            document.getElementById('ctx_tides').textContent = secondary;
+            if (el) el.style.display = '';
+        }
+
         function loadTideData() {
             const params = new URLSearchParams({
                 lat: currentLocation.lat,
@@ -5277,6 +5353,8 @@
 
                     // Store tide data and signal session planner
                     window._tideData = tideData.hourly;
+                    window._tideHighLow = tideData.high_low;
+                    updateConditionsTide();
                     _tidesLoaded = true;
                     checkSessionPlannerReady();
                 })
