@@ -1723,8 +1723,9 @@
             .header-brand { display: none; }
             .header-toolbar {
                 height: 44px;
-                padding: 0 8px;
-                gap: 6px;
+                padding: 0 6px;
+                gap: 0;
+                justify-content: flex-start;
             }
             .header-toolbar::before {
                 content: 'FSF';
@@ -1733,16 +1734,26 @@
                 letter-spacing: 1px;
                 color: var(--accent);
                 flex-shrink: 0;
+                margin-right: 6px;
+            }
+            .header-toolbar-left {
+                gap: 4px;
+                flex: 1;
+                min-width: 0;
+            }
+            .header-toolbar-right {
+                gap: 2px;
+                margin-left: auto;
             }
             .header-location-btn .header-coords { display: none; }
             .header-location-btn svg { display: none; }
-            .header-location-btn { padding: 3px 6px; }
+            .header-location-btn { padding: 3px 6px; max-width: 200px; }
             .header-location { font-size: 10px; }
             .header-sep { display: none; }
             .header-clock { display: none; }
             .btn-text { display: none; }
             .btn-icon-only { display: inline-flex; align-items: center; justify-content: center; }
-            .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; }
+            .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 4px; }
             .grid-stack { margin-top: 44px; }
             .modal-overlay { padding: 10px; }
             .modal-card { max-height: 95vh; }
