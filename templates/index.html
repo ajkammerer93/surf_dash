@@ -1885,7 +1885,8 @@
                         <span id="display-lat">{{ "%.2f"|format(location_lat) }}</span>, <span id="display-lon">{{ "%.2f"|format(location_lon) }}</span>
                     </span>
                 </button>
-                <span class="header-sep"></span>
+            </div>
+            <div class="header-toolbar-right">
                 <div class="skill-level-menu">
                     <button class="header-btn" id="skill-level-btn" aria-haspopup="listbox" aria-expanded="false">
                         <span class="btn-text" id="skill-level-label">All Levels</span>
@@ -1921,8 +1922,7 @@
                     </button>
                     <div class="panel-toggle-dropdown" id="panel-toggle-dropdown"></div>
                 </div>
-            </div>
-            <div class="header-toolbar-right">
+                <span class="header-sep"></span>
                 <button class="header-btn" onclick="openShareCardModal()" title="Share Forecast Card" aria-label="Share forecast card">
                     <span class="btn-text">Share</span>
                     <span class="btn-icon-only" title="Share Forecast">
