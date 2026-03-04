@@ -9,6 +9,7 @@ A real-time surf forecast dashboard that aggregates wave, wind, and tide data fr
 - **Ocean Basin Maps** — Large-scale wave height and period visualization with swell narrative overlay
 - **Local Detail Maps** — High-resolution wave and wind overlays (0.1° resolution) with ocean-clipped rendering
 - **Unified Time Slider** — Animate all map panels through hourly forecast data with adjustable playback speed
+- **Current Conditions** — At-a-glance 3×2 panel with wave height/period/direction, wind speed+direction, air/water temperature, and upcoming tides with hover popups for coastline-relative direction diagrams and a 24-hour tide sparkline
 - **Wave & Wind Charts** — Time-series forecast with wave height, wind speed, direction arrows, and surf condition classification (clean/fair/choppy)
 - **Tidal Predictions** — 7-day tide chart from the nearest NOAA reference station with high/low markers
 - **Session Planner** — Scored 3-hour surf windows (0–100) highlighting the best times to paddle out
