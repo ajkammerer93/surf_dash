@@ -1767,23 +1767,18 @@
                                 <span class="stat-value" id="current_wave_direction">- &deg;</span>
                             </li>
                             <li class="stat-item">
-                                <span class="stat-label">Wind Speed</span>
+                                <span class="stat-label">Wind</span>
                                 <span class="stat-right">
                                     <span class="stat-value" id="current_wind_speed">-</span>
                                     <span class="stat-context" id="ctx_wind"></span>
                                 </span>
                             </li>
                             <li class="stat-item">
-                                <span class="stat-label">Wind Direction</span>
-                                <span class="stat-value" id="current_wind_direction">-</span>
-                            </li>
-                            <li class="stat-item">
-                                <span class="stat-label">Air Temp</span>
-                                <span class="stat-value" id="current_air_temp">-</span>
-                            </li>
-                            <li class="stat-item">
-                                <span class="stat-label">Water Temp</span>
-                                <span class="stat-value" id="current_water_temp">-</span>
+                                <span class="stat-label">Temperature</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_air_temp">-</span>
+                                    <span class="stat-context" id="current_water_temp">-</span>
+                                </span>
                             </li>
                             <li class="stat-item" id="tide-stat-item" style="display:none">
                                 <span class="stat-label">Tides</span>
@@ -3717,14 +3712,19 @@
                     document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${current.wave_direction.toFixed(0)} °` : '-';
                     // Wind (km/h → mph)
                     const KMH_TO_MPH = 0.621371;
-                    document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
                     const windDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-                    document.getElementById('current_wind_direction').textContent = current.wind_direction != null ? `${windDirs[Math.round(current.wind_direction / 22.5) % 16]} (${current.wind_direction.toFixed(0)}°)` : '-';
+                    if (current.wind_speed != null) {
+                        const mph = (current.wind_speed * KMH_TO_MPH).toFixed(0);
+                        const dir = current.wind_direction != null ? windDirs[Math.round(current.wind_direction / 22.5) % 16] : '';
+                        document.getElementById('current_wind_speed').textContent = `${mph} mph ${dir}`;
+                    } else {
+                        document.getElementById('current_wind_speed').textContent = '-';
+                    }
                     // Temperatures (C→F)
                     const airC = current.air_temperature;
                     const waterC = current.water_temperature;
-                    document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F` : '-';
-                    document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F` : '-';
+                    document.getElementById('current_air_temp').textContent = airC != null ? `Air ${(airC * 9/5 + 32).toFixed(0)} °F` : '-';
+                    document.getElementById('current_water_temp').textContent = waterC != null ? `Water ${(waterC * 9/5 + 32).toFixed(0)} °F` : '-';
 
                     // Populate context descriptions for current conditions
                     document.getElementById('ctx_wave_height').textContent = current.wave_height != null ? describeWaveHeight(current.wave_height) : '';
