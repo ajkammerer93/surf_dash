@@ -880,31 +880,19 @@
             width: 100%;
         }
 
-        .stat-hoverable, #tide-stat-item { position: relative; cursor: pointer; }
-        .direction-popup {
+        .stat-hoverable, #tide-stat-item { cursor: pointer; }
+        .direction-popup, .tide-sparkline-popup {
             display: none;
-            position: absolute;
-            bottom: calc(100% + 6px);
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
             background: rgba(20, 20, 20, 0.95);
             border: 1px solid rgba(255,255,255,0.15);
             border-radius: 6px;
             padding: 6px;
-            z-index: 200;
+            z-index: 9999;
+            pointer-events: none;
         }
-        .stat-hoverable:hover .direction-popup { display: block; }
         .tide-sparkline-popup {
-            display: none;
-            position: absolute;
-            bottom: calc(100% + 6px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(20, 20, 20, 0.95);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 6px;
             padding: 8px 10px 6px;
-            z-index: 200;
             white-space: nowrap;
         }
         .tide-sparkline-popup .spark-title {
@@ -5261,6 +5249,40 @@
             if (waveCanvas) drawConditionsDiagram(waveCanvas, current.wind_direction, current.wave_direction, false, true);
             if (windCanvas) drawConditionsDiagram(windCanvas, current.wind_direction, current.wave_direction, true, false);
         }
+
+        // Position and show/hide hover popups using fixed positioning
+        (function() {
+            var pairs = [
+                ['wave-dir-stat-item', '.direction-popup'],
+                ['wind-stat-item', '.direction-popup'],
+                ['tide-stat-item', '.tide-sparkline-popup']
+            ];
+            pairs.forEach(function(pair) {
+                var trigger = document.getElementById(pair[0]);
+                if (!trigger) return;
+                var popup = trigger.querySelector(pair[1]);
+                if (!popup) return;
+
+                trigger.addEventListener('mouseenter', function() {
+                    popup.style.display = 'block';
+                    var rect = trigger.getBoundingClientRect();
+                    var pw = popup.offsetWidth;
+                    var ph = popup.offsetHeight;
+                    var left = rect.left + rect.width / 2 - pw / 2;
+                    var top = rect.top - ph - 6;
+                    // If clipped at top, show below instead
+                    if (top < 4) top = rect.bottom + 6;
+                    // Clamp horizontal
+                    if (left < 4) left = 4;
+                    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+                    popup.style.left = left + 'px';
+                    popup.style.top = top + 'px';
+                });
+                trigger.addEventListener('mouseleave', function() {
+                    popup.style.display = 'none';
+                });
+            });
+        })();
 
         // Tide chart script
         let tideChart = null;
