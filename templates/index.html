@@ -881,6 +881,28 @@
             width: 100%;
         }
 
+        #tide-stat-item { position: relative; cursor: pointer; }
+        .tide-sparkline-popup {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            padding: 8px 10px 6px;
+            z-index: 200;
+            white-space: nowrap;
+        }
+        .tide-sparkline-popup .spark-title {
+            font-size: 10px;
+            color: #aaa;
+            margin-bottom: 4px;
+            text-align: center;
+        }
+        #tide-stat-item:hover .tide-sparkline-popup { display: block; }
+
         .stat-item {
             display: flex;
             justify-content: space-between;
@@ -1793,6 +1815,10 @@
                                     <span class="stat-value" id="current_tides">-</span>
                                     <span class="stat-context" id="ctx_tides"></span>
                                 </span>
+                                <div class="tide-sparkline-popup">
+                                    <div class="spark-title">24-Hour Tide</div>
+                                    <canvas id="tide-sparkline" width="200" height="60"></canvas>
+                                </div>
                             </li>
                         </ul>
                         <div class="orientation-warning" id="orientation-warning" style="display:none" title="Beach orientation unavailable — wind classification (clean/fair/choppy) is approximate">&#x26A0; Wind classification approximate</div>
@@ -5139,6 +5165,104 @@
                 ctxEl.appendChild(document.createTextNode(fmt(d)));
             });
             if (el) el.style.display = '';
+
+            // Draw sparkline if hourly tide data is available
+            drawTideSparkline();
+        }
+
+        function drawTideSparkline() {
+            var hourly = window._tideData;
+            if (!hourly || !hourly.length) return;
+            var canvas = document.getElementById('tide-sparkline');
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var W = canvas.width, H = canvas.height;
+            var pad = { top: 4, bottom: 4, left: 2, right: 2 };
+
+            // 24-hour window centered on now (±12h)
+            var now = Date.now();
+            var windowStart = now - 12 * 3600000;
+            var windowEnd = now + 12 * 3600000;
+
+            var points = hourly
+                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
+                .filter(function(d) { return d.t >= windowStart && d.t <= windowEnd; })
+                .sort(function(a, b) { return a.t - b.t; });
+
+            if (points.length < 2) return;
+
+            var minH = Infinity, maxH = -Infinity;
+            points.forEach(function(p) {
+                if (p.h < minH) minH = p.h;
+                if (p.h > maxH) maxH = p.h;
+            });
+            var range = maxH - minH || 1;
+
+            function xPos(t) { return pad.left + (t - windowStart) / (windowEnd - windowStart) * (W - pad.left - pad.right); }
+            function yPos(h) { return pad.top + (1 - (h - minH) / range) * (H - pad.top - pad.bottom); }
+
+            ctx.clearRect(0, 0, W, H);
+
+            // Fill under curve
+            ctx.beginPath();
+            ctx.moveTo(xPos(points[0].t), H - pad.bottom);
+            points.forEach(function(p) { ctx.lineTo(xPos(p.t), yPos(p.h)); });
+            ctx.lineTo(xPos(points[points.length - 1].t), H - pad.bottom);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+            ctx.fill();
+
+            // Tide curve line
+            ctx.beginPath();
+            points.forEach(function(p, i) {
+                if (i === 0) ctx.moveTo(xPos(p.t), yPos(p.h));
+                else ctx.lineTo(xPos(p.t), yPos(p.h));
+            });
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // High/low dots from _tideHighLow
+            var hlData = window._tideHighLow;
+            if (hlData) {
+                hlData.forEach(function(d) {
+                    var t = new Date(d.time).getTime();
+                    if (t < windowStart || t > windowEnd) return;
+                    var h = d.height * M_TO_FT;
+                    ctx.beginPath();
+                    ctx.arc(xPos(t), yPos(h), 2.5, 0, 2 * Math.PI);
+                    ctx.fillStyle = d.type === 'H' ? '#38bdf8' : '#818cf8';
+                    ctx.fill();
+                });
+            }
+
+            // "Now" marker
+            var nowX = xPos(now);
+            ctx.beginPath();
+            ctx.moveTo(nowX, pad.top);
+            ctx.lineTo(nowX, H - pad.bottom);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Small dot on curve at now
+            // Interpolate height at now
+            var nowH = null;
+            for (var i = 0; i < points.length - 1; i++) {
+                if (points[i].t <= now && points[i + 1].t >= now) {
+                    var frac = (now - points[i].t) / (points[i + 1].t - points[i].t);
+                    nowH = points[i].h + frac * (points[i + 1].h - points[i].h);
+                    break;
+                }
+            }
+            if (nowH !== null) {
+                ctx.beginPath();
+                ctx.arc(nowX, yPos(nowH), 3, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
         }
 
         function loadTideData() {
