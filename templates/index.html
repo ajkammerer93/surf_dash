@@ -859,11 +859,55 @@
             height: 100%;
         }
 
+        #current-conditions-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        #current-conditions-stats .stat-item {
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            border-right: 1px solid var(--border);
+        }
+
+        #current-conditions-stats .stat-item:nth-child(2n) { border-right: none; }
+        #current-conditions-stats .stat-item:nth-last-child(-n+2) { border-bottom: none; }
+
+        .stat-split {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .stat-hoverable, #tide-stat-item { cursor: pointer; }
+        .direction-popup, .tide-sparkline-popup {
+            display: none;
+            position: fixed;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            padding: 6px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        .tide-sparkline-popup {
+            padding: 8px 10px 6px;
+            white-space: nowrap;
+        }
+        .tide-sparkline-popup .spark-title {
+            font-size: 10px;
+            color: #aaa;
+            margin-bottom: 4px;
+            text-align: center;
+        }
+        #tide-stat-item:hover .tide-sparkline-popup { display: block; }
+
         .stat-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 2px 4px;
+            padding: 2px 6px;
             flex: 1;
             border-bottom: 1px solid var(--border);
         }
@@ -882,10 +926,18 @@
             font-variant-numeric: tabular-nums;
         }
 
+        #current-conditions-stats .stat-label { font-size: 10px; }
+        #current-conditions-stats .stat-value { font-size: 11px; }
+        #current-conditions-stats .stat-context { font-size: 9px; line-height: 1.2; }
+
         .stat-right {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
+        }
+
+        #current-conditions-stats .stat-right {
+            align-items: flex-start;
         }
 
         .stat-context {
@@ -1747,28 +1799,41 @@
                                     <span class="stat-context" id="ctx_wave_period"></span>
                                 </span>
                             </li>
-                            <li class="stat-item">
+                            <li class="stat-item stat-hoverable" id="wave-dir-stat-item">
                                 <span class="stat-label">Wave Direction</span>
                                 <span class="stat-value" id="current_wave_direction">- &deg;</span>
+                                <div class="direction-popup">
+                                    <canvas id="wave-dir-diagram" width="120" height="120"></canvas>
+                                </div>
+                            </li>
+                            <li class="stat-item stat-hoverable" id="wind-stat-item">
+                                <span class="stat-label">Wind</span>
+                                <span class="stat-split">
+                                    <span class="stat-value" id="current_wind_speed">-</span>
+                                    <span class="stat-value" id="current_wind_direction">-</span>
+                                </span>
+                                <span class="stat-context" id="ctx_wind"></span>
+                                <div class="direction-popup">
+                                    <canvas id="wind-dir-diagram" width="120" height="120"></canvas>
+                                </div>
                             </li>
                             <li class="stat-item">
-                                <span class="stat-label">Wind Speed</span>
-                                <span class="stat-right">
-                                    <span class="stat-value" id="current_wind_speed">-</span>
-                                    <span class="stat-context" id="ctx_wind"></span>
+                                <span class="stat-label">Temperature</span>
+                                <span class="stat-split">
+                                    <span class="stat-value" id="current_air_temp">-</span>
+                                    <span class="stat-value" id="current_water_temp">-</span>
                                 </span>
                             </li>
-                            <li class="stat-item">
-                                <span class="stat-label">Wind Direction</span>
-                                <span class="stat-value" id="current_wind_direction">-</span>
-                            </li>
-                            <li class="stat-item">
-                                <span class="stat-label">Air Temp</span>
-                                <span class="stat-value" id="current_air_temp">-</span>
-                            </li>
-                            <li class="stat-item">
-                                <span class="stat-label">Water Temp</span>
-                                <span class="stat-value" id="current_water_temp">-</span>
+                            <li class="stat-item" id="tide-stat-item" style="display:none">
+                                <span class="stat-label">Tides</span>
+                                <span class="stat-right">
+                                    <span class="stat-value" id="current_tides">-</span>
+                                    <span class="stat-context" id="ctx_tides"></span>
+                                </span>
+                                <div class="tide-sparkline-popup">
+                                    <div class="spark-title">24-Hour Tide</div>
+                                    <canvas id="tide-sparkline" width="200" height="60"></canvas>
+                                </div>
                             </li>
                         </ul>
                         <div class="orientation-warning" id="orientation-warning" style="display:none" title="Beach orientation unavailable — wind classification (clean/fair/choppy) is approximate">&#x26A0; Wind classification approximate</div>
@@ -3422,6 +3487,7 @@
             _tidesLoaded = false;
             window._forecastData = null;
             window._tideData = null;
+            window._tideHighLow = null;
             // Show loading state on maps (skip buoy map — managed separately)
             document.querySelectorAll('.map-container:not(.buoy-map)').forEach(el => {
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
@@ -3690,23 +3756,27 @@
 
                     const current = data[0];
                     document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * M_TO_FT).toFixed(1)} ft` : '-';
-                    document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(2)} s` : '-';
-                    document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${current.wave_direction.toFixed(0)} °` : '-';
+                    document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(1)} s` : '-';
+                    const waveDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+                    document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${waveDirs[Math.round(current.wave_direction / 22.5) % 16]} ${current.wave_direction.toFixed(0)}°` : '-';
                     // Wind (km/h → mph)
                     const KMH_TO_MPH = 0.621371;
                     document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
                     const windDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-                    document.getElementById('current_wind_direction').textContent = current.wind_direction != null ? `${windDirs[Math.round(current.wind_direction / 22.5) % 16]} (${current.wind_direction.toFixed(0)}°)` : '-';
+                    document.getElementById('current_wind_direction').textContent = current.wind_direction != null ? `${windDirs[Math.round(current.wind_direction / 22.5) % 16]} ${current.wind_direction.toFixed(0)}°` : '-';
                     // Temperatures (C→F)
                     const airC = current.air_temperature;
                     const waterC = current.water_temperature;
-                    document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F` : '-';
-                    document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F` : '-';
+                    document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F air` : '-';
+                    document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F water` : '-';
 
                     // Populate context descriptions for current conditions
                     document.getElementById('ctx_wave_height').textContent = current.wave_height != null ? describeWaveHeight(current.wave_height) : '';
                     document.getElementById('ctx_wave_period').textContent = current.wave_period != null ? describeWavePeriod(current.wave_period) : '';
                     document.getElementById('ctx_wind').textContent = (current.wind_speed != null) ? describeWindCondition(current.wind_speed, current.wind_direction) : '';
+
+                    // Draw direction diagrams for hover popups
+                    updateConditionsDiagrams();
 
                     // Show orientation warning if beach direction is approximate
                     var orientWarn = document.getElementById('orientation-warning');
@@ -5072,8 +5142,299 @@
 
         // Local maps loaded via staggered init in loadPointForecast listener
 
+        // Direction diagram for current conditions hover popups
+        function drawConditionsDiagram(canvas, windDir, waveDir, showWind, showWave) {
+            var dpr = window.devicePixelRatio || 1;
+            var size = 120;
+            canvas.width = size * dpr;
+            canvas.height = size * dpr;
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            var cx = size / 2, cy = size / 2, r = size / 2 - 2;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.clip();
+
+            var coastRad = (BEACH_FACING_DIRECTION - 90) * Math.PI / 180;
+            var cDx = Math.sin(coastRad), cDy = -Math.cos(coastRad);
+            var landRad = (BEACH_FACING_DIRECTION + 180) * Math.PI / 180;
+            var lDx = Math.sin(landRad), lDy = -Math.cos(landRad);
+
+            ctx.fillStyle = 'rgba(15, 40, 80, 0.9)';
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.beginPath();
+            ctx.moveTo(cx + cDx * r * 1.5, cy + cDy * r * 1.5);
+            ctx.lineTo(cx - cDx * r * 1.5, cy - cDy * r * 1.5);
+            ctx.lineTo(cx - cDx * r * 1.5 + lDx * r * 3, cy - cDy * r * 1.5 + lDy * r * 3);
+            ctx.lineTo(cx + cDx * r * 1.5 + lDx * r * 3, cy + cDy * r * 1.5 + lDy * r * 3);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(30, 70, 30, 0.9)';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(cx + cDx * r, cy + cDy * r);
+            ctx.lineTo(cx - cDx * r, cy - cDy * r);
+            ctx.strokeStyle = 'rgba(160, 160, 140, 0.8)';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+
+            function drawArrow(dir, color, dashed) {
+                if (dir === null || dir === undefined) return;
+                var goingTo = (dir + 180) % 360;
+                var rad = goingTo * Math.PI / 180;
+                var len = r * 0.65;
+                var tipX = cx + Math.sin(rad) * len;
+                var tipY = cy - Math.cos(rad) * len;
+                var tailX = cx - Math.sin(rad) * len * 0.3;
+                var tailY = cy + Math.cos(rad) * len * 0.3;
+
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+                if (dashed) ctx.setLineDash([4, 3]);
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(tipX, tipY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                var headLen = 8, headAngle = 0.45;
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(tipX - headLen * Math.sin(rad - headAngle), tipY + headLen * Math.cos(rad - headAngle));
+                ctx.lineTo(tipX - headLen * Math.sin(rad + headAngle), tipY + headLen * Math.cos(rad + headAngle));
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            if (showWave) drawArrow(waveDir, 'rgba(0, 220, 255, 0.9)', false);
+            if (showWind) drawArrow(windDir, 'rgba(255, 210, 70, 0.9)', true);
+
+            ctx.save();
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fillText('N', cx, 11);
+            ctx.restore();
+
+            ctx.save();
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
+            if (showWind && windDir != null) {
+                ctx.fillStyle = 'rgba(255, 210, 70, 0.9)';
+                ctx.fillText('Wind', cx - 22, size - 4);
+            }
+            if (showWave && waveDir != null) {
+                ctx.fillStyle = 'rgba(0, 220, 255, 0.9)';
+                ctx.fillText('Swell', cx + 22, size - 4);
+            }
+            ctx.restore();
+        }
+
+        function updateConditionsDiagrams() {
+            var data = window._forecastData;
+            if (!data || !data.length) return;
+            var current = data[0];
+            var waveCanvas = document.getElementById('wave-dir-diagram');
+            var windCanvas = document.getElementById('wind-dir-diagram');
+            if (waveCanvas) drawConditionsDiagram(waveCanvas, current.wind_direction, current.wave_direction, false, true);
+            if (windCanvas) drawConditionsDiagram(windCanvas, current.wind_direction, current.wave_direction, true, false);
+        }
+
+        // Position and show/hide hover popups using fixed positioning
+        (function() {
+            var pairs = [
+                ['wave-dir-stat-item', '.direction-popup'],
+                ['wind-stat-item', '.direction-popup'],
+                ['tide-stat-item', '.tide-sparkline-popup']
+            ];
+            pairs.forEach(function(pair) {
+                var trigger = document.getElementById(pair[0]);
+                if (!trigger) return;
+                var popup = trigger.querySelector(pair[1]);
+                if (!popup) return;
+
+                trigger.addEventListener('mouseenter', function() {
+                    popup.style.display = 'block';
+                    var rect = trigger.getBoundingClientRect();
+                    var pw = popup.offsetWidth;
+                    var ph = popup.offsetHeight;
+                    var left = rect.left + rect.width / 2 - pw / 2;
+                    var top = rect.top - ph - 6;
+                    // If clipped at top, show below instead
+                    if (top < 4) top = rect.bottom + 6;
+                    // Clamp horizontal
+                    if (left < 4) left = 4;
+                    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+                    popup.style.left = left + 'px';
+                    popup.style.top = top + 'px';
+                });
+                trigger.addEventListener('mouseleave', function() {
+                    popup.style.display = 'none';
+                });
+            });
+        })();
+
         // Tide chart script
         let tideChart = null;
+
+        function updateConditionsTide() {
+            var data = window._tideHighLow;
+            var el = document.getElementById('tide-stat-item');
+            if (!data || !data.length) {
+                if (el) el.style.display = 'none';
+                return;
+            }
+
+            // Last event before now + next 3 upcoming
+            var now = Date.now();
+            var sorted = data
+                .map(function(d) { return { time: new Date(d.time).getTime(), height: d.height, type: d.type }; })
+                .sort(function(a, b) { return a.time - b.time; });
+
+            var past = sorted.filter(function(d) { return d.time <= now; });
+            var future = sorted.filter(function(d) { return d.time > now; });
+            var lastPast = past.length ? [past[past.length - 1]] : [];
+            var nextThree = future.slice(0, 3);
+            var tides = lastPast.concat(nextThree);
+
+            if (!tides.length) { if (el) el.style.display = 'none'; return; }
+
+            var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            function fmt(d) {
+                var dt = new Date(d.time);
+                var h = dt.getHours(), m = dt.getMinutes();
+                var ampm = h >= 12 ? 'p' : 'a';
+                h = h % 12 || 12;
+                var arrow = d.type === 'H' ? '\u25B2' : '\u25BC';
+                var date = monthNames[dt.getMonth()] + ' ' + dt.getDate();
+                return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
+            }
+
+            // Soonest future tide is the primary (bold) value
+            var primaryIdx = lastPast.length > 0 ? 1 : 0;
+            var primaryTide = tides[primaryIdx] || tides[0];
+            document.getElementById('current_tides').textContent = fmt(primaryTide);
+
+            var ctxEl = document.getElementById('ctx_tides');
+            ctxEl.textContent = '';
+            tides.forEach(function(d, i) {
+                if (i === primaryIdx) return;
+                if (ctxEl.childNodes.length > 0) ctxEl.appendChild(document.createElement('br'));
+                var span = document.createElement('span');
+                span.textContent = fmt(d);
+                if (d.time <= now) span.style.opacity = '0.5';
+                ctxEl.appendChild(span);
+            });
+            if (el) el.style.display = '';
+
+            // Draw sparkline if hourly tide data is available
+            drawTideSparkline();
+        }
+
+        function drawTideSparkline() {
+            var hourly = window._tideData;
+            if (!hourly || !hourly.length) return;
+            var canvas = document.getElementById('tide-sparkline');
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var W = canvas.width, H = canvas.height;
+            var pad = { top: 4, bottom: 4, left: 2, right: 2 };
+
+            // 24-hour window centered on now (±12h)
+            var now = Date.now();
+            var windowStart = now - 12 * 3600000;
+            var windowEnd = now + 12 * 3600000;
+
+            var points = hourly
+                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
+                .filter(function(d) { return d.t >= windowStart && d.t <= windowEnd; })
+                .sort(function(a, b) { return a.t - b.t; });
+
+            if (points.length < 2) return;
+
+            var minH = Infinity, maxH = -Infinity;
+            points.forEach(function(p) {
+                if (p.h < minH) minH = p.h;
+                if (p.h > maxH) maxH = p.h;
+            });
+            var range = maxH - minH || 1;
+
+            function xPos(t) { return pad.left + (t - windowStart) / (windowEnd - windowStart) * (W - pad.left - pad.right); }
+            function yPos(h) { return pad.top + (1 - (h - minH) / range) * (H - pad.top - pad.bottom); }
+
+            ctx.clearRect(0, 0, W, H);
+
+            // Fill under curve
+            ctx.beginPath();
+            ctx.moveTo(xPos(points[0].t), H - pad.bottom);
+            points.forEach(function(p) { ctx.lineTo(xPos(p.t), yPos(p.h)); });
+            ctx.lineTo(xPos(points[points.length - 1].t), H - pad.bottom);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+            ctx.fill();
+
+            // Tide curve line
+            ctx.beginPath();
+            points.forEach(function(p, i) {
+                if (i === 0) ctx.moveTo(xPos(p.t), yPos(p.h));
+                else ctx.lineTo(xPos(p.t), yPos(p.h));
+            });
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // High/low dots from _tideHighLow
+            var hlData = window._tideHighLow;
+            if (hlData) {
+                hlData.forEach(function(d) {
+                    var t = new Date(d.time).getTime();
+                    if (t < windowStart || t > windowEnd) return;
+                    var h = d.height * M_TO_FT;
+                    ctx.beginPath();
+                    ctx.arc(xPos(t), yPos(h), 2.5, 0, 2 * Math.PI);
+                    ctx.fillStyle = d.type === 'H' ? '#38bdf8' : '#818cf8';
+                    ctx.fill();
+                });
+            }
+
+            // "Now" marker
+            var nowX = xPos(now);
+            ctx.beginPath();
+            ctx.moveTo(nowX, pad.top);
+            ctx.lineTo(nowX, H - pad.bottom);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Small dot on curve at now
+            // Interpolate height at now
+            var nowH = null;
+            for (var i = 0; i < points.length - 1; i++) {
+                if (points[i].t <= now && points[i + 1].t >= now) {
+                    var frac = (now - points[i].t) / (points[i + 1].t - points[i].t);
+                    nowH = points[i].h + frac * (points[i + 1].h - points[i].h);
+                    break;
+                }
+            }
+            if (nowH !== null) {
+                ctx.beginPath();
+                ctx.arc(nowX, yPos(nowH), 3, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
+        }
 
         function loadTideData() {
             const params = new URLSearchParams({
@@ -5277,6 +5638,8 @@
 
                     // Store tide data and signal session planner
                     window._tideData = tideData.hourly;
+                    window._tideHighLow = tideData.high_low;
+                    updateConditionsTide();
                     _tidesLoaded = true;
                     checkSessionPlannerReady();
                 })
