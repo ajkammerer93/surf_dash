@@ -6,21 +6,30 @@ A real-time surf forecast dashboard that aggregates wave, wind, and tide data fr
 
 ## Features
 
-- **Ocean Basin Maps** — Large-scale wave height and period visualization (3° resolution, ~330 km cells)
-- **Local Detail Maps** — High-resolution wave and wind overlays (0.1° resolution, ~11 km cells)
-- **Unified Time Slider** — Animate all 5 map panels through hourly forecast data
-- **Wave & Wind Charts** — Time-series forecast with wave height, wind speed, and wind direction arrows
+- **Ocean Basin Maps** — Large-scale wave height and period visualization with swell narrative overlay
+- **Local Detail Maps** — High-resolution wave and wind overlays (0.1° resolution) with ocean-clipped rendering
+- **Unified Time Slider** — Animate all map panels through hourly forecast data with adjustable playback speed
+- **Wave & Wind Charts** — Time-series forecast with wave height, wind speed, direction arrows, and surf condition classification (clean/fair/choppy)
 - **Tidal Predictions** — 7-day tide chart from the nearest NOAA reference station with high/low markers
-- **Daylight Forecast Table** — Filtered to surfable hours (5am–9pm) with offshore wind detection
-- **Dynamic Location Selection** — Click anywhere on a global map to get a forecast; reverse geocoded location names via OpenStreetMap
+- **Session Planner** — Scored 3-hour surf windows (0–100) highlighting the best times to paddle out
+- **Skill Level Selector** — Beginner/intermediate/advanced modes with tailored descriptions and scoring
+- **Forecast Literacy** — Plain-English descriptions for wave height, period, and wind conditions
+- **Swell Narrative** — Ocean basin overlay showing swell type, origin distance, and trend
+- **Surf Cameras** — Nearest live webcam feeds via Windy
+- **Buoy Data** — Real-time NDBC/CDIP buoy observations with wave spectrum charts
+- **Beach Orientation** — Auto-detected coastline facing direction for accurate offshore/onshore classification
+- **Dynamic Location Selection** — Click anywhere on a global map; reverse geocoded via OpenStreetMap
 
 ## Data Sources
 
 | Data | Source | Cost |
 |---|---|---|
-| Wave height, period, direction | [Open-Meteo Marine API](https://open-meteo.com/) | Free |
-| Wind speed, direction | [Open-Meteo Weather API](https://open-meteo.com/) | Free |
+| Wave height, period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 (ERDDAP) / NOMADS | Free |
+| Wind speed, direction | [Open-Meteo Weather API](https://open-meteo.com/) / GFS (ERDDAP) | Free |
 | Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) | Free |
+| Buoy observations | [NDBC](https://www.ndbc.noaa.gov/) / [CDIP](https://cdip.ucsd.edu/) | Free |
+| Surf cameras | [Windy Webcams API](https://api.windy.com/) | Free tier |
+| Coastline data | [OpenStreetMap Overpass API](https://overpass-api.de/) | Free |
 | Reverse geocoding | [Nominatim (OpenStreetMap)](https://nominatim.openstreetmap.org/) | Free |
 
 ## Getting Started
@@ -47,7 +56,7 @@ The dashboard will be available at `http://localhost:5000`.
 
 The entire app is two files:
 
-- **`app.py`** — Flask backend with 4 API endpoints that proxy and aggregate external data
+- **`app.py`** — Flask backend with API endpoints that proxy and aggregate external data
 - **`templates/index.html`** — Self-contained SPA frontend (HTML + embedded JS/CSS) using Chart.js and Leaflet via CDN
 
 ### API Endpoints
@@ -55,11 +64,15 @@ The entire app is two files:
 | Route | Purpose |
 |---|---|
 | `GET /api/forecast?lat=&lon=` | Point forecast (wave, wind, sunrise/sunset) |
-| `GET /api/map-forecast?lat=&lon=` | Gridded local area data for 3 map overlays |
-| `GET /api/ocean-basin?lat=&lon=` | Coarse ocean basin data for 2 basin maps |
+| `GET /api/map-forecast?lat=&lon=` | Gridded local area data for map overlays |
+| `GET /api/ocean-basin?lat=&lon=` | Coarse ocean basin data for basin maps |
 | `GET /api/tides?lat=&lon=` | 7-day tide predictions from nearest NOAA station |
+| `GET /api/webcams?lat=&lon=` | Nearest surf camera feeds |
+| `GET /api/buoys?lat=&lon=` | Real-time buoy observations and spectra |
+| `GET /api/beach-orientation?lat=&lon=` | Coastline facing direction |
+| `GET /api/swell-narrative?lat=&lon=` | Swell type, origin, and trend narrative |
 
-All endpoints are stateless with no caching. Default location is Surf City, NC.
+All endpoints are stateless. Default location is Surf City, NC.
 
 ## Deployment
 
