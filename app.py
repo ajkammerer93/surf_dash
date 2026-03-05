@@ -1421,11 +1421,8 @@ def _get_ssr_summary(lat, lon):
         if data and time.time() - data['time'] < CACHE_TTL:
             forecast = data['data'].get('forecast', [])
         else:
-            result = get_point_weather_data(lat, lon)
-            if result:
-                forecast = result.get('forecast', [])
-            else:
-                return None
+            # Don't block page render — only use cached data
+            return None
 
         if not forecast:
             return None
