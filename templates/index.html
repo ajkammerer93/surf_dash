@@ -6093,19 +6093,17 @@
                 return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
             }
 
-            // Soonest future tide is the primary (bold) value
-            var primaryIdx = lastPast.length > 0 ? 1 : 0;
-            var primaryTide = tides[primaryIdx] || tides[0];
-            document.getElementById('current_tides').textContent = fmt(primaryTide);
-
+            // Render all chronologically — past dimmed, next future bolded
+            var nextFutureIdx = lastPast.length;
+            document.getElementById('current_tides').textContent = '';
             var ctxEl = document.getElementById('ctx_tides');
             ctxEl.textContent = '';
             tides.forEach(function(d, i) {
-                if (i === primaryIdx) return;
-                if (ctxEl.childNodes.length > 0) ctxEl.appendChild(document.createElement('br'));
+                if (i > 0) ctxEl.appendChild(document.createElement('br'));
                 var span = document.createElement('span');
                 span.textContent = fmt(d);
                 if (d.time <= now) span.style.opacity = '0.5';
+                if (i === nextFutureIdx) { span.style.fontWeight = '600'; span.style.color = '#fff'; }
                 ctxEl.appendChild(span);
             });
             if (el) el.style.display = '';
