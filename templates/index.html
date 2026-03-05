@@ -2076,7 +2076,7 @@
                                 </span>
                                 <div class="tide-sparkline-popup">
                                     <div class="spark-title">24-Hour Tide</div>
-                                    <canvas id="tide-sparkline" width="200" height="60"></canvas>
+                                    <canvas id="tide-sparkline" width="220" height="80"></canvas>
                                 </div>
                             </li>
                         </ul>
@@ -6122,9 +6122,19 @@
             if (!hourly || !hourly.length) return;
             var canvas = document.getElementById('tide-sparkline');
             if (!canvas) return;
+
+            // DPR scaling for crisp rendering on retina displays
+            var dpr = window.devicePixelRatio || 1;
+            var cssW = 220, cssH = 80;
+            canvas.width = cssW * dpr;
+            canvas.height = cssH * dpr;
+            canvas.style.width = cssW + 'px';
+            canvas.style.height = cssH + 'px';
             var ctx = canvas.getContext('2d');
-            var W = canvas.width, H = canvas.height;
-            var pad = { top: 4, bottom: 4, left: 2, right: 2 };
+            ctx.scale(dpr, dpr);
+
+            // Padding: left for Y-axis labels, bottom for X-axis time labels
+            var pad = { top: 4, bottom: 14, left: 24, right: 4 };
 
             // 24-hour window: start from first available data point, end 24h later
             var now = Date.now();
@@ -6147,21 +6157,67 @@
             });
             var range = maxH - minH || 1;
 
-            function xPos(t) { return pad.left + (t - windowStart) / (windowEnd - windowStart) * (W - pad.left - pad.right); }
-            function yPos(h) { return pad.top + (1 - (h - minH) / range) * (H - pad.top - pad.bottom); }
+            // Chart area dimensions (inside padding)
+            var chartLeft = pad.left;
+            var chartRight = cssW - pad.right;
+            var chartTop = pad.top;
+            var chartBottom = cssH - pad.bottom;
+            var chartW = chartRight - chartLeft;
+            var chartH = chartBottom - chartTop;
 
-            ctx.clearRect(0, 0, W, H);
+            function xPos(t) { return chartLeft + (t - windowStart) / (windowEnd - windowStart) * chartW; }
+            function yPos(h) { return chartTop + (1 - (h - minH) / range) * chartH; }
 
-            // Fill under curve
+            ctx.clearRect(0, 0, cssW, cssH);
+
+            // --- Y-axis tick marks and labels ---
+            // Compute nice tick values: 2-3 ticks within the data range
+            var yAxisFont = '9px -apple-system, BlinkMacSystemFont, sans-serif';
+            var yAxisColor = 'rgba(255, 255, 255, 0.45)';
+            var tickLen = 3;
+
+            // Round min down and max up to nearest 0.5 ft for nice labels
+            var niceMin = Math.floor(minH * 2) / 2;
+            var niceMax = Math.ceil(maxH * 2) / 2;
+            var niceRange = niceMax - niceMin;
+            // Pick step: aim for 2-3 ticks
+            var step;
+            if (niceRange <= 1.5) step = 0.5;
+            else if (niceRange <= 3) step = 1;
+            else if (niceRange <= 6) step = 2;
+            else step = Math.ceil(niceRange / 3);
+
+            ctx.font = yAxisFont;
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+
+            for (var tick = niceMin; tick <= niceMax + 0.01; tick += step) {
+                // Only draw ticks within the actual data range (with a small margin)
+                if (tick < minH - range * 0.05 || tick > maxH + range * 0.05) continue;
+                var ty = yPos(tick);
+                // Tick line
+                ctx.beginPath();
+                ctx.moveTo(chartLeft - tickLen, ty);
+                ctx.lineTo(chartLeft, ty);
+                ctx.strokeStyle = yAxisColor;
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
+                // Label
+                var label = tick % 1 === 0 ? tick.toFixed(0) + 'ft' : tick.toFixed(1) + 'ft';
+                ctx.fillStyle = yAxisColor;
+                ctx.fillText(label, chartLeft - tickLen - 1, ty);
+            }
+
+            // --- Fill under curve ---
             ctx.beginPath();
-            ctx.moveTo(xPos(points[0].t), H - pad.bottom);
+            ctx.moveTo(xPos(points[0].t), chartBottom);
             points.forEach(function(p) { ctx.lineTo(xPos(p.t), yPos(p.h)); });
-            ctx.lineTo(xPos(points[points.length - 1].t), H - pad.bottom);
+            ctx.lineTo(xPos(points[points.length - 1].t), chartBottom);
             ctx.closePath();
             ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
             ctx.fill();
 
-            // Tide curve line
+            // --- Tide curve line ---
             ctx.beginPath();
             points.forEach(function(p, i) {
                 if (i === 0) ctx.moveTo(xPos(p.t), yPos(p.h));
@@ -6171,32 +6227,70 @@
             ctx.lineWidth = 1.5;
             ctx.stroke();
 
-            // High/low dots from _tideHighLow
+            // --- High/low dots and X-axis time labels ---
             var hlData = window._tideHighLow;
+            var xAxisFont = '8px -apple-system, BlinkMacSystemFont, sans-serif';
+            var xAxisColor = 'rgba(255, 255, 255, 0.45)';
+            var prevLabelRight = -Infinity; // track label positions to avoid overlap
+
             if (hlData) {
+                // Collect events in window with their positions
+                var hlEvents = [];
                 hlData.forEach(function(d) {
                     var t = new Date(d.time.replace(' ', 'T')).getTime();
                     if (t < windowStart || t > windowEnd) return;
                     var h = d.height * M_TO_FT;
+                    hlEvents.push({ t: t, h: h, type: d.type, date: new Date(d.time.replace(' ', 'T')) });
+                });
+
+                // Draw dots
+                hlEvents.forEach(function(ev) {
                     ctx.beginPath();
-                    ctx.arc(xPos(t), yPos(h), 2.5, 0, 2 * Math.PI);
-                    ctx.fillStyle = d.type === 'H' ? '#38bdf8' : '#818cf8';
+                    ctx.arc(xPos(ev.t), yPos(ev.h), 2.5, 0, 2 * Math.PI);
+                    ctx.fillStyle = ev.type === 'H' ? '#38bdf8' : '#818cf8';
                     ctx.fill();
+                });
+
+                // Draw time labels below chart
+                ctx.font = xAxisFont;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = xAxisColor;
+
+                hlEvents.forEach(function(ev) {
+                    var hr = ev.date.getHours();
+                    var ampm = hr >= 12 ? 'p' : 'a';
+                    var h12 = hr % 12 || 12;
+                    var timeStr = h12 + ampm;
+                    var tx = xPos(ev.t);
+                    var labelW = ctx.measureText(timeStr).width;
+                    var labelLeft = tx - labelW / 2;
+                    var labelRight = tx + labelW / 2;
+
+                    // Clamp to chart bounds
+                    if (labelLeft < chartLeft) { tx = chartLeft + labelW / 2; labelLeft = chartLeft; labelRight = chartLeft + labelW; }
+                    if (labelRight > chartRight) { tx = chartRight - labelW / 2; labelLeft = chartRight - labelW; labelRight = chartRight; }
+
+                    // Skip if overlapping with previous label (min 4px gap)
+                    if (labelLeft < prevLabelRight + 4) return;
+
+                    ctx.fillText(timeStr, tx, chartBottom + 2);
+                    prevLabelRight = labelRight;
                 });
             }
 
-            // "Now" marker
+            // --- "Now" marker ---
             var nowX = xPos(now);
             ctx.beginPath();
-            ctx.moveTo(nowX, pad.top);
-            ctx.lineTo(nowX, H - pad.bottom);
+            ctx.moveTo(nowX, chartTop);
+            ctx.lineTo(nowX, chartBottom);
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.lineWidth = 1;
             ctx.setLineDash([3, 2]);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Small dot on curve at now
+            // --- Small dot on curve at now ---
             // Interpolate height at now
             var nowH = null;
             for (var i = 0; i < points.length - 1; i++) {
