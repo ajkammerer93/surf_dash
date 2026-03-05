@@ -6069,9 +6069,14 @@
             }
 
             // Last event before now + next 3 upcoming
+            // NOAA times are local (no TZ suffix). Replace space with T to ensure
+            // browsers parse as local time, not UTC.
             var now = Date.now();
             var sorted = data
-                .map(function(d) { return { time: new Date(d.time).getTime(), height: d.height, type: d.type }; })
+                .map(function(d) {
+                    var t = d.time.replace(' ', 'T');
+                    return { time: new Date(t).getTime(), height: d.height, type: d.type };
+                })
                 .sort(function(a, b) { return a.time - b.time; });
 
             var past = sorted.filter(function(d) { return d.time <= now; });
@@ -6124,7 +6129,7 @@
             // 24-hour window: start from first available data point, end 24h later
             var now = Date.now();
             var allPoints = hourly
-                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
+                .map(function(d) { return { t: new Date(d.time.replace(' ', 'T')).getTime(), h: d.height * M_TO_FT }; })
                 .sort(function(a, b) { return a.t - b.t; });
 
             // Show first 24h of available data (today midnight through tomorrow)
@@ -6170,7 +6175,7 @@
             var hlData = window._tideHighLow;
             if (hlData) {
                 hlData.forEach(function(d) {
-                    var t = new Date(d.time).getTime();
+                    var t = new Date(d.time.replace(' ', 'T')).getTime();
                     if (t < windowStart || t > windowEnd) return;
                     var h = d.height * M_TO_FT;
                     ctx.beginPath();
