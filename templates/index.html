@@ -2843,12 +2843,12 @@
 
             // === Session Windows ===
             var windows = computeSessionWindows();
-            var todayStr = new Date().toDateString();
-            var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-            var tomorrowStr = tomorrow.toDateString();
+            var todayStr = formatLocationTime(new Date(), {year:'numeric', month:'2-digit', day:'2-digit'});
+            var tomorrow = new Date(Date.now() + 86400000);
+            var tomorrowStr = formatLocationTime(tomorrow, {year:'numeric', month:'2-digit', day:'2-digit'});
             var maxSessions = isPost ? 2 : 3;
             var topWindows = windows.filter(function(w) {
-                var ds = w.startTime.toDateString();
+                var ds = formatLocationTime(w.startTime, {year:'numeric', month:'2-digit', day:'2-digit'});
                 return ds === todayStr || ds === tomorrowStr;
             }).sort(function(a, b) { return b.score - a.score; }).slice(0, maxSessions);
 
@@ -2874,9 +2874,9 @@
                     var sy = y + (isPost ? 42 : 60) + i * sessItemH;
                     var ratingColors = {prime: '#44ff88', good: '#4488ff', fair: '#ffaa00', poor: '#ff4444'};
                     var rc = ratingColors[w.rating] || textDim;
-                    var dayLabel = w.startTime.toDateString() === todayStr ? 'Today' : 'Tomorrow';
-                    var startH = w.startTime.getHours();
-                    var endH = w.endTime.getHours();
+                    var dayLabel = formatLocationTime(w.startTime, {year:'numeric', month:'2-digit', day:'2-digit'}) === todayStr ? 'Today' : 'Tomorrow';
+                    var startH = getLocationHour(w.startTime);
+                    var endH = getLocationHour(w.endTime);
                     var fmtH = function(h) { return h === 0 ? '12am' : h < 12 ? h + 'am' : h === 12 ? '12pm' : (h-12) + 'pm'; };
                     var timeLabel = dayLabel + ' ' + fmtH(startH) + '-' + fmtH(endH);
 
@@ -3445,7 +3445,7 @@
             var period = forecastItem.wave_period || 0;
             var windSpeed = forecastItem.wind_speed || 0;
             var windDir = forecastItem.wind_direction;
-            var hour = new Date(forecastItem.time).getHours();
+            var hour = getLocationHour(new Date(forecastItem.time));
             var level = currentSkillLevel || 'all';
 
             if (hour < 5 || hour > 20) return 5;
@@ -3520,7 +3520,8 @@
             var tideLookup = {};
             window._tideData.forEach(function(t) {
                 var d = new Date(t.time);
-                var key = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + d.getHours();
+                var p = getLocationParts(d);
+                var key = p.year + '-' + parseInt(p.month) + '-' + parseInt(p.day) + '-' + parseInt(p.hour);
                 tideLookup[key] = t.height;
             });
 
@@ -3528,10 +3529,11 @@
             var scored = [];
             window._forecastData.forEach(function(item) {
                 var d = new Date(item.time);
-                var hour = d.getHours();
+                var p = getLocationParts(d);
+                var hour = parseInt(p.hour);
                 if (hour < 5 || hour > 20) return;
-                var key = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + hour;
-                var prevKey = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '-' + (hour - 1);
+                var key = p.year + '-' + parseInt(p.month) + '-' + parseInt(p.day) + '-' + hour;
+                var prevKey = p.year + '-' + parseInt(p.month) + '-' + parseInt(p.day) + '-' + (hour - 1);
                 scored.push({
                     time: d,
                     score: scoreHour(item, tideLookup[key] || null, tideLookup[prevKey] || null),
@@ -3549,7 +3551,7 @@
             // Group scored hours by day
             var dayGroups = {};
             scored.forEach(function(s) {
-                var dayKey = s.time.toDateString();
+                var dayKey = formatLocationTime(s.time, {year:'numeric', month:'2-digit', day:'2-digit'});
                 if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
                 dayGroups[dayKey].push(s);
             });
@@ -3559,7 +3561,7 @@
                 SLOTS.forEach(function(slotStart) {
                     var slotEnd = slotStart + 3;
                     var block = dayItems.filter(function(s) {
-                        var h = s.time.getHours();
+                        var h = getLocationHour(s.time);
                         return h >= slotStart && h < slotEnd;
                     });
                     if (block.length === 0) return;
@@ -3579,10 +3581,10 @@
                 else rating = 'poor';
 
                 // Use fixed slot boundaries for startTime/endTime
-                var slotStartTime = new Date(block[0].time);
-                slotStartTime.setHours(slotStart, 0, 0, 0);
-                var slotEndTime = new Date(block[0].time);
-                slotEndTime.setHours(slotEnd, 0, 0, 0);
+                // Compute UTC Date objects that correspond to slotStart/slotEnd in location timezone
+                var firstItemLocHour = getLocationHour(block[0].time);
+                var slotStartTime = new Date(block[0].time.getTime() + (slotStart - firstItemLocHour) * 3600000);
+                var slotEndTime = new Date(block[0].time.getTime() + (slotEnd - firstItemLocHour) * 3600000);
 
                 blocks.push({
                     startTime: slotStartTime,
@@ -3893,9 +3895,9 @@
             var lastKey = '';
             data.forEach(function(item) {
                 var d = new Date(item.time);
-                var h = d.getHours();
+                var h = getLocationHour(d);
                 if (h < 5 || h > 21 || h % 3 !== 0) return;
-                var key = d.toDateString() + '-' + h;
+                var key = formatLocationTime(d, {year:'numeric',month:'2-digit',day:'2-digit'}) + '-' + h;
                 if (key === lastKey) return;
                 lastKey = key;
                 var cond = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
@@ -3907,8 +3909,8 @@
                 ].filter(Boolean).join('; ');
                 var tr = document.createElement('tr');
                 tr.className = condMap[cond] || '';
-                tr.innerHTML = '<td>' + d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}) + '</td>' +
-                    '<td>' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:true}) + '</td>' +
+                tr.innerHTML = '<td>' + formatLocationTime(d, {weekday:'short',month:'short',day:'numeric'}) + '</td>' +
+                    '<td>' + formatLocationTime(d, {hour:'2-digit',minute:'2-digit',hour12:true}) + '</td>' +
                     '<td>' + (item.wave_height != null ? (item.wave_height * M_TO_FT).toFixed(1) : '-') + '</td>' +
                     '<td>' + (item.wave_period != null ? item.wave_period.toFixed(1) : '-') + '</td>' +
                     '<td>' + windMph + '</td>' +
@@ -4291,7 +4293,33 @@
 
         // Point data and main chart script
         window.sunTimes = [];
-        window.utcOffsetHours = Math.round(currentLocation.lon / 15);
+
+        // Location timezone (IANA name, e.g. 'America/New_York')
+        window._locationTimezone = 'UTC';
+
+        // Format a UTC Date in the location's timezone
+        function formatLocationTime(date, options) {
+            return new Intl.DateTimeFormat('en-US',
+                Object.assign({ timeZone: window._locationTimezone || 'UTC' }, options)
+            ).format(date);
+        }
+
+        // Get date/time parts in location timezone
+        function getLocationParts(date) {
+            var fmt = new Intl.DateTimeFormat('en-US', {
+                timeZone: window._locationTimezone || 'UTC',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            });
+            var parts = {};
+            fmt.formatToParts(date).forEach(function(p) { parts[p.type] = p.value; });
+            return parts;
+        }
+
+        // Get hour (0-23) in location timezone
+        function getLocationHour(date) {
+            return parseInt(getLocationParts(date).hour);
+        }
 
         // Day/night shading plugin — draws alternating bands behind chart data
         const dayNightPlugin = {
@@ -4426,13 +4454,12 @@
         // Places major ticks at 12:00 noon local, minor ticks at 00, 06, 18 local
         function buildLocalTimeTicks(axis) {
             if (!axis.min || !axis.max) return;
-            const offset = window.utcOffsetHours || 0;
             const ticks = [];
             const start = new Date(axis.min);
             start.setUTCMinutes(0, 0, 0);
             let t = start.getTime() - 3600000;
             while (t <= axis.max) {
-                const localHour = ((new Date(t).getUTCHours() + offset) % 24 + 24) % 24;
+                const localHour = getLocationHour(new Date(t));
                 if (localHour === 0 || localHour === 6 || localHour === 12 || localHour === 18) {
                     ticks.push({ value: t, major: localHour === 12 });
                 }
@@ -4442,28 +4469,18 @@
         }
 
         function formatLocalTimeTick(value, index, ticksArray) {
-            const offset = window.utcOffsetHours || 0;
             const tick = ticksArray[index];
             const d = new Date(tick.value);
-            const local = new Date(d.getTime() + offset * 3600000);
             if (tick.major) {
-                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                return days[local.getUTCDay()] + ' ' + months[local.getUTCMonth()] + ' ' + local.getUTCDate();
+                return formatLocationTime(d, { weekday: 'short', month: 'short', day: 'numeric' });
             }
-            const h = local.getUTCHours();
-            return (h < 10 ? '0' : '') + h + ':00';
+            var parts = getLocationParts(d);
+            return parts.hour + ':' + parts.minute;
         }
 
         function formatLocalTooltipTitle(items) {
-            const offset = window.utcOffsetHours || 0;
             const d = new Date(items[0].parsed.x);
-            const local = new Date(d.getTime() + offset * 3600000);
-            const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const h = local.getUTCHours();
-            const m = local.getUTCMinutes();
-            return days[local.getUTCDay()] + ' ' + months[local.getUTCMonth()] + ' ' + local.getUTCDate() + ', ' + local.getUTCFullYear() + ' ' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+            return formatLocationTime(d, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
         let waveChart = null;
@@ -4483,7 +4500,12 @@
             Promise.all([
                 orientationPromise,
                 fetch(`/api/forecast?${params}`).then(r => r.json())
-            ]).then(([orientation, data]) => {
+            ]).then(([orientation, rawResponse]) => {
+                    // Extract forecast list and location timezone from response
+                    const data = rawResponse.error ? rawResponse : rawResponse.forecast;
+                    if (!rawResponse.error) {
+                        window._locationTimezone = rawResponse.location_timezone || 'UTC';
+                    }
                     // Update beach facing direction if orientation was resolved
                     if (orientation && orientation.beach_facing_direction != null) {
                         BEACH_FACING_DIRECTION = orientation.beach_facing_direction;
@@ -4508,8 +4530,7 @@
                     // Store forecast data globally for session planner and tooltips
                     window._forecastData = data;
 
-                    // Update timezone offset and extract sunrise/sunset for day/night shading
-                    window.utcOffsetHours = Math.round(currentLocation.lon / 15);
+                    // Extract sunrise/sunset for day/night shading
                     window.sunTimes = [];
                     const seenDates = new Set();
                     data.forEach(item => {
@@ -4517,8 +4538,8 @@
                         if (!seenDates.has(dateKey) && item.sunrise && item.sunset) {
                             seenDates.add(dateKey);
                             window.sunTimes.push({
-                                sunrise: new Date(item.sunrise + 'Z'),
-                                sunset: new Date(item.sunset + 'Z')
+                                sunrise: new Date(item.sunrise),
+                                sunset: new Date(item.sunset)
                             });
                         }
                     });
@@ -5670,7 +5691,7 @@
             if (!times) return;
 
             // Update time badge, label, and panel timestamps
-            const timeStr = new Date(times[timeIndex]).toLocaleString();
+            const timeStr = formatLocationTime(new Date(times[timeIndex]), {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
             document.getElementById('map-time-badge').textContent = timeStr;
             document.getElementById('time-label').textContent = 'Time: ' + timeStr;
             document.querySelectorAll('.panel-timestamp').forEach(el => el.textContent = timeStr);
@@ -5895,7 +5916,7 @@
                 // Update label immediately (cheap DOM write)
                 const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
                 if (times && times[timeIndex]) {
-                    const timeStr = new Date(times[timeIndex]).toLocaleString();
+                    const timeStr = formatLocationTime(new Date(times[timeIndex]), {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
                     document.getElementById('map-time-badge').textContent = timeStr;
                     document.getElementById('time-label').textContent = 'Time: ' + timeStr;
                     document.querySelectorAll('.panel-timestamp').forEach(el => el.textContent = timeStr);
@@ -6069,13 +6090,11 @@
             }
 
             // Last event before now + next 3 upcoming
-            // NOAA times are local (no TZ suffix). Replace space with T to ensure
-            // browsers parse as local time, not UTC.
+            // NOAA times are UTC with Z suffix (e.g. "2026-03-05T14:30Z")
             var now = Date.now();
             var sorted = data
                 .map(function(d) {
-                    var t = d.time.replace(' ', 'T');
-                    return { time: new Date(t).getTime(), height: d.height, type: d.type };
+                    return { time: new Date(d.time).getTime(), height: d.height, type: d.type };
                 })
                 .sort(function(a, b) { return a.time - b.time; });
 
@@ -6090,11 +6109,12 @@
             var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             function fmt(d) {
                 var dt = new Date(d.time);
-                var h = dt.getHours(), m = dt.getMinutes();
+                var p = getLocationParts(dt);
+                var h = parseInt(p.hour), m = parseInt(p.minute);
                 var ampm = h >= 12 ? 'p' : 'a';
                 h = h % 12 || 12;
                 var arrow = d.type === 'H' ? '\u25B2' : '\u25BC';
-                var date = monthNames[dt.getMonth()] + ' ' + dt.getDate();
+                var date = formatLocationTime(dt, {month:'short', day:'numeric'});
                 return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
             }
 
@@ -6134,12 +6154,12 @@
             ctx.scale(dpr, dpr);
 
             // Padding: left for Y-axis labels, bottom for X-axis time labels
-            var pad = { top: 4, bottom: 14, left: 24, right: 4 };
+            var pad = { top: 4, bottom: 18, left: 24, right: 4 };
 
             // 24-hour window: start from first available data point, end 24h later
             var now = Date.now();
             var allPoints = hourly
-                .map(function(d) { return { t: new Date(d.time.replace(' ', 'T')).getTime(), h: d.height * M_TO_FT }; })
+                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
                 .sort(function(a, b) { return a.t - b.t; });
 
             // Show first 24h of available data (today midnight through tomorrow)
@@ -6237,10 +6257,10 @@
                 // Collect events in window with their positions
                 var hlEvents = [];
                 hlData.forEach(function(d) {
-                    var t = new Date(d.time.replace(' ', 'T')).getTime();
+                    var t = new Date(d.time).getTime();
                     if (t < windowStart || t > windowEnd) return;
                     var h = d.height * M_TO_FT;
-                    hlEvents.push({ t: t, h: h, type: d.type, date: new Date(d.time.replace(' ', 'T')) });
+                    hlEvents.push({ t: t, h: h, type: d.type, date: new Date(d.time) });
                 });
 
                 // Draw dots
@@ -6258,7 +6278,7 @@
                 ctx.fillStyle = xAxisColor;
 
                 hlEvents.forEach(function(ev) {
-                    var hr = ev.date.getHours();
+                    var hr = getLocationHour(ev.date);
                     var ampm = hr >= 12 ? 'p' : 'a';
                     var h12 = hr % 12 || 12;
                     var timeStr = h12 + ampm;
@@ -6274,7 +6294,7 @@
                     // Skip if overlapping with previous label (min 4px gap)
                     if (labelLeft < prevLabelRight + 4) return;
 
-                    ctx.fillText(timeStr, tx, chartBottom + 2);
+                    ctx.fillText(timeStr, tx, chartBottom + 6);
                     prevLabelRight = labelRight;
                 });
             }
@@ -6563,7 +6583,7 @@
             // Group windows by day
             const dayMap = {};
             windows.forEach(function(w) {
-                const dayKey = w.startTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                const dayKey = formatLocationTime(w.startTime, { weekday: 'short', month: 'short', day: 'numeric' });
                 if (!dayMap[dayKey]) dayMap[dayKey] = [];
                 dayMap[dayKey].push(w);
             });
@@ -6585,8 +6605,8 @@
                     block.className = 'session-block session-' + w.rating;
                     if (w.rating === 'poor') block.style.opacity = '0.65';
 
-                    var timeStr = w.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-                        + ' – ' + w.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                    var timeStr = formatLocationTime(w.startTime, { hour: '2-digit', minute: '2-digit', hour12: true })
+                        + ' – ' + formatLocationTime(w.endTime, { hour: '2-digit', minute: '2-digit', hour12: true });
 
                     var timeEl = document.createElement('div');
                     timeEl.className = 'session-time';

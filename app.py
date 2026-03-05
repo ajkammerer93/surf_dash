@@ -9,7 +9,7 @@ import time
 import traceback
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -360,18 +360,19 @@ def get_point_weather_data(latitude, longitude):
         try:
             result = _get_point_from_nomads(latitude, longitude)
             if result:
-                _enrich_with_temperatures(result, latitude, longitude)
+                location_tz = _enrich_with_temperatures(result, latitude, longitude)
                 _enrich_with_wind(result, latitude, longitude)
-                return result
+                return {"forecast": result, "location_timezone": location_tz}
             print("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
         except Exception as e:
             print(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
             traceback.print_exc()
     result = _get_point_from_open_meteo(latitude, longitude)
     if result:
-        _enrich_with_temperatures(result, latitude, longitude)
+        location_tz = _enrich_with_temperatures(result, latitude, longitude)
         _enrich_with_wind(result, latitude, longitude)
-    return result
+        return {"forecast": result, "location_timezone": location_tz}
+    return None
 
 
 def _enrich_with_temperatures(forecast, latitude, longitude):
@@ -379,9 +380,11 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     Fetch current air temperature (Open-Meteo Weather) and sea surface
     temperature (Open-Meteo Marine) and add them to the first forecast entry.
     Non-critical — silently skips on failure.
+    Returns the IANA timezone string for the location (e.g. 'America/New_York').
     """
+    location_tz = "UTC"
     try:
-        # Air temperature
+        # Air temperature (also resolves IANA timezone via timezone=auto)
         air_temp = None
         resp = _retry_request(lambda: requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -390,7 +393,9 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
             timeout=10
         ))
         if resp.ok:
-            air_temp = resp.json().get("current", {}).get("temperature_2m")
+            air_data = resp.json()
+            air_temp = air_data.get("current", {}).get("temperature_2m")
+            location_tz = air_data.get("timezone", "UTC")
 
         # Sea surface temperature
         water_temp = None
@@ -409,6 +414,7 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
             print(f"  Temperatures: air={air_temp}°C, water={water_temp}°C")
     except Exception as e:
         print(f"  Temperature fetch failed (non-critical): {e}")
+    return location_tz
 
 
 def _enrich_with_wind(forecast, latitude, longitude):
@@ -443,8 +449,8 @@ def _enrich_with_wind(forecast, latitude, longitude):
             om_lookup[t_str] = idx
         matched = 0
         for entry in forecast:
-            # forecast times are "2025-03-01 00:00"; Open-Meteo uses "T" separator
-            key = entry["time"].replace(" ", "T")
+            # forecast times are "2025-03-01T00:00Z" (UTC); Open-Meteo uses "2025-03-01T00:00"
+            key = entry["time"].rstrip("Z")
             if key in om_lookup:
                 oi = om_lookup[key]
                 if oi < len(om_ws) and om_ws[oi] is not None:
@@ -513,8 +519,8 @@ def _get_point_from_open_meteo(latitude, longitude):
         forecast = []
         for i, t_str in enumerate(times):
             date_key = t_str[:10]
-            # Open-Meteo times are "YYYY-MM-DDTHH:MM"; convert to space-separated
-            time_str = t_str.replace("T", " ")
+            # Open-Meteo times are "YYYY-MM-DDTHH:MM" in UTC; append Z suffix
+            time_str = t_str + "Z"
             forecast.append({
                 "time": time_str,
                 "wave_height": _val(wh, i),
@@ -559,7 +565,7 @@ def _get_point_from_erddap(latitude, longitude):
         wave_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
@@ -610,7 +616,7 @@ def _get_point_from_erddap(latitude, longitude):
         wind_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
@@ -678,7 +684,7 @@ def _get_point_from_erddap(latitude, longitude):
         for i, wdt in enumerate(wave_dts):
             date_key = wdt.strftime('%Y-%m-%d')
             forecast.append({
-                "time": wdt.strftime('%Y-%m-%d %H:%M'),
+                "time": wdt.strftime('%Y-%m-%dT%H:%M') + 'Z',
                 "wave_height": float(thgt[i]) if not np.isnan(thgt[i]) else None,
                 "wave_period": float(tper[i]) if not np.isnan(tper[i]) else None,
                 "wave_direction": float(tdir[i]) if not np.isnan(tdir[i]) else None,
@@ -805,7 +811,7 @@ def _sunrise_sunset(lat, lon, date):
         minutes = minutes % 1440
         h = int(minutes // 60)
         m = int(minutes % 60)
-        return f"{date.isoformat()}T{h:02d}:{m:02d}"
+        return f"{date.isoformat()}T{h:02d}:{m:02d}Z"
 
     return min_to_iso(sunrise_min), min_to_iso(sunset_min)
 
@@ -898,7 +904,7 @@ def _find_latest_nomads_cycle():
     if cache_key in _cache and now_ts - _cache[cache_key]['time'] < NOMADS_CYCLE_CACHE_TTL:
         return _cache[cache_key]['data']
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     yesterday = now - timedelta(days=1)
 
     for day in [now, yesterday]:
@@ -1139,7 +1145,7 @@ def _get_point_from_nomads(lat, lon):
     for i, wdt in enumerate(hourly_dts):
         date_key = wdt.strftime('%Y-%m-%d')
         forecast.append({
-            "time": wdt.strftime('%Y-%m-%d %H:%M'),
+            "time": wdt.strftime('%Y-%m-%dT%H:%M') + 'Z',
             "wave_height": round(float(htsgw_h[i]), 2) if not np.isnan(htsgw_h[i]) else None,
             "wave_period": round(float(perpw_h[i]), 1) if not np.isnan(perpw_h[i]) else None,
             "wave_direction": round(float(dirpw_h[i]), 1) if not np.isnan(dirpw_h[i]) else None,
@@ -1250,7 +1256,7 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
     return {
         "lats": [float(la) for la in data['lats']],
         "lons": [float(lo) for lo in lons],
-        "times": [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts],
+        "times": [dt.strftime('%Y-%m-%dT%H:%M') + 'Z' for dt in wave_dts],
         "wave_height": wave_height.tolist(),
         "wave_period": wave_period.tolist(),
         "wave_direction": wave_dir.tolist(),
@@ -1292,7 +1298,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         wave_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
@@ -1321,7 +1327,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         wind_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
@@ -1368,7 +1374,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         return {
             "lats": [float(la) for la in lats],
             "lons": [float(lo) for lo in lons],
-            "times": [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts],
+            "times": [dt.strftime('%Y-%m-%dT%H:%M') + 'Z' for dt in wave_dts],
             "wave_height": wave_height_grid.tolist(),
             "wave_period": wave_period_grid.tolist(),
             "wave_direction": wave_dir_grid.tolist(),
@@ -1465,7 +1471,7 @@ def sitemap_xml():
             seen.add(key)
             unique_locations.append(cam)
 
-    today = datetime.utcnow().strftime('%Y-%m-%d')
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     urls = ['<?xml version="1.0" encoding="UTF-8"?>']
     urls.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
@@ -1653,7 +1659,7 @@ def get_ocean_basin_data():
         wave_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
 
                 print(f"Fetching global wave data from ERDDAP (WW3), start={t_start}...")
@@ -1685,7 +1691,7 @@ def get_ocean_basin_data():
         wind_json = None
         for hours_back in [6, 12, 24]:
             try:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_back)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
 
                 print(f"Fetching global wind data from ERDDAP (GFS), start={t_start}...")
@@ -1736,7 +1742,7 @@ def get_ocean_basin_data():
         wind_speed_out = np.nan_to_num(wind_speed_out, nan=0.0)
         wind_dir_out = np.nan_to_num(wind_dir_out, nan=0.0)
 
-        formatted_times = [dt.strftime('%Y-%m-%d %H:%M') for dt in wave_dts]
+        formatted_times = [dt.strftime('%Y-%m-%dT%H:%M') + 'Z' for dt in wave_dts]
 
         return {
             "lats": [float(la) for la in lats],
@@ -1838,7 +1844,7 @@ def get_tide_data(station_id):
     """
     try:
         # Get tide predictions for the next 7 days
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         end_date = today + timedelta(days=7)
 
         url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -1848,7 +1854,7 @@ def get_tide_data(station_id):
             "station": station_id,
             "product": "predictions",
             "datum": "MLLW",  # Mean Lower Low Water
-            "time_zone": "lst_ldt",  # Local time with daylight savings
+            "time_zone": "gmt",  # UTC — frontend converts to location timezone
             "units": "metric",
             "format": "json",
             "interval": "h"  # Hourly predictions
@@ -1871,14 +1877,14 @@ def get_tide_data(station_id):
         tide_forecast = {
             "hourly": [
                 {
-                    "time": pred["t"],
+                    "time": pred["t"].replace(" ", "T") + "Z",
                     "height": float(pred["v"])
                 }
                 for pred in data["predictions"]
             ],
             "high_low": [
                 {
-                    "time": pred["t"],
+                    "time": pred["t"].replace(" ", "T") + "Z",
                     "height": float(pred["v"]),
                     "type": pred["type"]  # "H" for high, "L" for low
                 }
@@ -2124,7 +2130,7 @@ def _fetch_cdip_observation(station_id):
         m = re.search(r'waveTime\[\d+\]\s*\n\s*([\d.eE+\-]+)', text)
         if m:
             epoch = float(m.group(1))
-            dt = datetime.utcfromtimestamp(epoch)
+            dt = datetime.fromtimestamp(epoch, timezone.utc)
             time_str = dt.strftime('%Y-%m-%d %H:%M UTC')
 
         return {
