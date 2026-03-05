@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, Response
+from flask import Flask, render_template, jsonify, request, Response, redirect, url_for
 from urllib.parse import quote as url_quote
 import requests
 import re
@@ -82,6 +82,32 @@ def _load_cameras():
         return []
 
 SURFCHEX_CAMERAS = _load_cameras()
+
+def slugify(name):
+    """Convert location name to URL slug: lowercase, strip non-alphanumeric, hyphenate."""
+    s = name.lower().strip()
+    s = re.sub(r'[^a-z0-9]+', '-', s)
+    s = s.strip('-')
+    return s
+
+def _build_location_index():
+    """Build slug->location lookup from cameras, deduplicating by lat/lon."""
+    by_slug = {}
+    seen_coords = set()
+    for cam in SURFCHEX_CAMERAS:
+        key = (round(cam['lat'], 4), round(cam['lon'], 4))
+        if key in seen_coords:
+            continue
+        seen_coords.add(key)
+        slug = slugify(cam['name'])
+        if slug not in by_slug:
+            by_slug[slug] = {'name': cam['name'], 'lat': cam['lat'], 'lon': cam['lon'], 'slug': slug}
+    return by_slug
+
+LOCATION_BY_SLUG = _build_location_index()
+# Reverse lookup: (rounded_lat, rounded_lon) -> slug
+SLUG_BY_COORDS = {(round(loc['lat'], 4), round(loc['lon'], 4)): slug for slug, loc in LOCATION_BY_SLUG.items()}
+print(f"Built {len(LOCATION_BY_SLUG)} location slugs")
 
 def _load_ndbc_stations():
     """Load NDBC buoy stations from ndbc_stations.json."""
@@ -1387,16 +1413,69 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         traceback.print_exc()
         return None
 
-# Route for the main dashboard
-@app.route('/')
-def index():
-    """
-    Renders the main dashboard page with SEO meta tags.
-    """
-    lat = request.args.get('lat', DEFAULT_LAT, type=float)
-    lon = request.args.get('lon', DEFAULT_LON, type=float)
-    name = request.args.get('name', 'Surf City, North Carolina')
+def _get_ssr_summary(lat, lon):
+    """Get server-side rendered forecast summary for SEO. Returns dict or None."""
+    try:
+        cache_key = f"forecast:{lat:.4f},{lon:.4f}"
+        data = _cache.get(cache_key)
+        if data and time.time() - data['time'] < CACHE_TTL:
+            forecast = data['data'].get('forecast', [])
+        else:
+            result = get_point_weather_data(lat, lon)
+            if result:
+                forecast = result.get('forecast', [])
+            else:
+                return None
 
+        if not forecast:
+            return None
+
+        # Find current/nearest hour
+        now = datetime.now(timezone.utc)
+        best = forecast[0]
+        for entry in forecast:
+            t = entry.get('time', '')
+            try:
+                entry_dt = datetime.fromisoformat(t.replace('Z', '+00:00'))
+                if entry_dt <= now:
+                    best = entry
+                else:
+                    break
+            except (ValueError, TypeError):
+                continue
+
+        wh = best.get('wave_height')
+        wp = best.get('wave_period')
+        ws = best.get('wind_speed')
+        wd = best.get('wind_direction')
+
+        # Build condition label
+        condition = 'Fair'
+        if wh is not None and wp is not None:
+            if wh < 1:
+                condition = 'Flat'
+            elif wp >= 12:
+                condition = 'Clean ground swell'
+            elif wp >= 9:
+                condition = 'Medium-period swell'
+            else:
+                condition = 'Wind swell'
+            if ws is not None and ws > 20:
+                condition += ', windy'
+
+        return {
+            'wave_height': round(wh, 1) if wh is not None else None,
+            'wave_period': round(wp, 1) if wp is not None else None,
+            'wind_speed': round(ws, 1) if ws is not None else None,
+            'wind_direction': round(wd) if wd is not None else None,
+            'condition': condition,
+        }
+    except Exception as e:
+        print(f"SSR summary failed: {e}")
+        return None
+
+def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
+    """Shared renderer for index and forecast-by-slug routes."""
     page_title = f"Surf Forecast for {name} | Free Surf Forecast"
     meta_description = (
         f"Free 7-day surf forecast for {name}. "
@@ -1404,9 +1483,7 @@ def index():
         "and live surf cameras. No ads, no sign-up."
     )
 
-    # Build canonical URL with location params
-    canonical_params = f"?lat={lat}&lon={lon}&name={name}" if (lat != DEFAULT_LAT or lon != DEFAULT_LON) else ""
-    canonical_url = f"https://freesurfforecast.com/{canonical_params}"
+    ssr_summary = _get_ssr_summary(lat, lon)
 
     return render_template(
         'index.html',
@@ -1419,7 +1496,104 @@ def index():
         location_name=name,
         location_lat=lat,
         location_lon=lon,
+        location_slug=location_slug,
+        ssr_summary=ssr_summary,
+        locations=LOCATION_BY_SLUG,
     )
+
+
+# 301 redirect old query-param URLs to /forecast/<slug> when matching a known location
+@app.before_request
+def redirect_query_params_to_slug():
+    if request.path == '/' and request.args.get('lat') and request.args.get('lon'):
+        lat = request.args.get('lat', type=float)
+        lon = request.args.get('lon', type=float)
+        if lat is not None and lon is not None:
+            coord_key = (round(lat, 4), round(lon, 4))
+            slug = SLUG_BY_COORDS.get(coord_key)
+            if slug:
+                return redirect(url_for('forecast_by_slug', slug=slug), code=301)
+
+
+# Route for the main dashboard (default location)
+@app.route('/')
+def index():
+    """Renders the main dashboard page with SEO meta tags."""
+    lat = DEFAULT_LAT
+    lon = DEFAULT_LON
+    name = 'Surf City, North Carolina'
+    canonical_url = 'https://freesurfforecast.com/'
+    # Look up slug for default location
+    default_slug = SLUG_BY_COORDS.get((round(DEFAULT_LAT, 4), round(DEFAULT_LON, 4)))
+    return _render_dashboard(lat, lon, name, canonical_url, location_slug=default_slug)
+
+
+@app.route('/forecast/<slug>')
+def forecast_by_slug(slug):
+    """Renders the dashboard for a known location by its URL slug."""
+    loc = LOCATION_BY_SLUG.get(slug)
+    if not loc:
+        # Try to find closest match or 404
+        from flask import abort
+        abort(404)
+
+    canonical_url = f"https://freesurfforecast.com/forecast/{slug}"
+    return _render_dashboard(loc['lat'], loc['lon'], loc['name'], canonical_url, location_slug=slug)
+
+
+@app.route('/locations')
+def locations_index():
+    """Renders the locations index page listing all forecast locations."""
+    # State code -> full name mapping
+    state_map = {
+        'AL': 'Alabama', 'CA': 'California', 'CT': 'Connecticut',
+        'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+        'HI': 'Hawaii', 'MA': 'Massachusetts', 'MD': 'Maryland',
+        'ME': 'Maine', 'NC': 'North Carolina', 'NH': 'New Hampshire',
+        'NJ': 'New Jersey', 'NY': 'New York', 'OR': 'Oregon',
+        'PR': 'Puerto Rico', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+        'TX': 'Texas', 'VA': 'Virginia', 'WA': 'Washington',
+    }
+
+    # Explicit overrides for locations whose names lack a state suffix
+    name_to_state = {
+        'Avon Pier': 'NC', 'Carolina Beach': 'NC',
+        'Carolina Beach - Center Pier': 'NC', 'Hatteras': 'NC',
+        'Kitty Hawk': 'NC', 'Kure Beach': 'NC',
+        'Nags Head - Abalone St': 'NC', 'Nags Head - Jennettes Pier': 'NC',
+        'North Topsail Island': 'NC', 'Oak Island': 'NC',
+        'Ocean Isle Beach': 'NC', 'Ocean Isle Beach Pier': 'NC',
+        'Ocracoke': 'NC', 'Rodanthe': 'NC', 'Sunset Beach': 'NC',
+        'Surf City Line': 'NC', 'Surf City Pier North': 'NC',
+        'Topsail Beach': 'NC', 'Waves': 'NC',
+        'WB Mercers Pier': 'NC', 'Wrightsville Beach': 'NC',
+        'Virginia Beach': 'VA',
+    }
+
+    grouped = {}
+    for slug, loc in sorted(LOCATION_BY_SLUG.items(), key=lambda x: x[1]['name']):
+        name = loc['name']
+        parts = name.split()
+        region = 'Other'
+
+        if name in name_to_state:
+            region = state_map.get(name_to_state[name], name_to_state[name])
+        elif name.startswith('OC MD'):
+            region = state_map['MD']
+        elif len(parts) >= 2 and len(parts[-1]) == 2 and parts[-1].isupper():
+            region = state_map.get(parts[-1], parts[-1])
+
+        if region not in grouped:
+            grouped[region] = []
+        grouped[region].append({'slug': slug, 'name': name, 'lat': loc['lat'], 'lon': loc['lon']})
+
+    return render_template(
+        'locations.html',
+        version=APP_VERSION,
+        grouped_locations=grouped,
+        total_count=len(LOCATION_BY_SLUG),
+    )
+
 
 @app.route('/about')
 def about():
@@ -1454,23 +1628,7 @@ def robots_txt():
 
 @app.route('/sitemap.xml')
 def sitemap_xml():
-    """Generate sitemap.xml from surf camera locations."""
-    cameras_path = os.path.join(os.path.dirname(__file__), 'surf_cameras.json')
-    try:
-        with open(cameras_path, 'r') as f:
-            cameras = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        cameras = []
-
-    # Deduplicate by lat/lon (some cameras share coordinates)
-    seen = set()
-    unique_locations = []
-    for cam in cameras:
-        key = (round(cam['lat'], 4), round(cam['lon'], 4))
-        if key not in seen:
-            seen.add(key)
-            unique_locations.append(cam)
-
+    """Generate sitemap.xml from location slugs."""
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     urls = ['<?xml version="1.0" encoding="UTF-8"?>']
@@ -1484,6 +1642,14 @@ def sitemap_xml():
     urls.append('    <priority>1.0</priority>')
     urls.append('  </url>')
 
+    # Locations index
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/locations</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>weekly</changefreq>')
+    urls.append('    <priority>0.8</priority>')
+    urls.append('  </url>')
+
     # About page
     urls.append('  <url>')
     urls.append('    <loc>https://freesurfforecast.com/about</loc>')
@@ -1492,11 +1658,10 @@ def sitemap_xml():
     urls.append('    <priority>0.5</priority>')
     urls.append('  </url>')
 
-    # Location URLs from camera list
-    for loc in unique_locations:
-        loc_url = f"https://freesurfforecast.com/?lat={loc['lat']}&amp;lon={loc['lon']}&amp;name={url_quote(loc['name'])}"
+    # Location forecast pages
+    for slug in sorted(LOCATION_BY_SLUG.keys()):
         urls.append('  <url>')
-        urls.append(f'    <loc>{loc_url}</loc>')
+        urls.append(f'    <loc>https://freesurfforecast.com/forecast/{slug}</loc>')
         urls.append(f'    <lastmod>{today}</lastmod>')
         urls.append('    <changefreq>daily</changefreq>')
         urls.append('    <priority>0.7</priority>')
@@ -2448,6 +2613,16 @@ def swell_narrative():
         return jsonify(data)
     else:
         return jsonify({"error": "Could not generate swell narrative."}), 500
+
+
+@app.after_request
+def add_cache_headers(response):
+    """Add Cache-Control headers for static and HTML responses."""
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+    elif response.content_type and 'text/html' in response.content_type:
+        response.headers['Cache-Control'] = 'public, max-age=300'
+    return response
 
 
 if __name__ == '__main__':

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surf Forecast Locations | Free Surf Forecast</title>
+    <meta name="description" content="Browse {{ total_count }} surf forecast locations. Free 7-day wave, wind, and tide forecasts for beaches along the US East Coast. No ads, no sign-up.">
+    <link rel="canonical" href="https://freesurfforecast.com/locations">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Surf Forecast Locations | Free Surf Forecast">
+    <meta property="og:description" content="Browse {{ total_count }} surf forecast locations along the US East Coast.">
+    <meta property="og:url" content="https://freesurfforecast.com/locations">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Surf Forecast Locations | Free Surf Forecast">
+    <meta name="twitter:description" content="Browse {{ total_count }} surf forecast locations along the US East Coast.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <!-- BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://freesurfforecast.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Locations",
+                "item": "https://freesurfforecast.com/locations"
+            }
+        ]
+    }
+    </script>
+
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .loc-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .loc-header a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .loc-header a:hover { color: var(--status-live); }
+
+        .loc-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .loc-nav a:hover { color: var(--text); }
+
+        .loc-content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px 60px;
+        }
+
+        .loc-content h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .loc-content .subtitle {
+            color: var(--text-dim);
+            font-size: 12px;
+            margin-bottom: 30px;
+        }
+
+        .region-group {
+            margin-bottom: 24px;
+        }
+
+        .region-group h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--status-live);
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .region-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 4px 16px;
+        }
+
+        .region-list a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            padding: 3px 0;
+            display: block;
+        }
+
+        .region-list a:hover {
+            color: var(--text);
+        }
+
+        .site-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            line-height: 1.8;
+        }
+        .site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .site-footer a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header class="loc-header">
+        <a href="/">Free Surf Forecast</a>
+        <nav class="loc-nav">
+            <a href="/">Dashboard</a>
+        </nav>
+    </header>
+
+    <div class="loc-content">
+        <h1>Surf Forecast Locations</h1>
+        <p class="subtitle">Free 7-day surf forecasts for {{ total_count }} coastal locations. Wave height, period, wind, tides, and live cameras.</p>
+
+        {% for region, locs in grouped_locations.items()|sort %}
+        <div class="region-group">
+            <h2>{{ region }} ({{ locs|length }})</h2>
+            <div class="region-list">
+                {% for loc in locs|sort(attribute='name') %}
+                <a href="/forecast/{{ loc.slug }}">{{ loc.name }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Free Surf Forecast. <a href="/about">About</a></div>
+    </footer>
+</body>
+</html>

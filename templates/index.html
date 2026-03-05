@@ -32,6 +32,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 
+    <!-- Resource hints for CDN domains -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <!-- Leaflet Velocity CSS -->
@@ -1807,6 +1813,12 @@
             {
                 "@type": "ListItem",
                 "position": 2,
+                "name": "Locations",
+                "item": "https://freesurfforecast.com/locations"
+            },
+            {
+                "@type": "ListItem",
+                "position": 3,
                 "name": "{{ location_name }}",
                 "item": "{{ canonical_url }}"
             }
@@ -1997,6 +2009,19 @@
 
     <!-- Dashboard Grid -->
     <main>
+
+    {% if ssr_summary %}
+    <section id="ssr-summary" style="max-width: 720px; margin: 12px auto; padding: 16px 20px; color: var(--text-dim); font-size: 12px; line-height: 1.6; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;">
+        <h2 style="font-size: 14px; color: var(--text); margin-bottom: 8px;">Current Conditions at {{ location_name }}</h2>
+        <p>
+            {% if ssr_summary.wave_height is not none %}{{ ssr_summary.wave_height }}ft waves{% endif %}
+            {% if ssr_summary.wave_period is not none %} at {{ ssr_summary.wave_period }}s period{% endif %}.
+            {% if ssr_summary.wind_speed is not none %}Wind {{ ssr_summary.wind_speed }}mph{% endif %}{% if ssr_summary.wind_direction is not none %} from {{ ssr_summary.wind_direction }}&deg;{% endif %}.
+            {{ ssr_summary.condition }}.
+        </p>
+        <p style="margin-top: 6px;">{{ meta_description }}</p>
+    </section>
+    {% endif %}
 
     <noscript>
         <div style="max-width: 720px; margin: 40px auto; padding: 20px; color: #e8e8e8; font-family: sans-serif; line-height: 1.6;">
@@ -2380,7 +2405,21 @@
     </main>
 
     <footer class="site-footer">
-        <div>&copy; 2026 Free Surf Forecast. <a href="/about">About</a></div>
+        <div>&copy; 2026 Free Surf Forecast.
+            <a href="/about">About</a>
+            <span class="footer-sep">|</span>
+            <a href="/locations">All Locations</a>
+            <span class="footer-sep">|</span>
+            <a href="/forecast/surf-city-pier-north">Surf City</a>
+            <span class="footer-sep">|</span>
+            <a href="/forecast/virginia-beach">Virginia Beach</a>
+            <span class="footer-sep">|</span>
+            <a href="/forecast/nags-head-jennettes-pier">Outer Banks</a>
+            <span class="footer-sep">|</span>
+            <a href="/forecast/cocoa-beach-pier-fl">Cocoa Beach</a>
+            <span class="footer-sep">|</span>
+            <a href="/forecast/wrightsville-beach">Wrightsville Beach</a>
+        </div>
         <div>
             Data:
             <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
@@ -3819,8 +3858,32 @@
             name: 'Surf City, North Carolina'
         };
 
+        // Slug lookup: rounded "lat,lon" -> slug
+        window._slugByCoords = {
+            {% for slug, loc in locations.items() %}
+            '{{ "%.4f"|format(loc.lat) }},{{ "%.4f"|format(loc.lon) }}': '{{ slug }}',
+            {% endfor %}
+        };
+
+        function findSlugForCoords(lat, lon) {
+            const key = lat.toFixed(4) + ',' + lon.toFixed(4);
+            return window._slugByCoords[key] || null;
+        }
+
+        // Server-injected location (only active on /forecast/<slug> routes, not on /)
+        window._serverLocation = (window.location.pathname.startsWith('/forecast/') && {{ (location_slug or '')|tojson }}) ? {
+            lat: {{ location_lat }},
+            lon: {{ location_lon }},
+            name: {{ location_name|tojson }},
+            slug: {{ (location_slug or '')|tojson }}
+        } : null;
+
         function getInitialLocation() {
-            // Priority 1: URL params
+            // Priority 1: Server-injected location (from /forecast/<slug> route)
+            if (window._serverLocation) {
+                return { ...window._serverLocation };
+            }
+            // Priority 2: URL params (custom lat/lon)
             const params = new URLSearchParams(window.location.search);
             const urlLat = parseFloat(params.get('lat'));
             const urlLon = parseFloat(params.get('lon'));
@@ -3831,14 +3894,14 @@
                     name: params.get('name') || `Location (${urlLat.toFixed(2)}, ${urlLon.toFixed(2)})`
                 };
             }
-            // Priority 2: localStorage last-location
+            // Priority 3: localStorage last-location
             try {
                 const saved = JSON.parse(localStorage.getItem('last-location'));
                 if (saved && typeof saved.lat === 'number' && typeof saved.lon === 'number') {
                     return saved;
                 }
             } catch (e) {}
-            // Priority 3: default
+            // Priority 4: default
             return { ...DEFAULT_LOCATION };
         }
 
@@ -4186,6 +4249,16 @@
                     // Persist last location
                     localStorage.setItem('last-location', JSON.stringify(currentLocation));
 
+                    // Update URL to reflect new location
+                    const slug = findSlugForCoords(currentLocation.lat, currentLocation.lon);
+                    if (slug) {
+                        currentLocation.slug = slug;
+                        history.replaceState(null, '', '/forecast/' + slug);
+                    } else {
+                        const newUrl = '/?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon + '&name=' + encodeURIComponent(currentLocation.name);
+                        history.replaceState(null, '', newUrl);
+                    }
+
                     // Update display
                     document.getElementById('location-name').textContent = currentLocation.name;
                     updatePanelLocations();
@@ -4234,6 +4307,10 @@
 
         // Function to reload all dashboard data
         function reloadAllData() {
+            // Remove SSR summary once JS takes over
+            const ssrEl = document.getElementById('ssr-summary');
+            if (ssrEl) ssrEl.remove();
+
             // Stop slider animation on location change
             stopSliderPlay();
             // Destroy existing cam streams
@@ -5008,6 +5085,10 @@
         // Point forecast + tides are lightweight (single-point), load first in parallel.
         // Basin and local grids are heavy (hundreds of points), load sequentially after.
         document.addEventListener('DOMContentLoaded', function() {
+            // Remove SSR summary now that JS is running
+            const ssrEl = document.getElementById('ssr-summary');
+            if (ssrEl) ssrEl.remove();
+
             loadPointForecast();
             loadTideData();
             loadBuoyData();
