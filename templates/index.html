@@ -5068,6 +5068,10 @@
 
                     syncChartTimeAxes();
 
+                    // Remove SSR summary now that real data is displayed
+                    const ssrEl = document.getElementById('ssr-summary');
+                    if (ssrEl) ssrEl.remove();
+
                     // Signal session planner
                     _forecastLoaded = true;
                     checkSessionPlannerReady();
@@ -5085,10 +5089,6 @@
         // Point forecast + tides are lightweight (single-point), load first in parallel.
         // Basin and local grids are heavy (hundreds of points), load sequentially after.
         document.addEventListener('DOMContentLoaded', function() {
-            // Remove SSR summary now that JS is running
-            const ssrEl = document.getElementById('ssr-summary');
-            if (ssrEl) ssrEl.remove();
-
             loadPointForecast();
             loadTideData();
             loadBuoyData();
