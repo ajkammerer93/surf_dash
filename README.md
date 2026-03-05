@@ -55,10 +55,22 @@ The dashboard will be available at `http://localhost:5000`.
 
 ## Architecture
 
-The entire app is two files:
+The app is three files:
 
-- **`app.py`** — Flask backend with API endpoints that proxy and aggregate external data
+- **`app.py`** — Flask backend with API endpoints, SEO routes, and SSR content
 - **`templates/index.html`** — Self-contained SPA frontend (HTML + embedded JS/CSS) using Chart.js and Leaflet via CDN
+- **`templates/locations.html`** — Location index page listing all forecast locations by state
+
+### Page Routes
+
+| Route | Purpose |
+|---|---|
+| `/` | Dashboard (default location: Surf City, NC) |
+| `/forecast/<slug>` | Dashboard for a specific location (e.g., `/forecast/virginia-beach`) |
+| `/locations` | Index of all 126 forecast locations grouped by state |
+| `/about` | About page |
+
+Old query-param URLs (`/?lat=X&lon=Y&name=Z`) are 301-redirected to `/forecast/<slug>` for known locations.
 
 ### API Endpoints
 
