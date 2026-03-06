@@ -27,3 +27,15 @@ jobs:
 
       - name: Run SEO tests
         run: pytest tests/test_seo.py -v
+
+      - name: Generate SEO report
+        if: always()
+        run: python scripts/seo_report.py --no-history -o reports/seo-report.md
+
+      - name: Upload SEO report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-report
+          path: reports/seo-report.md
+          retention-days: 90
