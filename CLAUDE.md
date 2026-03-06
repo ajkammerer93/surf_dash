@@ -19,7 +19,18 @@ python app.py
 gunicorn app:app --bind 0.0.0.0:$PORT
 ```
 
-There is no test suite, linter, or build step configured.
+```bash
+# Run SEO tests
+pytest tests/test_seo.py -v
+
+# Generate SEO health report (local)
+python scripts/seo_report.py
+
+# Generate SEO health report (live site)
+python scripts/seo_report.py --base-url https://freesurfforecast.com
+```
+
+There is no linter or build step configured.
 
 ## Architecture
 
@@ -83,7 +94,7 @@ All endpoints are stateless with TTL caching. Default location is Surf City, NC 
 - `drawConditionsDiagram()` is a standalone version of the wave chart tooltip diagram, used for hover popups on Wave Direction and Wind cells. The original `drawTooltipDiagram()` is scoped inside `loadPointForecast`.
 - Hover popups (direction diagrams, tide sparkline) use `position: fixed` with JS-calculated placement to avoid clipping by panel overflow.
 - `LOCATION_BY_SLUG` and `SLUG_BY_COORDS` dicts built at startup from `surf_cameras.json` (deduped by lat/lon). `slugify()` lowercases, strips non-alphanumeric, hyphenates.
-- `_get_ssr_summary()` renders current forecast into `<section id="ssr-summary">` for crawlers. Removed at `DOMContentLoaded` before dashboard renders.
+- `_get_ssr_summary()` is cache-only — renders forecast into `<section id="ssr-summary">` for crawlers without blocking page render. Removed in `loadPointForecast` success handler (NOT at `DOMContentLoaded` — must stay visible if APIs fail in Google's sandbox).
 - `window._serverLocation` is only set on `/forecast/` routes (checked via `window.location.pathname`). On `/`, it's null so localStorage takes priority.
 - `window._slugByCoords` JS lookup map injected via Jinja for client-side slug resolution on location change.
 - Locations page groups by state using explicit `name_to_state` dict for locations without state suffix (OBX beaches, OC MD cams, etc.).
