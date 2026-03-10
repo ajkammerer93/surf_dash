@@ -381,6 +381,7 @@ def get_point_weather_data(latitude, longitude):
     Fetches wave and wind forecast for a single point.
     Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to Open-Meteo Marine.
     Enriches result with air and water temperature from Open-Meteo.
+    Returns dict with 'forecast', 'location_timezone', and 'source' keys.
     """
     if _in_gfswave_atlantic_coverage(latitude, longitude):
         try:
@@ -388,7 +389,7 @@ def get_point_weather_data(latitude, longitude):
             if result:
                 location_tz = _enrich_with_temperatures(result, latitude, longitude)
                 _enrich_with_wind(result, latitude, longitude)
-                return {"forecast": result, "location_timezone": location_tz}
+                return {"forecast": result, "location_timezone": location_tz, "source": "NOMADS"}
             print("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
         except Exception as e:
             print(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
@@ -397,7 +398,7 @@ def get_point_weather_data(latitude, longitude):
     if result:
         location_tz = _enrich_with_temperatures(result, latitude, longitude)
         _enrich_with_wind(result, latitude, longitude)
-        return {"forecast": result, "location_timezone": location_tz}
+        return {"forecast": result, "location_timezone": location_tz, "source": "Open-Meteo"}
     return None
 
 
@@ -1669,6 +1670,77 @@ def sitemap_xml():
     return Response('\n'.join(urls), mimetype='application/xml')
 
 
+def _compute_confidence(data, cache_key):
+    """
+    Compute a forecast confidence score (0-100) based on data source quality,
+    data freshness, and model component agreement.
+    Returns dict with score, source label, and factor breakdown.
+    """
+    source = data.get("source", "Unknown")
+    forecast_list = data.get("forecast", [])
+
+    # Factor 1: Data source quality (0-40)
+    if source == "NOMADS":
+        source_score = 40
+        source_label = "NOMADS GFS-Wave"
+    elif source == "Open-Meteo":
+        source_score = 25
+        source_label = "Open-Meteo Marine"
+    else:
+        source_score = 15
+        source_label = source
+
+    # Factor 2: Data freshness (0-30)
+    freshness_score = 30  # default: assume fresh
+    if cache_key in _cache:
+        age_seconds = time.time() - _cache[cache_key]['time']
+        age_hours = age_seconds / 3600.0
+        if age_hours <= 0.5:
+            freshness_score = 30
+        elif age_hours <= 2:
+            freshness_score = 25
+        elif age_hours <= 4:
+            freshness_score = 18
+        elif age_hours <= 6:
+            freshness_score = 10
+        else:
+            freshness_score = 0
+
+    # Factor 3: Model agreement / component completeness (0-30)
+    agreement_score = 30
+    if forecast_list:
+        # Check first 24 entries (24 hours) for component completeness
+        check_count = min(24, len(forecast_list))
+        has_wave = 0
+        has_wind_wave = 0
+        has_wind = 0
+        for entry in forecast_list[:check_count]:
+            if entry.get("wave_height") is not None and entry.get("wave_period") is not None:
+                has_wave += 1
+            if entry.get("wind_wave_height") is not None:
+                has_wind_wave += 1
+            if entry.get("wind_speed") is not None:
+                has_wind += 1
+        wave_pct = has_wave / check_count
+        wind_wave_pct = has_wind_wave / check_count
+        wind_pct = has_wind / check_count
+        # Full points if all components present; reduce for missing components
+        agreement_score = round(10 * wave_pct + 10 * wind_wave_pct + 10 * wind_pct)
+    else:
+        agreement_score = 0
+
+    total = source_score + freshness_score + agreement_score
+    return {
+        "score": total,
+        "source": source_label,
+        "factors": {
+            "source_quality": source_score,
+            "freshness": freshness_score,
+            "completeness": agreement_score,
+        }
+    }
+
+
 # Route for the API to get point forecast data
 @app.route('/api/forecast')
 def forecast():
@@ -1685,6 +1757,8 @@ def forecast():
     data = cached(cache_key, lambda: get_point_weather_data(lat, lon))
 
     if data:
+        confidence = _compute_confidence(data, cache_key)
+        data["confidence"] = confidence
         return jsonify(data)
     else:
         return jsonify({"error": "Could not retrieve weather data."}), 500
@@ -2005,13 +2079,14 @@ def get_tide_data(station_id):
     Fetches tide prediction data from NOAA CO-OPS API.
     """
     try:
-        # Get tide predictions for the next 7 days
+        # Get tide predictions for the next 7 days (start 1 day back for recent past events)
         today = datetime.now(timezone.utc)
+        start_date = today - timedelta(days=1)
         end_date = today + timedelta(days=7)
 
         url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
         params = {
-            "begin_date": today.strftime("%Y%m%d"),
+            "begin_date": start_date.strftime("%Y%m%d"),
             "end_date": end_date.strftime("%Y%m%d"),
             "station": station_id,
             "product": "predictions",
@@ -2528,7 +2603,11 @@ def swell_narrative():
     def _compute():
         # Reuse cached forecast data
         forecast_key = f"forecast:{lat:.4f},{lon:.4f}"
-        data = cached(forecast_key, lambda: get_point_weather_data(lat, lon))
+        raw = cached(forecast_key, lambda: get_point_weather_data(lat, lon))
+        if not raw:
+            return None
+        # Handle both dict ({"forecast": [...]}) and list formats
+        data = raw.get('forecast', raw) if isinstance(raw, dict) else raw
         if not data or len(data) < 2:
             return None
 
@@ -2582,6 +2661,26 @@ def swell_narrative():
                 elif diff_pct < -15:
                     trend = 'fading'
 
+        # Arrival time estimation: find peak wave height hour within forecast
+        peak_hour_idx = 0
+        peak_height = 0
+        for idx, d in enumerate(data[:72]):
+            h = d.get('wave_height', 0) or 0
+            if h > peak_height:
+                peak_height = h
+                peak_hour_idx = idx
+
+        # Arrival ETA: hours until peak (only meaningful when building or for ground swell)
+        arrival_eta_hours = None
+        arrival_time_utc = None
+        if trend == 'building' and peak_hour_idx > 0:
+            arrival_eta_hours = peak_hour_idx
+            try:
+                peak_time = datetime.fromisoformat(data[peak_hour_idx]['time'].replace('Z', '+00:00'))
+                arrival_time_utc = peak_time.isoformat()
+            except (KeyError, ValueError):
+                pass
+
         # Build narrative sentence
         m_to_ft = 3.28084
         height_ft = round(wave_height * m_to_ft, 1)
@@ -2594,6 +2693,9 @@ def swell_narrative():
                         'fading': 'Fading over the next 24h',
                         'steady': 'Holding steady'}
         parts.append(trend_labels[trend])
+        if arrival_eta_hours is not None and arrival_eta_hours > 1:
+            peak_ft = round(peak_height * m_to_ft, 1)
+            parts.append(f"Peak {peak_ft}ft arriving in ~{arrival_eta_hours}h")
         narrative = '. '.join(p for p in parts if p) + '.'
 
         return {
@@ -2602,7 +2704,10 @@ def swell_narrative():
             'swell_type': swell_type.lower(),
             'is_building': trend == 'building',
             'trend': trend,
-            'estimated_source_km': estimated_source_km
+            'estimated_source_km': estimated_source_km,
+            'arrival_eta_hours': arrival_eta_hours,
+            'arrival_time_utc': arrival_time_utc,
+            'peak_height_ft': round(peak_height * m_to_ft, 1) if peak_height else None
         }
 
     data = cached(cache_key, _compute)
@@ -2614,11 +2719,15 @@ def swell_narrative():
 
 @app.after_request
 def add_cache_headers(response):
-    """Add Cache-Control headers for static and HTML responses."""
+    """Add Cache-Control and security headers."""
     if request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=86400'
     elif response.content_type and 'text/html' in response.content_type:
         response.headers['Cache-Control'] = 'public, max-age=300'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(self)'
     return response
 
 

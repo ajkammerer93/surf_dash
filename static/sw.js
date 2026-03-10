@@ -32,17 +32,19 @@ self.addEventListener('fetch', function(event) {
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(event.request).then(function(response) {
-                var clone = response.clone();
-                caches.open(API_CACHE).then(function(cache) {
-                    var headers = new Headers(clone.headers);
-                    headers.set('sw-cached-at', Date.now().toString());
-                    var cachedResponse = new Response(clone.body, {
-                        status: clone.status,
-                        statusText: clone.statusText,
-                        headers: headers
+                if (response.ok) {
+                    var clone = response.clone();
+                    caches.open(API_CACHE).then(function(cache) {
+                        var headers = new Headers(clone.headers);
+                        headers.set('sw-cached-at', Date.now().toString());
+                        var cachedResponse = new Response(clone.body, {
+                            status: clone.status,
+                            statusText: clone.statusText,
+                            headers: headers
+                        });
+                        cache.put(event.request, cachedResponse);
                     });
-                    cache.put(event.request, cachedResponse);
-                });
+                }
                 return response;
             }).catch(function() {
                 return caches.open(API_CACHE).then(function(cache) {
@@ -68,10 +70,12 @@ self.addEventListener('fetch', function(event) {
             caches.match(event.request).then(function(cached) {
                 if (cached) return cached;
                 return fetch(event.request).then(function(response) {
-                    var clone = response.clone();
-                    caches.open(CACHE_NAME).then(function(cache) {
-                        cache.put(event.request, clone);
-                    });
+                    if (response.ok) {
+                        var clone = response.clone();
+                        caches.open(CACHE_NAME).then(function(cache) {
+                            cache.put(event.request, clone);
+                        });
+                    }
                     return response;
                 });
             })
