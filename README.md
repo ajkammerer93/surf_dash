@@ -6,20 +6,25 @@ A real-time surf forecast dashboard that aggregates wave, wind, and tide data fr
 
 ## Features
 
+- **Dark/Light Theme** — Toggle between dark and light modes; respects OS preference, persists to localStorage
 - **Ocean Basin Maps** — Large-scale wave height and period visualization with swell narrative overlay
 - **Local Detail Maps** — High-resolution wave and wind overlays (0.1° resolution) with ocean-clipped rendering
 - **Unified Time Slider** — Animate all map panels through hourly forecast data with adjustable playback speed
 - **Current Conditions** — At-a-glance 3×2 panel with wave height/period/direction, wind speed+direction, air/water temperature, and upcoming tides with hover popups for coastline-relative direction diagrams and a 24-hour tide sparkline
-- **Wave & Wind Charts** — Time-series forecast with wave height, wind speed, direction arrows, and surf condition classification (clean/fair/choppy)
-- **Tidal Predictions** — 7-day tide chart from the nearest NOAA reference station with high/low markers
+- **Wave & Wind Charts** — Time-series forecast with wave height, wind speed, direction arrows, surf condition classification, tide overlay in tooltip with high/low event markers, and period/height trend arrows
+- **Location Comparison** — Side-by-side comparison of 2–3 locations with scored conditions
 - **Session Planner** — Scored 3-hour surf windows (0–100) highlighting the best times to paddle out
+- **Forecast Export** — Export session windows to ICS calendar files or download forecast data as CSV
 - **Skill Level Selector** — Beginner/intermediate/advanced modes with tailored descriptions and scoring
 - **Forecast Literacy** — Plain-English descriptions for wave height, period, and wind conditions
-- **Swell Narrative** — Ocean basin overlay showing swell type, origin distance, and trend
+- **Swell Narrative** — Ocean basin overlay showing swell type, origin distance, arrival ETA, and trend
+- **Model Confidence** — Forecast confidence badge (High/Moderate/Low) based on data quality and lead time
+- **Condition Alerts** — Opt-in browser notifications when conditions improve (via Notifications API)
 - **Surf Cameras** — Nearest live webcam feeds via Windy
-- **Buoy Data** — Real-time NDBC/CDIP buoy observations with wave spectrum charts
+- **Buoy Data** — Real-time NDBC/CDIP buoy observations with wave spectrum interpretation
 - **Beach Orientation** — Auto-detected coastline facing direction for accurate offshore/onshore classification
 - **Dynamic Location Selection** — Click anywhere on a global map; reverse geocoded via OpenStreetMap
+- **PWA Support** — Installable as a progressive web app with offline caching via service worker
 
 ## Data Sources
 
