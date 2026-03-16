@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fsf-v1';
+const CACHE_NAME = 'fsf-v2';
 const APP_SHELL = ['/', '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
 const CDN_HOSTS = ['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'];
 const API_CACHE = 'fsf-api-v1';
@@ -64,12 +64,12 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // CDN libs: cache-first
+    // CDN libs: cache-first (must use cors mode to satisfy SRI integrity checks)
     if (CDN_HOSTS.some(function(h) { return url.hostname === h; })) {
         event.respondWith(
             caches.match(event.request).then(function(cached) {
-                if (cached) return cached;
-                return fetch(event.request).then(function(response) {
+                if (cached && cached.type !== 'opaque') return cached;
+                return fetch(event.request.url, { mode: 'cors', credentials: 'omit' }).then(function(response) {
                     if (response.ok) {
                         var clone = response.clone();
                         caches.open(CACHE_NAME).then(function(cache) {
