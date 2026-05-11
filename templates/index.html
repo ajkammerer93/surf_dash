@@ -4996,8 +4996,8 @@
                 ctx.clip();
 
                 var _dk = isDarkTheme();
-                const nightColor = _dk ? 'rgba(0, 0, 0, 0.50)' : 'rgba(40, 50, 90, 0.12)';
-                const dayColor = _dk ? 'rgba(255, 255, 255, 0.10)' : 'rgba(255, 220, 130, 0.18)';
+                const nightColor = _dk ? 'rgba(0, 0, 0, 0.55)' : 'rgba(40, 50, 90, 0.12)';
+                const dayColor = _dk ? 'rgba(255, 255, 255, 0.20)' : 'rgba(255, 220, 130, 0.18)';
 
                 // Draw night from chart start to first sunrise
                 const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);
@@ -5052,9 +5052,11 @@
 
                 var _dk2 = isDarkTheme();
                 const colors = {
-                    clean:  _dk2 ? 'rgba(68, 255, 136, 0.7)' : 'rgba(22, 163, 74, 0.6)',
-                    fair:   _dk2 ? 'rgba(255, 206, 86, 0.7)' : 'rgba(217, 119, 6, 0.6)',
-                    choppy: _dk2 ? 'rgba(255, 68, 68, 0.7)' : 'rgba(220, 38, 38, 0.6)'
+                    clean:         _dk2 ? 'rgba(68, 255, 136, 0.7)'  : 'rgba(22, 163, 74, 0.6)',
+                    'cross-light': _dk2 ? 'rgba(180, 230, 80, 0.7)'  : 'rgba(132, 163, 32, 0.6)',
+                    'cross-shore': _dk2 ? 'rgba(255, 206, 86, 0.7)'  : 'rgba(217, 119, 6, 0.6)',
+                    fair:          _dk2 ? 'rgba(255, 165, 80, 0.7)'  : 'rgba(217, 100, 6, 0.6)',
+                    choppy:        _dk2 ? 'rgba(255, 68, 68, 0.7)'   : 'rgba(220, 38, 38, 0.6)'
                 };
 
                 // Group consecutive same-condition hours into bands
