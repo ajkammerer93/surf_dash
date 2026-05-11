@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fsf-v2';
+const CACHE_NAME = 'fsf-v3';
 const APP_SHELL = ['/', '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
 const CDN_HOSTS = ['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'];
 const API_CACHE = 'fsf-api-v1';
@@ -83,7 +83,28 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // App shell: stale-while-revalidate
+    // HTML pages (navigations): network-first with cache fallback.
+    // Prevents the dashboard from getting stuck on a stale version after deploys.
+    if (url.origin === self.location.origin && event.request.destination === 'document') {
+        event.respondWith(
+            fetch(event.request).then(function(response) {
+                if (response.ok) {
+                    var clone = response.clone();
+                    caches.open(CACHE_NAME).then(function(cache) {
+                        cache.put(event.request, clone);
+                    });
+                }
+                return response;
+            }).catch(function() {
+                return caches.match(event.request).then(function(cached) {
+                    return cached || new Response('Offline', { status: 503, headers: {'Content-Type': 'text/plain'} });
+                });
+            })
+        );
+        return;
+    }
+
+    // Other same-origin static assets: stale-while-revalidate
     if (url.origin === self.location.origin) {
         event.respondWith(
             caches.match(event.request).then(function(cached) {
