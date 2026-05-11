@@ -1803,6 +1803,186 @@ def regions_index():
     return render_template('regions/index.html', regions=REGIONS)
 
 
+# Font paths for OG image rendering. DejaVu ships with both Debian and most
+# Linux distros so this works on Render and on local dev without bundling.
+_OG_FONT_PATHS = {
+    'mono_bold': '/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf',
+    'sans_bold': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    'sans':      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+}
+
+
+def _load_og_font(kind, size):
+    try:
+        from PIL import ImageFont
+        return ImageFont.truetype(_OG_FONT_PATHS[kind], size)
+    except Exception:
+        from PIL import ImageFont
+        return ImageFont.load_default()
+
+
+def _render_og_image(slug, location):
+    """Build a 1200x630 OG image PNG for /forecast/<slug>. Pulls live data
+    from the forecast cache when warm; otherwise renders a static branded
+    card with location + facing direction."""
+    from PIL import Image, ImageDraw
+    import io
+
+    W, H = 1200, 630
+    BG = (10, 10, 10)
+    SURFACE = (20, 20, 20)
+    BORDER = (42, 42, 42)
+    TEXT = (232, 232, 232)
+    TEXT_DIM = (136, 136, 136)
+    ACCENT = (68, 255, 136)  # status-live green
+
+    img = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
+
+    # Top + bottom bars
+    draw.rectangle([(0, 0), (W, 8)], fill=ACCENT)
+    draw.rectangle([(0, H - 60), (W, H)], fill=SURFACE)
+    draw.line([(0, H - 60), (W, H - 60)], fill=BORDER)
+
+    # Brand line (top-left, under the accent bar)
+    f_brand = _load_og_font('sans_bold', 22)
+    draw.text((48, 32), 'Free Surf Forecast', fill=TEXT_DIM, font=f_brand)
+
+    # Location name
+    name = (location.get('name') or 'Surf Forecast') if location else 'Surf Forecast'
+    state = (location or {}).get('state')
+    f_loc = _load_og_font('sans_bold', 60)
+    title = name + (f', {state}' if state and not name.upper().endswith(f' {state.upper()}') else '')
+    draw.text((48, 90), title, fill=TEXT, font=f_loc)
+
+    # Pull live forecast from cache (cache-only — never blocks)
+    live = None
+    try:
+        lat = location['lat']
+        lon = location['lon']
+        cache_key = f"forecast:{lat:.4f},{lon:.4f}"
+        cached_entry = _cache.get(cache_key)
+        if cached_entry and time.time() - cached_entry['time'] < CACHE_TTL:
+            forecast_list = cached_entry['data'].get('forecast', [])
+            if forecast_list:
+                # Find the row nearest to now
+                now = datetime.now(timezone.utc)
+                best = forecast_list[0]
+                for entry in forecast_list:
+                    try:
+                        t = datetime.fromisoformat(entry.get('time', '').replace('Z', '+00:00'))
+                        if t <= now:
+                            best = entry
+                        else:
+                            break
+                    except Exception:
+                        continue
+                live = best
+    except Exception:
+        live = None
+
+    # Big number stack: Hs / Tp / wind
+    f_huge = _load_og_font('mono_bold', 140)
+    f_label = _load_og_font('sans', 22)
+    f_value = _load_og_font('mono_bold', 56)
+
+    if live and live.get('wave_height') is not None:
+        # Big wave-height number
+        ft = live['wave_height'] * 3.28084
+        ht_text = f"{ft:.1f}"
+        draw.text((48, 220), ht_text, fill=ACCENT, font=f_huge)
+        # "ft" suffix smaller
+        f_unit = _load_og_font('sans_bold', 50)
+        # Measure ht_text width to place "ft" beside it
+        try:
+            bbox = draw.textbbox((48, 220), ht_text, font=f_huge)
+            x_after = bbox[2] + 16
+        except Exception:
+            x_after = 48 + 320
+        draw.text((x_after, 312), 'ft', fill=TEXT_DIM, font=f_unit)
+
+        # Period column
+        period_x = 700
+        draw.text((period_x, 240), 'PERIOD', fill=TEXT_DIM, font=f_label)
+        per_text = f"{round(live['wave_period'])}s" if live.get('wave_period') is not None else '—'
+        draw.text((period_x, 268), per_text, fill=TEXT, font=f_value)
+
+        # Wind column
+        wind_x = 940
+        draw.text((wind_x, 240), 'WIND', fill=TEXT_DIM, font=f_label)
+        if live.get('wind_speed') is not None:
+            mph = round(live['wind_speed'] * 0.621371)
+            wind_text = f"{mph}mph"
+        else:
+            wind_text = '—'
+        draw.text((wind_x, 268), wind_text, fill=TEXT, font=f_value)
+
+        # Condition row below
+        from urllib.parse import quote  # noqa: F401 (used in tests)
+        wp = live.get('wave_period') or 0
+        cond_label = 'Flat'
+        if live.get('wave_height') is not None and wp:
+            if live['wave_height'] < 1:
+                cond_label = 'Flat'
+            elif wp >= 12:
+                cond_label = 'Ground swell'
+            elif wp >= 9:
+                cond_label = 'Medium-period swell'
+            else:
+                cond_label = 'Wind swell'
+        f_cond = _load_og_font('sans_bold', 28)
+        draw.text((48, 440), cond_label.upper(), fill=ACCENT, font=f_cond)
+    else:
+        # Static fallback — show facing direction + a tagline. Still
+        # location-specific, never empty.
+        f_facing = _load_og_font('sans_bold', 40)
+        try:
+            orientation = compute_beach_facing_direction(location['lat'], location['lon'])
+        except Exception:
+            orientation = None
+        if orientation and orientation.get('beach_facing_direction') is not None:
+            deg = orientation['beach_facing_direction']
+            face_text = f"{_deg_to_cardinal(deg)}-facing beach ({round(deg)}°)"
+            draw.text((48, 240), face_text, fill=TEXT, font=f_facing)
+        f_tagline = _load_og_font('sans', 30)
+        draw.text((48, 330), 'Free 7-day surf forecast. No ads, no sign-up.', fill=TEXT_DIM, font=f_tagline)
+
+    # Footer
+    f_foot = _load_og_font('sans', 20)
+    draw.text((48, H - 42), 'freesurfforecast.com', fill=TEXT_DIM, font=f_foot)
+    if location:
+        coords = f"{location['lat']:.3f}, {location['lon']:.3f}"
+        try:
+            bbox = draw.textbbox((0, 0), coords, font=f_foot)
+            text_w = bbox[2] - bbox[0]
+        except Exception:
+            text_w = len(coords) * 11
+        draw.text((W - 48 - text_w, H - 42), coords, fill=TEXT_DIM, font=f_foot)
+
+    buf = io.BytesIO()
+    img.save(buf, format='PNG', optimize=True)
+    return buf.getvalue()
+
+
+@app.route('/og/<slug>.png')
+def og_image(slug):
+    """Return a 1200x630 PNG OG image for the given forecast slug."""
+    location = LOCATION_BY_SLUG.get(slug)
+    if not location:
+        from flask import abort
+        abort(404)
+    try:
+        png_bytes = _render_og_image(slug, location)
+    except Exception as e:
+        print(f"OG image render failed for {slug}: {e}")
+        from flask import abort
+        abort(500)
+    resp = Response(png_bytes, mimetype='image/png')
+    # Cache aggressively — forecast hour changes every hour anyway
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
+
+
 @app.route('/regions/<slug>')
 def region_page(slug):
     """Render one /regions/<slug> landing page with its spot roster."""
