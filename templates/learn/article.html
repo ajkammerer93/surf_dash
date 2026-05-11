@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ article.title }} | Free Surf Forecast</title>
+    <meta name="description" content="{{ article.description }}">
+    <meta name="keywords" content="{{ article.keywords }}">
+    <link rel="canonical" href="https://freesurfforecast.com/learn/{{ article.slug }}">
+
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="{{ article.title }} | Free Surf Forecast">
+    <meta property="og:description" content="{{ article.description }}">
+    <meta property="og:url" content="https://freesurfforecast.com/learn/{{ article.slug }}">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ article.title }} | Free Surf Forecast">
+    <meta name="twitter:description" content="{{ article.description }}">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --border: #d4d4d4;
+            --text: #1a1a1a;
+            --text-dim: #555;
+            --text-muted: #6b6b6b;
+            --accent: #111;
+            --status-live: #16a34a;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.65;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header.site-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header.site-header a.brand {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        header.site-header a.brand:hover { color: var(--status-live); }
+        nav.site-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            margin-left: 16px;
+        }
+        nav.site-nav a:hover { color: var(--text); }
+
+        article.learn-article {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 36px 20px 80px;
+        }
+        article.learn-article .breadcrumbs {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+        article.learn-article .breadcrumbs a {
+            color: var(--text-dim);
+            text-decoration: none;
+        }
+        article.learn-article .breadcrumbs a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+        article.learn-article h1 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--accent);
+            line-height: 1.25;
+        }
+        article.learn-article .article-lead {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 32px;
+        }
+        article.learn-article .article-body h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 32px;
+            margin-bottom: 12px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        article.learn-article .article-body h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-top: 24px;
+            margin-bottom: 8px;
+        }
+        article.learn-article .article-body p {
+            color: var(--text-dim);
+            margin: 12px 0;
+        }
+        article.learn-article .article-body strong { color: var(--text); }
+        article.learn-article .article-body em { color: var(--text); font-style: italic; }
+        article.learn-article .article-body ul,
+        article.learn-article .article-body ol {
+            color: var(--text-dim);
+            margin: 12px 0;
+            padding-left: 22px;
+        }
+        article.learn-article .article-body li {
+            margin: 4px 0;
+        }
+        article.learn-article .article-body a {
+            color: var(--status-live);
+            text-decoration: none;
+        }
+        article.learn-article .article-body a:hover { text-decoration: underline; }
+        article.learn-article .article-body code {
+            background: var(--surface);
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+        }
+
+        .related-articles {
+            margin-top: 48px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .related-articles strong {
+            display: block;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+        .related-articles ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+        }
+        .related-articles li {
+            padding: 10px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .related-articles a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .related-articles a:hover { color: var(--status-live); }
+
+        footer.site-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+        footer.site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        footer.site-footer a:hover { color: var(--text); text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            article.learn-article { padding: 24px 16px 60px; }
+            article.learn-article h1 { font-size: 22px; }
+        }
+    </style>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://freesurfforecast.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Learn", "item": "https://freesurfforecast.com/learn" },
+            { "@type": "ListItem", "position": 3, "name": "{{ article.title }}", "item": "https://freesurfforecast.com/learn/{{ article.slug }}" }
+        ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "{{ article.title }}",
+        "description": "{{ article.description }}",
+        "url": "https://freesurfforecast.com/learn/{{ article.slug }}",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Free Surf Forecast",
+            "url": "https://freesurfforecast.com/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <header class="site-header">
+        <a href="/" class="brand">Free Surf Forecast</a>
+        <nav class="site-nav">
+            <a href="/">Dashboard</a>
+            <a href="/learn">Learn</a>
+            <a href="/glossary">Glossary</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <article class="learn-article">
+        <div class="breadcrumbs">
+            <a href="/">Home</a> &raquo; <a href="/learn">Learn</a> &raquo; {{ article.title }}
+        </div>
+        <h1>{{ article.title }}</h1>
+        <p class="article-lead">{{ article.description }}</p>
+        <div class="article-body">{{ article.html_body|safe }}</div>
+
+        {% if related %}
+        <aside class="related-articles" aria-label="Related articles">
+            <strong>Related</strong>
+            <ul>
+                {% for r in related %}
+                <li><a href="/learn/{{ r.slug }}">{{ r.title }}</a></li>
+                {% endfor %}
+            </ul>
+        </aside>
+        {% endif %}
+    </article>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Free Surf Forecast &middot;
+            <a href="/about">About</a> &middot;
+            <a href="/locations">Locations</a> &middot;
+            <a href="/glossary">Glossary</a> &middot;
+            <a href="/learn">Learn</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </footer>
+    <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "4838c7fb1ed34d59b891df1bb379ddfb"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>

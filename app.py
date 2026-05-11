@@ -1776,6 +1776,26 @@ def glossary():
     return render_template('glossary.html')
 
 
+@app.route('/learn')
+def learn_index():
+    """Index of /learn topic-cluster articles."""
+    from learn_articles import ARTICLES
+    return render_template('learn/index.html', articles=ARTICLES)
+
+
+@app.route('/learn/<slug>')
+def learn_article(slug):
+    """Render a /learn article by slug; 404 if not in the curated set."""
+    from learn_articles import ARTICLES, ARTICLES_BY_SLUG
+    article = ARTICLES_BY_SLUG.get(slug)
+    if not article:
+        from flask import abort
+        abort(404)
+    # Pick up to 3 related articles (just next-in-list cycling for now)
+    related = [a for a in ARTICLES if a['slug'] != slug][:3]
+    return render_template('learn/article.html', article=article, related=related)
+
+
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope."""
@@ -1856,6 +1876,25 @@ def sitemap_xml():
     urls.append('    <changefreq>monthly</changefreq>')
     urls.append('    <priority>0.6</priority>')
     urls.append('  </url>')
+
+    # /learn topic cluster — evergreen guides
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/learn</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.7</priority>')
+    urls.append('  </url>')
+    try:
+        from learn_articles import ARTICLES as _LEARN_ARTICLES
+        for _a in _LEARN_ARTICLES:
+            urls.append('  <url>')
+            urls.append(f'    <loc>https://freesurfforecast.com/learn/{_a["slug"]}</loc>')
+            urls.append(f'    <lastmod>{today}</lastmod>')
+            urls.append('    <changefreq>monthly</changefreq>')
+            urls.append('    <priority>0.7</priority>')
+            urls.append('  </url>')
+    except Exception:
+        pass
 
     # Location forecast pages. Tiered priority: top spots 0.9, others 0.6.
     # changefreq is hourly since wave-model output refreshes every 6h and
