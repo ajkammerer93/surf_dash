@@ -393,6 +393,15 @@
             border: 1px solid rgba(68, 255, 136, 0.2);
             flex-shrink: 0;
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .panel-badge .conf-sparkline {
+            width: 40px;
+            height: 10px;
+            display: block;
+            opacity: 0.85;
         }
 
         .cam-select {
@@ -2797,6 +2806,40 @@
 
         function _showToast(msg) { showToast(msg); }
 
+        // Render a tiny SVG sparkline of confidence per forecast hour.
+        // Used in the wave-chart panel header next to the confidence label.
+        function buildConfidenceSparkline(values) {
+            var svgNS = 'http://www.w3.org/2000/svg';
+            var w = 40, h = 10;
+            // Decimate to ~28 evenly-spaced samples so 168h forecasts produce a
+            // visually-smooth line without rendering 168 points in a 40px svg.
+            var stride = Math.max(1, Math.floor(values.length / 28));
+            var samples = [];
+            for (var i = 0; i < values.length; i += stride) samples.push(values[i]);
+            if (samples[samples.length - 1] !== values[values.length - 1]) {
+                samples.push(values[values.length - 1]);
+            }
+            var n = samples.length;
+            var pts = samples.map(function(v, i) {
+                var x = n > 1 ? (i / (n - 1)) * (w - 1) : 0;
+                var y = (h - 1) - (Math.max(0, Math.min(100, v)) / 100) * (h - 1);
+                return x.toFixed(1) + ',' + y.toFixed(1);
+            }).join(' ');
+            var svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('class', 'conf-sparkline');
+            svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+            svg.setAttribute('preserveAspectRatio', 'none');
+            var line = document.createElementNS(svgNS, 'polyline');
+            line.setAttribute('points', pts);
+            line.setAttribute('fill', 'none');
+            line.setAttribute('stroke', 'currentColor');
+            line.setAttribute('stroke-width', '1');
+            line.setAttribute('stroke-linecap', 'round');
+            line.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(line);
+            return svg;
+        }
+
         function copyShareLink() {
             var url = _getShareUrl();
             if (navigator.share) {
@@ -5168,16 +5211,24 @@
                     if (!rawResponse.error) {
                         window._locationTimezone = rawResponse.location_timezone || 'UTC';
                     }
-                    // Update confidence badge
+                    // Update confidence badge (text label + per-hour sparkline)
                     var confBadge = document.getElementById('forecast-confidence-badge');
                     if (confBadge && rawResponse.confidence) {
                         var c = rawResponse.confidence;
-                        var confLabel = c.score >= 75 ? 'High confidence' : c.score >= 50 ? 'Moderate confidence' : 'Low confidence';
-                        confBadge.textContent = confLabel;
-                        confBadge.title = c.score + '% — Source: ' + (c.source || rawResponse.source || '?') +
-                            '\nQuality: ' + (c.factors ? c.factors.source_quality : '?') +
-                            '/40  Freshness: ' + (c.factors ? c.factors.freshness : '?') +
-                            '/30  Completeness: ' + (c.factors ? c.factors.completeness : '?') + '/30';
+                        var confLabel = c.score >= 75 ? 'High' : c.score >= 50 ? 'Moderate' : 'Low';
+                        confBadge.textContent = '';
+                        var labelEl = document.createElement('span');
+                        labelEl.textContent = confLabel;
+                        confBadge.appendChild(labelEl);
+                        if (Array.isArray(c.per_hour) && c.per_hour.length > 1) {
+                            confBadge.appendChild(buildConfidenceSparkline(c.per_hour));
+                        }
+                        var endScore = c.per_hour && c.per_hour.length ? c.per_hour[c.per_hour.length - 1] : c.score;
+                        confBadge.title = 'Forecast confidence\n' +
+                            'Source: ' + (c.source || rawResponse.source || '?') + '\n' +
+                            'Now: ' + c.score + '%  |  +' + (c.per_hour ? c.per_hour.length : 0) + 'h: ' + endScore + '%\n' +
+                            'Quality: ' + (c.factors ? c.factors.source_quality : '?') +
+                            '%  Completeness: ' + (c.factors ? c.factors.completeness : '?') + '%';
                         confBadge.className = 'panel-badge' + (c.score >= 75 ? '' : c.score >= 50 ? ' warning' : ' error');
                         confBadge.style.display = '';
                     }

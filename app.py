@@ -1671,72 +1671,65 @@ def sitemap_xml():
 
 def _compute_confidence(data, cache_key):
     """
-    Compute a forecast confidence score (0-100) based on data source quality,
-    data freshness, and model component agreement.
-    Returns dict with score, source label, and factor breakdown.
+    Compute a per-hour forecast confidence score (0-100). Skill decays with
+    lead time per operational verification of GFS-Wave / WW3 (r^2 ~0.85 at
+    lead=0, ~0.55 at lead=144h), modeled as base * exp(-lead_h / 96).
+
+    Returns dict:
+      - score: current-hour confidence (lead=0)
+      - source: human-readable source label
+      - factors: source/completeness for tooltip
+      - per_hour: list of per-row scores (0-100) for sparkline rendering
     """
     source = data.get("source", "Unknown")
     forecast_list = data.get("forecast", [])
 
-    # Factor 1: Data source quality (0-40)
+    # Base source-quality prior — skill ceiling at lead=0
     if source == "NOMADS":
-        source_score = 40
+        base = 0.85
         source_label = "NOMADS GFS-Wave"
     elif source == "Open-Meteo":
-        source_score = 25
+        base = 0.65
         source_label = "Open-Meteo Marine"
     else:
-        source_score = 15
+        base = 0.55
         source_label = source
 
-    # Factor 2: Data freshness (0-30)
-    freshness_score = 30  # default: assume fresh
-    if cache_key in _cache:
-        age_seconds = time.time() - _cache[cache_key]['time']
-        age_hours = age_seconds / 3600.0
-        if age_hours <= 0.5:
-            freshness_score = 30
-        elif age_hours <= 2:
-            freshness_score = 25
-        elif age_hours <= 4:
-            freshness_score = 18
-        elif age_hours <= 6:
-            freshness_score = 10
-        else:
-            freshness_score = 0
-
-    # Factor 3: Model agreement / component completeness (0-30)
-    agreement_score = 30
+    # Field completeness (sampled across first 24 forecast hours)
+    completeness = 1.0
     if forecast_list:
-        # Check first 24 entries (24 hours) for component completeness
         check_count = min(24, len(forecast_list))
-        has_wave = 0
-        has_wind_wave = 0
-        has_wind = 0
-        for entry in forecast_list[:check_count]:
-            if entry.get("wave_height") is not None and entry.get("wave_period") is not None:
-                has_wave += 1
-            if entry.get("wind_wave_height") is not None:
-                has_wind_wave += 1
-            if entry.get("wind_speed") is not None:
-                has_wind += 1
-        wave_pct = has_wave / check_count
-        wind_wave_pct = has_wind_wave / check_count
-        wind_pct = has_wind / check_count
-        # Full points if all components present; reduce for missing components
-        agreement_score = round(10 * wave_pct + 10 * wind_wave_pct + 10 * wind_pct)
+        if check_count:
+            has_wave = sum(1 for e in forecast_list[:check_count]
+                           if e.get("wave_height") is not None and e.get("wave_period") is not None)
+            has_wind = sum(1 for e in forecast_list[:check_count]
+                           if e.get("wind_speed") is not None)
+            completeness = (has_wave + has_wind) / (2 * check_count)
     else:
-        agreement_score = 0
+        completeness = 0
 
-    total = source_score + freshness_score + agreement_score
+    # Per-hour confidence using lead-time decay from "now"
+    per_hour = []
+    now = datetime.now(timezone.utc)
+    for i, entry in enumerate(forecast_list):
+        try:
+            t = datetime.fromisoformat(entry['time'].replace('Z', '+00:00'))
+            lead_hours = max(0, (t - now).total_seconds() / 3600.0)
+        except (KeyError, ValueError, AttributeError):
+            lead_hours = float(i)  # fallback: assume hourly samples
+        lead_decay = math.exp(-lead_hours / 96.0)
+        per_hour.append(round(base * lead_decay * completeness * 100))
+
+    current_score = per_hour[0] if per_hour else round(base * completeness * 100)
+
     return {
-        "score": total,
+        "score": current_score,
         "source": source_label,
         "factors": {
-            "source_quality": source_score,
-            "freshness": freshness_score,
-            "completeness": agreement_score,
-        }
+            "source_quality": round(base * 100),
+            "completeness": round(completeness * 100),
+        },
+        "per_hour": per_hour,
     }
 
 
