@@ -29,6 +29,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#0a0a0a">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 
@@ -4996,8 +4997,8 @@
                 ctx.clip();
 
                 var _dk = isDarkTheme();
-                const nightColor = _dk ? 'rgba(0, 0, 0, 0.70)' : 'rgba(40, 50, 90, 0.12)';
-                const dayColor = _dk ? 'rgba(255, 255, 255, 0.35)' : 'rgba(255, 220, 130, 0.18)';
+                const nightColor = _dk ? 'rgba(0, 0, 0, 0.55)' : 'rgba(40, 50, 90, 0.12)';
+                const dayColor = _dk ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 220, 130, 0.18)';
 
                 // Draw night from chart start to first sunrise
                 const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);

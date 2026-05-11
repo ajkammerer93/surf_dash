@@ -841,10 +841,16 @@ def _sunrise_sunset(lat, lon, date):
     sunset_min = 720 - 4 * (lon - ha) - eqtime
 
     def min_to_iso(minutes):
-        minutes = minutes % 1440
-        h = int(minutes // 60)
-        m = int(minutes % 60)
-        return f"{date.isoformat()}T{h:02d}:{m:02d}Z"
+        # minutes can fall outside [0, 1440] when the local sunrise/sunset
+        # is on a different UTC date than `date`. E.g., for US East Coast in
+        # May, sunset at ~20:00 EDT lands at ~00:07 UTC the next day, giving
+        # minutes >= 1440. Carry the overflow into the date instead of
+        # modding it away, which previously placed sunset on the prior day.
+        day_offset, minutes_in_day = divmod(minutes, 1440)
+        actual_date = date + timedelta(days=int(day_offset))
+        h = int(minutes_in_day // 60)
+        m = int(minutes_in_day % 60)
+        return f"{actual_date.isoformat()}T{h:02d}:{m:02d}Z"
 
     return min_to_iso(sunrise_min), min_to_iso(sunset_min)
 
