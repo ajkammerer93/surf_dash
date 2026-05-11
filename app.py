@@ -9,12 +9,23 @@ import time
 import traceback
 import os
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
+
+# Structured logging — replaces ad-hoc logger.info() statements throughout the
+# module. Gunicorn captures stdout/stderr on Render, so the StreamHandler is
+# all we need; level + format come from LOG_LEVEL / LOG_FORMAT env vars when
+# set (useful for debug runs without code changes).
+_LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+_LOG_FORMAT = os.environ.get('LOG_FORMAT', '%(asctime)s [%(levelname)s] %(message)s')
+logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO),
+                    format=_LOG_FORMAT)
+logger = logging.getLogger('surf_dash')
 
 
 def _retry_request(request_fn, max_retries=2):
@@ -35,13 +46,13 @@ def _retry_request(request_fn, max_retries=2):
             # 5xx — retry
             last_resp = resp
             if attempt < max_retries:
-                print(f"  Retry {attempt+1}/{max_retries}: HTTP {resp.status_code}")
+                logger.info(f"  Retry {attempt+1}/{max_retries}: HTTP {resp.status_code}")
                 time.sleep(1)
         except (requests.ConnectionError, requests.Timeout) as exc:
             last_exc = exc
             last_resp = None
             if attempt < max_retries:
-                print(f"  Retry {attempt+1}/{max_retries}: {type(exc).__name__}")
+                logger.info(f"  Retry {attempt+1}/{max_retries}: {type(exc).__name__}")
                 time.sleep(1)
     if last_exc is not None:
         raise last_exc
@@ -75,10 +86,10 @@ def _load_cameras():
     try:
         with open(cam_file) as f:
             cams = json.load(f)
-        print(f"Loaded {len(cams)} surf cameras")
+        logger.info(f"Loaded {len(cams)} surf cameras")
         return cams
     except Exception as e:
-        print(f"Warning: could not load surf_cameras.json: {e}")
+        logger.warning(f"Warning: could not load surf_cameras.json: {e}")
         return []
 
 SURFCHEX_CAMERAS = _load_cameras()
@@ -120,7 +131,7 @@ def _build_location_index():
 LOCATION_BY_SLUG = _build_location_index()
 # Reverse lookup: (rounded_lat, rounded_lon) -> slug
 SLUG_BY_COORDS = {(round(loc['lat'], 4), round(loc['lon'], 4)): slug for slug, loc in LOCATION_BY_SLUG.items()}
-print(f"Built {len(LOCATION_BY_SLUG)} location slugs")
+logger.info(f"Built {len(LOCATION_BY_SLUG)} location slugs")
 
 def _load_ndbc_stations():
     """Load NDBC buoy stations from ndbc_stations.json."""
@@ -128,10 +139,10 @@ def _load_ndbc_stations():
     try:
         with open(path) as f:
             stations = json.load(f)
-        print(f"Loaded {len(stations)} NDBC stations")
+        logger.info(f"Loaded {len(stations)} NDBC stations")
         return stations
     except Exception as e:
-        print(f"Warning: could not load ndbc_stations.json: {e}")
+        logger.warning(f"Warning: could not load ndbc_stations.json: {e}")
         return []
 
 def _load_cdip_stations():
@@ -140,10 +151,10 @@ def _load_cdip_stations():
     try:
         with open(path) as f:
             stations = json.load(f)
-        print(f"Loaded {len(stations)} CDIP stations")
+        logger.info(f"Loaded {len(stations)} CDIP stations")
         return stations
     except Exception as e:
-        print(f"Warning: could not load cdip_stations.json: {e}")
+        logger.warning(f"Warning: could not load cdip_stations.json: {e}")
         return []
 
 NDBC_STATIONS = _load_ndbc_stations()
@@ -163,11 +174,11 @@ def _load_coastline_data():
             'land_parts_offsets': data['land_parts_offsets'],  # (P+1,)
             'land_bboxes': data['land_bboxes'],           # (P, 4) [lat_min, lat_max, lon_min, lon_max]
         }
-        print(f"Loaded coastline data: {len(result['seg_start'])} segments, "
+        logger.info(f"Loaded coastline data: {len(result['seg_start'])} segments, "
               f"{len(result['land_bboxes'])} land polygons")
         return result
     except Exception as e:
-        print(f"Warning: could not load coastline_data.npz: {e}")
+        logger.warning(f"Warning: could not load coastline_data.npz: {e}")
         return None
 
 COASTLINE_DATA = _load_coastline_data()
@@ -389,6 +400,30 @@ def validate_lat_lon():
         return jsonify({"error": "lat must be between -90 and 90, lon must be between -180 and 180."}), 400
     return lat, lon
 
+def _enrich_in_parallel(forecast, latitude, longitude):
+    """Run temperature and wind enrichment concurrently.
+
+    The two functions hit independent Open-Meteo endpoints (Weather + Marine)
+    and touch disjoint keys on the forecast list, so they're safe to fan out.
+    Cuts cold-cache forecast latency by roughly the longer-of-two call time
+    instead of the sum.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    location_tz = 'UTC'
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_temp = executor.submit(_enrich_with_temperatures, forecast, latitude, longitude)
+        f_wind = executor.submit(_enrich_with_wind, forecast, latitude, longitude)
+        try:
+            location_tz = f_temp.result() or 'UTC'
+        except Exception as e:
+            logger.warning(f'Temperature enrichment failed in parallel fetch: {e}')
+        try:
+            f_wind.result()
+        except Exception as e:
+            logger.warning(f'Wind enrichment failed in parallel fetch: {e}')
+    return location_tz
+
+
 def get_point_weather_data(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point.
@@ -400,17 +435,15 @@ def get_point_weather_data(latitude, longitude):
         try:
             result = _get_point_from_nomads(latitude, longitude)
             if result:
-                location_tz = _enrich_with_temperatures(result, latitude, longitude)
-                _enrich_with_wind(result, latitude, longitude)
+                location_tz = _enrich_in_parallel(result, latitude, longitude)
                 return {"forecast": result, "location_timezone": location_tz, "source": "NOMADS"}
-            print("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
+            logger.warning("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
         except Exception as e:
-            print(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
+            logger.warning(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
             traceback.print_exc()
     result = _get_point_from_open_meteo(latitude, longitude)
     if result:
-        location_tz = _enrich_with_temperatures(result, latitude, longitude)
-        _enrich_with_wind(result, latitude, longitude)
+        location_tz = _enrich_in_parallel(result, latitude, longitude)
         return {"forecast": result, "location_timezone": location_tz, "source": "Open-Meteo"}
     return None
 
@@ -451,9 +484,9 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
         if forecast:
             forecast[0]["air_temperature"] = air_temp
             forecast[0]["water_temperature"] = water_temp
-            print(f"  Temperatures: air={air_temp}°C, water={water_temp}°C")
+            logger.info(f"  Temperatures: air={air_temp}°C, water={water_temp}°C")
     except Exception as e:
-        print(f"  Temperature fetch failed (non-critical): {e}")
+        logger.warning(f"  Temperature fetch failed (non-critical): {e}")
     return location_tz
 
 
@@ -477,7 +510,7 @@ def _enrich_with_wind(forecast, latitude, longitude):
             timeout=10,
         ))
         if not resp.ok:
-            print(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), keeping original wind")
+            logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), keeping original wind")
             return
         om = resp.json().get("hourly", {})
         om_times = om.get("time", [])
@@ -498,9 +531,9 @@ def _enrich_with_wind(forecast, latitude, longitude):
                 if oi < len(om_wd) and om_wd[oi] is not None:
                     entry["wind_direction"] = round(float(om_wd[oi]), 1)
                 matched += 1
-        print(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
+        logger.info(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
     except Exception as e:
-        print(f"  Open-Meteo wind fetch failed (non-critical): {e}")
+        logger.warning(f"  Open-Meteo wind fetch failed (non-critical): {e}")
 
 
 def _get_point_from_open_meteo(latitude, longitude):
@@ -510,7 +543,7 @@ def _get_point_from_open_meteo(latitude, longitude):
     Wind speed/direction are left as None (filled later by _enrich_with_wind).
     """
     try:
-        print(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
+        logger.info(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
         resp = _retry_request(lambda: requests.get(
             "https://marine-api.open-meteo.com/v1/marine",
             params={
@@ -523,14 +556,14 @@ def _get_point_from_open_meteo(latitude, longitude):
             timeout=30,
         ))
         if not resp.ok:
-            print(f"  Open-Meteo Marine HTTP {resp.status_code}")
+            logger.info(f"  Open-Meteo Marine HTTP {resp.status_code}")
             return None
 
         data = resp.json()
         hourly = data.get("hourly", {})
         times = hourly.get("time", [])
         if not times:
-            print("  Open-Meteo Marine returned no hourly data")
+            logger.info("  Open-Meteo Marine returned no hourly data")
             return None
 
         wh = hourly.get("wave_height", [])
@@ -585,11 +618,11 @@ def _get_point_from_open_meteo(latitude, longitude):
                 "sunset": sunset_map.get(date_key),
             })
 
-        print(f"  Open-Meteo Marine: {len(forecast)} hourly entries")
+        logger.info(f"  Open-Meteo Marine: {len(forecast)} hourly entries")
         return forecast
 
     except Exception as e:
-        print(f"Error fetching point forecast from Open-Meteo Marine: {e}")
+        logger.error(f"Error fetching point forecast from Open-Meteo Marine: {e}")
         traceback.print_exc()
         return None
 
@@ -620,7 +653,7 @@ def _get_point_from_erddap(latitude, longitude):
                 time_range = f"({t_start}):(last)"
 
                 # Fetch WW3 wave data
-                print(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude}), start={t_start}...")
+                logger.info(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude}), start={t_start}...")
                 wave_json = _fetch_erddap_grid(
                     server="pae-paha.pacioos.hawaii.edu",
                     dataset="ww3_global",
@@ -633,7 +666,7 @@ def _get_point_from_erddap(latitude, longitude):
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
                     continue
                 raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir", "whgt", "wper"])
@@ -651,7 +684,7 @@ def _get_point_from_erddap(latitude, longitude):
                     if d < best_dist:
                         best_dist = d
                         best_lat_i, best_lon_i = li, loi
-        print(f"  Nearest ocean point: ({wave_lats[best_lat_i]}, {wave_lons[best_lon_i]}), distance: {best_dist:.1f} km")
+        logger.info(f"  Nearest ocean point: ({wave_lats[best_lat_i]}, {wave_lons[best_lon_i]}), distance: {best_dist:.1f} km")
 
         # Extract time series for the nearest ocean point
         wave_times = wave['times']
@@ -670,7 +703,7 @@ def _get_point_from_erddap(latitude, longitude):
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
-                print(f"Point forecast: fetching GFS wind, start={t_start}...")
+                logger.info(f"Point forecast: fetching GFS wind, start={t_start}...")
                 wind_json = _fetch_erddap_grid(
                     server="coastwatch.pfeg.noaa.gov",
                     dataset="NCEP_Global_Best",
@@ -683,7 +716,7 @@ def _get_point_from_erddap(latitude, longitude):
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
                     continue
                 raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
@@ -749,7 +782,7 @@ def _get_point_from_erddap(latitude, longitude):
         return forecast
 
     except Exception as e:
-        print(f"Error fetching point forecast from ERDDAP: {e}")
+        logger.error(f"Error fetching point forecast from ERDDAP: {e}")
         traceback.print_exc()
         return None
 
@@ -769,7 +802,7 @@ def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_ra
 
     query = ",".join(var_parts)
     url = f"https://{server}/erddap/griddap/{dataset}.json?{query}"
-    print(f"  ERDDAP request: {url[:150]}...")
+    logger.info(f"  ERDDAP request: {url[:150]}...")
 
     response = requests.get(url, timeout=90)
     response.raise_for_status()
@@ -974,13 +1007,13 @@ def _find_latest_nomads_cycle():
                 test_url = f"{url}.ascii?time[0:0]"
                 resp = requests.get(test_url, timeout=10)
                 if resp.status_code == 200 and resp.headers.get('content-type', '').startswith('text/plain'):
-                    print(f"NOMADS cycle found: {date_str}/{cycle}z")
+                    logger.info(f"NOMADS cycle found: {date_str}/{cycle}z")
                     _cache[cache_key] = {'data': url, 'time': now_ts}
                     return url
             except Exception:
                 continue
 
-    print("No NOMADS cycle available")
+    logger.info("No NOMADS cycle available")
     # Cache the failure for 5 minutes to avoid hammering NOMADS when it's down
     _cache[cache_key] = {'data': None, 'time': now_ts - (NOMADS_CYCLE_CACHE_TTL - 300)}
     return None
@@ -994,7 +1027,7 @@ def _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
     parts = [f"{var}{time_slice}{lat_slice}{lon_slice}" for var in variables]
     constraint = ",".join(parts)
     url = f"{base_url}.ascii?{constraint}"
-    print(f"  NOMADS request: {url[:180]}...")
+    logger.info(f"  NOMADS request: {url[:180]}...")
 
     resp = requests.get(url, timeout=120)
     resp.raise_for_status()
@@ -1108,7 +1141,7 @@ def _parse_opendap_ascii(text, variable_names):
             result_grids[var] = arr.reshape((nt, nla, nlo))
         else:
             if var in raw_grids:
-                print(f"  Warning: {var} has {len(raw_grids[var])} values, expected {expected}")
+                logger.warning(f"  Warning: {var} has {len(raw_grids[var])} values, expected {expected}")
             result_grids[var] = np.full((nt, nla, nlo), np.nan)
 
     return {'times': time_dts, 'lats': lats, 'lons': lons, 'grids': result_grids}
@@ -1137,7 +1170,7 @@ def _get_point_from_nomads(lat, lon):
 
     variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "wvhgtsfc", "wvpersfc"]
 
-    print(f"Point forecast: fetching NOMADS GFS-Wave for ({lat}, {lon})...")
+    logger.info(f"Point forecast: fetching NOMADS GFS-Wave for ({lat}, {lon})...")
     data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
 
     # Find nearest non-NaN ocean grid point
@@ -1155,10 +1188,10 @@ def _get_point_from_nomads(lat, lon):
                     best_li, best_loi = li, loi
 
     if best_dist == float('inf'):
-        print("  No ocean grid points found in NOMADS data")
+        logger.info("  No ocean grid points found in NOMADS data")
         return None
 
-    print(f"  Nearest ocean point: ({lats_arr[best_li]:.2f}, {lons_arr[best_loi]:.2f}), distance: {best_dist:.1f} km")
+    logger.info(f"  Nearest ocean point: ({lats_arr[best_li]:.2f}, {lons_arr[best_loi]:.2f}), distance: {best_dist:.1f} km")
 
     # Extract time series at nearest point
     time_dts = data['times']
@@ -1213,7 +1246,7 @@ def _get_point_from_nomads(lat, lon):
             "sunset": sunset_map.get(date_key),
         })
 
-    print(f"  NOMADS point forecast: {len(forecast)} hourly steps")
+    logger.info(f"  NOMADS point forecast: {len(forecast)} hourly steps")
     return forecast
 
 def _fill_nan_nearest(grid_2d, max_iterations=None, min_valid_neighbors=1):
@@ -1292,9 +1325,9 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
     # Fetch waves + wind from NOMADS (wind U/V at same 0.16° resolution)
     variables = ["htsgwsfc", "perpwsfc", "dirpwsfc", "ugrdsfc", "vgrdsfc"]
 
-    print(f"Grid forecast: fetching NOMADS GFS-Wave for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
+    logger.info(f"Grid forecast: fetching NOMADS GFS-Wave for ({lat_min},{lon_min}) to ({lat_max},{lon_max})...")
     data = _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
-    print(f"  NOMADS grid: {len(data['times'])} times, {len(data['lats'])}x{len(data['lons'])} grid")
+    logger.info(f"  NOMADS grid: {len(data['times'])} times, {len(data['lats'])}x{len(data['lons'])} grid")
 
     # Convert lons from 0-360 to -180..180
     lons = [lo - 360 if lo > 180 else lo for lo in data['lons']]
@@ -1338,7 +1371,7 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
         else:
             consecutive_same = 0
     if stale_start is not None:
-        print(f"  Wind staleness detected at timestep {stale_start}/{wind_speed.shape[0]}, zeroing stale wind data")
+        logger.info(f"  Wind staleness detected at timestep {stale_start}/{wind_speed.shape[0]}, zeroing stale wind data")
         wind_speed[stale_start:] = 0.0
         wind_dir[stale_start:] = 0.0
 
@@ -1372,9 +1405,9 @@ def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
             result = _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max)
             if result:
                 return result
-            print("NOMADS grid forecast returned no data, falling back to ERDDAP")
+            logger.warning("NOMADS grid forecast returned no data, falling back to ERDDAP")
         except Exception as e:
-            print(f"NOMADS grid forecast failed, falling back to ERDDAP: {e}")
+            logger.warning(f"NOMADS grid forecast failed, falling back to ERDDAP: {e}")
             traceback.print_exc()
     return _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max)
 
@@ -1399,7 +1432,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
                 time_range = f"({t_start}):(last)"
 
                 # Fetch WW3 wave data (native 0.5° resolution)
-                print(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max}), start={t_start}...")
+                logger.info(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max}), start={t_start}...")
                 wave_json = _fetch_erddap_grid(
                     server="pae-paha.pacioos.hawaii.edu",
                     dataset="ww3_global",
@@ -1412,12 +1445,12 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
                     continue
                 raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
         wave_dts = [_parse_erddap_time(t) for t in wave['times']]
-        print(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
+        logger.info(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
 
         # Fetch GFS wind data (also retry on 404)
         wind_json = None
@@ -1427,7 +1460,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
-                print(f"Grid forecast: fetching GFS wind, start={t_start}...")
+                logger.info(f"Grid forecast: fetching GFS wind, start={t_start}...")
                 wind_json = _fetch_erddap_grid(
                     server="coastwatch.pfeg.noaa.gov",
                     dataset="NCEP_Global_Best",
@@ -1440,11 +1473,11 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
                     continue
                 raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
-        print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
+        logger.info(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
 
         lats = wave['lats']
         lons_360 = wave['lons']
@@ -1479,7 +1512,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         }
 
     except Exception as e:
-        print(f"Error fetching grid data from ERDDAP: {e}")
+        logger.error(f"Error fetching grid data from ERDDAP: {e}")
         traceback.print_exc()
         return None
 
@@ -1638,7 +1671,7 @@ def _get_ssr_summary(lat, lon, location=None):
                     'condition': condition,
                 }
     except Exception as e:
-        print(f"SSR live overlay failed: {e}")
+        logger.warning(f"SSR live overlay failed: {e}")
 
     return summary
 
@@ -1974,7 +2007,7 @@ def og_image(slug):
     try:
         png_bytes = _render_og_image(slug, location)
     except Exception as e:
-        print(f"OG image render failed for {slug}: {e}")
+        logger.error(f"OG image render failed for {slug}: {e}")
         from flask import abort
         abort(500)
     resp = Response(png_bytes, mimetype='image/png')
@@ -2301,7 +2334,7 @@ def find_nearest_cameras(lat, lon, count=2):
     if len(results) < count:
         windy_key = os.environ.get('WINDY_API_KEY')
         if not windy_key:
-            print("Windy fallback skipped: WINDY_API_KEY not set")
+            logger.info("Windy fallback skipped: WINDY_API_KEY not set")
         else:
             try:
                 needed = count - len(results)
@@ -2318,10 +2351,10 @@ def find_nearest_cameras(lat, lon, count=2):
                     timeout=10
                 )
                 if not resp.ok:
-                    print(f"Windy API returned {resp.status_code}: {resp.text[:200]}")
+                    logger.info(f"Windy API returned {resp.status_code}: {resp.text[:200]}")
                 else:
                     webcams = resp.json().get('webcams', [])
-                    print(f"Windy returned {len(webcams)} webcams")
+                    logger.info(f"Windy returned {len(webcams)} webcams")
                     for wc in webcams:
                         loc = wc.get('location', {})
                         wc_lat = loc.get('latitude', 0)
@@ -2339,7 +2372,7 @@ def find_nearest_cameras(lat, lon, count=2):
                                 'page_url': f'https://www.windy.com/webcams/{wc_id}' if wc_id else ''
                             })
             except Exception as e:
-                print(f"Windy webcam fallback failed (non-critical): {e}")
+                logger.warning(f"Windy webcam fallback failed (non-critical): {e}")
 
     return results
 
@@ -2363,7 +2396,7 @@ def get_ocean_basin_data():
                 now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
 
-                print(f"Fetching global wave data from ERDDAP (WW3), start={t_start}...")
+                logger.info(f"Fetching global wave data from ERDDAP (WW3), start={t_start}...")
                 wave_json = _fetch_erddap_grid(
                     server="pae-paha.pacioos.hawaii.edu",
                     dataset="ww3_global",
@@ -2376,13 +2409,13 @@ def get_ocean_basin_data():
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
                     continue
                 raise
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
-        print(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
+        logger.info(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
     except Exception as e:
-        print(f"Error fetching global wave data from ERDDAP: {e}")
+        logger.error(f"Error fetching global wave data from ERDDAP: {e}")
         traceback.print_exc()
         return None
 
@@ -2395,7 +2428,7 @@ def get_ocean_basin_data():
                 now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
 
-                print(f"Fetching global wind data from ERDDAP (GFS), start={t_start}...")
+                logger.info(f"Fetching global wind data from ERDDAP (GFS), start={t_start}...")
                 wind_json = _fetch_erddap_grid(
                     server="coastwatch.pfeg.noaa.gov",
                     dataset="NCEP_Global_Best",
@@ -2408,13 +2441,13 @@ def get_ocean_basin_data():
                 break
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    print(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
+                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
                     continue
                 raise
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
-        print(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
+        logger.info(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
     except Exception as e:
-        print(f"Warning: Could not fetch wind data from ERDDAP (continuing without wind): {e}")
+        logger.warning(f"Warning: Could not fetch wind data from ERDDAP (continuing without wind): {e}")
         traceback.print_exc()
 
     # --- Assemble output grids ---
@@ -2457,7 +2490,7 @@ def get_ocean_basin_data():
         }
 
     except Exception as e:
-        print(f"Error processing ocean basin data: {e}")
+        logger.error(f"Error processing ocean basin data: {e}")
         traceback.print_exc()
         return None
 
@@ -2500,7 +2533,7 @@ def find_nearest_tide_station(target_lat, target_lon):
 
         stations = data.get("stations", [])
         if not stations:
-            print("No tide stations found")
+            logger.info("No tide stations found")
             return None
 
         # Find the nearest Reference station (type='R')
@@ -2535,7 +2568,7 @@ def find_nearest_tide_station(target_lat, target_lon):
         return nearest_station
 
     except Exception as e:
-        print(f"Error finding nearest tide station: {e}")
+        logger.error(f"Error finding nearest tide station: {e}")
         traceback.print_exc()
         return None
 
@@ -2567,7 +2600,7 @@ def get_tide_data(station_id):
         data = response.json()
 
         if "predictions" not in data:
-            print(f"No predictions in tide data: {data}")
+            logger.info(f"No predictions in tide data: {data}")
             return None
 
         # Also get high/low tide times
@@ -2597,11 +2630,11 @@ def get_tide_data(station_id):
         return tide_forecast
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching tide data: {e}")
+        logger.error(f"Error fetching tide data: {e}")
         traceback.print_exc()
         return None
     except Exception as e:
-        print(f"Error processing tide data: {e}")
+        logger.error(f"Error processing tide data: {e}")
         traceback.print_exc()
         return None
 
@@ -2676,7 +2709,7 @@ def _fetch_ndbc_observation(station_id):
         url = f"https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt"
         resp = requests.get(url, timeout=15)
         if not resp.ok:
-            print(f"  NDBC obs {station_id}: HTTP {resp.status_code}")
+            logger.error(f"  NDBC obs {station_id}: HTTP {resp.status_code}")
             return None
         lines = resp.text.strip().split('\n')
         if len(lines) < 3:
@@ -2716,7 +2749,7 @@ def _fetch_ndbc_observation(station_id):
             'pressure': val('PRES'),
         }
     except Exception as e:
-        print(f"  NDBC obs {station_id} error: {e}")
+        logger.error(f"  NDBC obs {station_id} error: {e}")
         return None
 
 
@@ -2742,7 +2775,7 @@ def _fetch_ndbc_spectrum(station_id):
         frequencies = [float(p[1]) for p in pairs]
         return {'frequencies': frequencies, 'energy': energy}
     except Exception as e:
-        print(f"  NDBC spectrum {station_id} error: {e}")
+        logger.error(f"  NDBC spectrum {station_id} error: {e}")
         return None
 
 
@@ -2781,7 +2814,7 @@ def _fetch_ndbc_directional(station_id):
             'r1': r1_values or []
         }
     except Exception as e:
-        print(f"  NDBC directional {station_id} error: {e}")
+        logger.error(f"  NDBC directional {station_id} error: {e}")
         return None
 
 
@@ -2849,7 +2882,7 @@ def _fetch_cdip_observation(station_id):
             'pressure': None,
         }
     except Exception as e:
-        print(f"  CDIP obs {station_id} error: {e}")
+        logger.error(f"  CDIP obs {station_id} error: {e}")
         return None
 
 
@@ -2912,7 +2945,7 @@ def _fetch_cdip_spectrum(station_id):
         n = min(len(freq_vals), len(energy_vals))
         return {'frequencies': freq_vals[:n], 'energy': energy_vals[:n]}
     except Exception as e:
-        print(f"  CDIP spectrum {station_id} error: {e}")
+        logger.error(f"  CDIP spectrum {station_id} error: {e}")
         return None
 
 
@@ -2982,7 +3015,7 @@ def _fetch_cdip_directional(station_id):
             'a2': a2[:n], 'b2': b2[:n]
         }
     except Exception as e:
-        print(f"  CDIP directional {station_id} error: {e}")
+        logger.error(f"  CDIP directional {station_id} error: {e}")
         return None
 
 
@@ -2993,7 +3026,7 @@ def get_buoy_data(lat, lon):
     if not candidates:
         return {'buoys': [], 'spectrum': None, 'directional': None}
 
-    print(f"Buoy search: {len(candidates)} candidates near ({lat}, {lon})")
+    logger.info(f"Buoy search: {len(candidates)} candidates near ({lat}, {lon})")
 
     buoys = []
     for buoy in candidates:
@@ -3007,7 +3040,7 @@ def get_buoy_data(lat, lon):
             buoy.update(obs)
             buoys.append(buoy)
         else:
-            print(f"  Skipping {buoy['source'].upper()} {buoy['id']} (no realtime data)")
+            logger.info(f"  Skipping {buoy['source'].upper()} {buoy['id']} (no realtime data)")
 
     # Fetch spectrum and directional data for each buoy
     for buoy in buoys:
