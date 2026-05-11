@@ -470,6 +470,81 @@
             to { opacity: 1; }
         }
 
+        /* Next-6-hours hero card — fixed above the GridStack so the
+           decision-relevant window dominates regardless of panel layout. */
+        .forecast-hero {
+            margin: 12px;
+            padding: 14px 18px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .forecast-hero-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+        .forecast-hero-header h2 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin: 0;
+            font-weight: 600;
+        }
+        .forecast-hero-sub {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        .forecast-hero-rows {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+        }
+        .forecast-hero-row {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 6px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            text-align: center;
+        }
+        .forecast-hero-row .hour {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-weight: 600;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .forecast-hero-row .height {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .forecast-hero-row .meta {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+        .forecast-hero-row .cond-bar {
+            height: 4px;
+            width: 100%;
+            border-radius: 2px;
+            margin-top: 8px;
+            background: var(--border);
+        }
+        @media (max-width: 700px) {
+            .forecast-hero-rows { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .forecast-hero-row { padding: 8px 4px; }
+            .forecast-hero-row .height { font-size: 17px; }
+        }
+
         .site-footer {
             text-align: center;
             padding: 12px 16px;
@@ -2306,6 +2381,14 @@
         </div>
     </noscript>
 
+    <section id="forecast-hero" class="forecast-hero" style="display:none" aria-label="Next 6 hours forecast">
+        <header class="forecast-hero-header">
+            <h2>Next 6 Hours</h2>
+            <span class="forecast-hero-sub" id="forecast-hero-sub"></span>
+        </header>
+        <div class="forecast-hero-rows" id="forecast-hero-rows"></div>
+    </section>
+
     <div class="grid-stack" id="dashboard-grid">
 
         <!-- Current Conditions -->
@@ -2357,6 +2440,7 @@
                                     <span class="stat-value" id="current_air_temp">-</span>
                                     <span class="stat-value" id="current_water_temp">-</span>
                                 </span>
+                                <span class="stat-context" id="ctx_wetsuit"></span>
                             </li>
                             <li class="stat-item" id="tide-stat-item" style="display:none">
                                 <span class="stat-label">Tides</span>
@@ -3920,6 +4004,18 @@
             return 'choppy';
         }
 
+        // Wetsuit recommendation from water temperature in °F.
+        // Rough guide — actual choice varies with wind chill, body type, etc.
+        function wetsuitRec(tempF) {
+            if (tempF == null || isNaN(tempF)) return '';
+            if (tempF >= 75) return 'Boardshorts or rashguard';
+            if (tempF >= 68) return 'Springsuit or 2mm top';
+            if (tempF >= 62) return '3/2 fullsuit';
+            if (tempF >= 55) return '4/3 fullsuit + booties';
+            if (tempF >= 48) return '5/4 + booties + hood';
+            return '5/4/3 + booties + hood + gloves';
+        }
+
         // === Forecast Literacy: Interpreter Functions (global scope) ===
         function describeWaveHeight(heightMeters, skillLevel) {
             var ft = heightMeters * M_TO_FT;
@@ -4570,6 +4666,78 @@
             if (diff >= minorThresh) return ' \u2197';
             if (diff <= -minorThresh) return ' \u2198';
             return ' \u2192';
+        }
+
+        // Render the always-visible "Next 6 hours" hero card above the grid.
+        // Decision-relevant window for surfers checking whether to go now.
+        function renderForecastHero(data) {
+            var container = document.getElementById('forecast-hero-rows');
+            var hero = document.getElementById('forecast-hero');
+            var sub = document.getElementById('forecast-hero-sub');
+            if (!container || !hero) return;
+            if (!data || !data.length) {
+                hero.style.display = 'none';
+                return;
+            }
+            var now = Date.now();
+            // Pick up to 6 entries from "now" forward — include current hour
+            // (entries up to 30 min in the past) so the user sees the present.
+            var future = data.filter(function(item) {
+                if (!item.time) return false;
+                var t = new Date(item.time).getTime();
+                return t >= now - 30 * 60000;
+            }).slice(0, 6);
+            if (future.length < 2) {
+                hero.style.display = 'none';
+                return;
+            }
+            container.textContent = '';
+            var condColors = {
+                clean: '#44ff88',
+                'cross-light': '#b4e650',
+                'cross-shore': '#ffce56',
+                fair: '#ffa550',
+                choppy: '#ff4444'
+            };
+            future.forEach(function(item, idx) {
+                var row = document.createElement('div');
+                row.className = 'forecast-hero-row';
+                var hour = document.createElement('div');
+                hour.className = 'hour';
+                var d = new Date(item.time);
+                hour.textContent = idx === 0
+                    ? 'Now'
+                    : formatLocationTime(d, { hour: 'numeric' }).replace(' ', '');
+                row.appendChild(hour);
+                var height = document.createElement('div');
+                height.className = 'height';
+                height.textContent = item.wave_height != null
+                    ? (item.wave_height * M_TO_FT).toFixed(1) + 'ft'
+                    : '—';
+                row.appendChild(height);
+                var meta = document.createElement('div');
+                meta.className = 'meta';
+                var per = item.wave_period != null
+                    ? Math.round(item.wave_period) + 's' : '—';
+                var ws = item.wind_speed != null
+                    ? Math.round(item.wind_speed * KMH_TO_MPH) + 'mph' : '—';
+                meta.textContent = per + ' · ' + ws;
+                row.appendChild(meta);
+                var bar = document.createElement('div');
+                bar.className = 'cond-bar';
+                var cond = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
+                if (condColors[cond]) bar.style.background = condColors[cond];
+                bar.title = CONDITION_LABELS[cond] || cond;
+                row.appendChild(bar);
+                container.appendChild(row);
+            });
+            if (sub && future[0] && future[0].time) {
+                var d0 = new Date(future[0].time);
+                sub.textContent = formatLocationTime(d0, {
+                    weekday: 'short', month: 'short', day: 'numeric'
+                });
+            }
+            hero.style.display = '';
         }
 
         // Rebuild the daylight forecast table from cached data (used on skill level change)
@@ -5327,6 +5495,11 @@
                     const waterC = current.water_temperature;
                     document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F air` : '-';
                     document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F water` : '-';
+                    // Wetsuit recommendation from water temp (rough guide)
+                    const wetsuitEl = document.getElementById('ctx_wetsuit');
+                    if (wetsuitEl) {
+                        wetsuitEl.textContent = waterC != null ? wetsuitRec(waterC * 9/5 + 32) : '';
+                    }
 
                     // Populate context descriptions for current conditions
                     document.getElementById('ctx_wave_height').textContent = current.wave_height != null ? describeWaveHeight(current.wave_height) : '';
@@ -5342,6 +5515,8 @@
 
                     // Build daylight forecast table (reuses shared rebuildForecastTable)
                     rebuildForecastTable();
+                    // Render the always-visible "Next 6 hours" hero card
+                    renderForecastHero(data);
                     const ctx = document.getElementById('waveChart').getContext('2d');
 
                     // Store wind/wave directions and surf conditions for custom plugins
