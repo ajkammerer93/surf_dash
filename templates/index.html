@@ -542,6 +542,10 @@
             opacity: 1;
         }
 
+        .share-toast--success { border-color: var(--status-live); }
+        .share-toast--warning { border-color: #f5a623; }
+        .share-toast--error { border-color: #e63946; }
+
         /* === Share Card Modal === */
         .share-card-preview {
             text-align: center;
@@ -2039,47 +2043,6 @@
     }
     </script>
 
-    <!-- FAQPage -->
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": "How do I read a surf forecast?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "A surf forecast shows wave height (in feet), wave period (in seconds), wave direction, wind speed, and wind direction. Longer wave periods (12+ seconds) mean more powerful, well-organized waves. Offshore wind (blowing from land to sea) creates the cleanest conditions."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "What is the best wave period for surfing?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Wave periods of 12 seconds or more indicate ground swell — powerful, well-organized waves that travel long distances. Periods of 9-12 seconds are medium-period swell with decent shape. Under 9 seconds is wind swell, which tends to be weaker and less organized."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "What does offshore wind mean for surfing?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Offshore wind blows from land toward the ocean, holding up wave faces and creating clean, glassy conditions ideal for surfing. Onshore wind (from ocean to land) creates choppy, disorganized surf. Light winds under 5 mph in any direction also produce good conditions."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "When is the best time to surf?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Early morning typically offers the lightest winds and cleanest conditions. The best sessions depend on the combination of swell size, period, wind direction, and tide. Free Surf Forecast scores 3-hour windows and highlights the best times to paddle out."
-                }
-            }
-        ]
-    }
-    </script>
 </head>
 <body>
 
@@ -2206,7 +2169,7 @@
         </nav>
     </header>
 
-    <div class="share-toast" id="share-toast">Link copied to clipboard</div>
+    <div class="share-toast" id="share-toast" role="status" aria-live="polite">Link copied to clipboard</div>
 
     <!-- Share Forecast Card Modal -->
     <div class="modal-overlay" id="shareCardModal" role="dialog" aria-modal="true" aria-label="Share forecast card">
@@ -2821,12 +2784,17 @@
             return ft + 'ft @ ' + per + 's' + (condLabel ? ' - ' + condLabel : '') + (loc ? ' at ' + loc : '');
         }
 
-        function _showToast(msg) {
+        function showToast(msg, variant, duration) {
             var toast = document.getElementById('share-toast');
             toast.textContent = msg || 'Link copied to clipboard';
+            toast.className = 'share-toast' + (variant ? ' share-toast--' + variant : '');
             toast.classList.add('show');
-            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+            setTimeout(function() {
+                toast.classList.remove('show');
+            }, duration || 2000);
         }
+
+        function _showToast(msg) { showToast(msg); }
 
         function copyShareLink() {
             var url = _getShareUrl();
@@ -2841,16 +2809,20 @@
         var _shareFormat = 'story';
 
         function openShareCardModal() {
-            document.getElementById('shareCardModal').classList.add('open');
+            var modal = document.getElementById('shareCardModal');
+            modal.classList.add('open');
             // Show native share button if Web Share API supports files
             var nativeBtn = document.getElementById('btn-share-native');
             if (navigator.share) nativeBtn.style.display = '';
             else nativeBtn.style.display = 'none';
             generateForecastCard(_shareFormat);
+            _setupModalFocus(modal, closeShareCardModal);
         }
 
         function closeShareCardModal() {
-            document.getElementById('shareCardModal').classList.remove('open');
+            var modal = document.getElementById('shareCardModal');
+            modal.classList.remove('open');
+            _teardownModalFocus(modal);
         }
 
         function setShareFormat(fmt) {
@@ -3783,7 +3755,7 @@
         }
         function exportBestSession() {
             var windows = computeSessionWindows();
-            if (!windows || !windows.length) { alert('No session data yet. Wait for forecast to load.'); return; }
+            if (!windows || !windows.length) { showToast('No session data yet — wait for forecast to load.', 'warning', 3500); return; }
             // Find the highest-scored upcoming window
             var now = Date.now();
             var best = null;
@@ -4301,6 +4273,49 @@
         }
 
         // === Custom Modal ===
+        // Shared modal focus-trap + Esc handler — used by location modal and share card modal.
+        var _lastFocusedBeforeModal = null;
+        var _activeModalCloseFn = null;
+        var FOCUSABLE_SELECTOR = 'input:not([disabled]), button:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        function _modalKeydown(e) {
+            if (e.key === 'Escape') {
+                if (_activeModalCloseFn) _activeModalCloseFn();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            var modal = e.currentTarget;
+            var focusable = modal.querySelectorAll(FOCUSABLE_SELECTOR);
+            if (!focusable.length) return;
+            var first = focusable[0], last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                last.focus();
+                e.preventDefault();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                first.focus();
+                e.preventDefault();
+            }
+        }
+
+        function _setupModalFocus(modal, closeFn) {
+            _lastFocusedBeforeModal = document.activeElement;
+            _activeModalCloseFn = closeFn;
+            modal.addEventListener('keydown', _modalKeydown);
+            setTimeout(function() {
+                var focusable = modal.querySelectorAll(FOCUSABLE_SELECTOR);
+                if (focusable.length) focusable[0].focus();
+            }, 50);
+        }
+
+        function _teardownModalFocus(modal) {
+            modal.removeEventListener('keydown', _modalKeydown);
+            _activeModalCloseFn = null;
+            if (_lastFocusedBeforeModal && typeof _lastFocusedBeforeModal.focus === 'function') {
+                _lastFocusedBeforeModal.focus();
+            }
+            _lastFocusedBeforeModal = null;
+        }
+
         function openModal() {
             const modal = document.getElementById('locationModal');
             modal.classList.add('open');
@@ -4314,10 +4329,13 @@
                     locationMap.invalidateSize();
                 }
             }, 100);
+            _setupModalFocus(modal, closeModal);
         }
 
         function closeModal() {
-            document.getElementById('locationModal').classList.remove('open');
+            const modal = document.getElementById('locationModal');
+            modal.classList.remove('open');
+            _teardownModalFocus(modal);
         }
 
         // Close modal on overlay click (but not on card click)
@@ -4802,14 +4820,7 @@
                 } else {
                     const result = addSavedLocation(selectedLocation);
                     if (result === null) {
-                        // At capacity — show toast
-                        const toast = document.getElementById('share-toast');
-                        toast.textContent = 'Maximum 10 saved locations';
-                        toast.classList.add('show');
-                        setTimeout(function() {
-                            toast.classList.remove('show');
-                            toast.textContent = 'Link copied to clipboard';
-                        }, 2000);
+                        showToast('Maximum 10 saved locations', 'warning', 2500);
                         return;
                     }
                 }
@@ -4940,8 +4951,8 @@
                 // Night intervals: gaps between sunset(i) and sunrise(i+1), plus
                 // chart-start → first sunrise and last sunset → chart-end
                 var _dk = isDarkTheme();
-                const nightColor = _dk ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.08)';
-                const dayColor = _dk ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.3)';
+                const nightColor = _dk ? 'rgba(20, 30, 60, 0.45)' : 'rgba(40, 50, 90, 0.12)';
+                const dayColor = _dk ? 'rgba(255, 220, 130, 0.08)' : 'rgba(255, 220, 130, 0.18)';
 
                 // Draw night from chart start to first sunrise
                 const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);
@@ -7522,7 +7533,7 @@
                 btn.classList.add('alert-btn-active'); btn.setAttribute('aria-pressed', 'true');
                 scheduleSurfAlert();
             } else if (Notification.permission === 'denied') {
-                alert('Notification permission is blocked. Please enable notifications for this site in your browser settings, then try again.');
+                showToast('Notifications are blocked. Enable them in your browser settings, then try again.', 'error', 4500);
             } else {
                 Notification.requestPermission().then(function(perm) {
                     if (perm === 'granted') {
@@ -7530,7 +7541,7 @@
                         btn.classList.add('alert-btn-active'); btn.setAttribute('aria-pressed', 'true');
                         scheduleSurfAlert();
                     } else if (perm === 'denied') {
-                        alert('Notification permission was denied. You can change this in browser settings.');
+                        showToast('Notifications denied. You can change this in browser settings.', 'warning', 4500);
                     }
                 });
             }
@@ -8181,8 +8192,17 @@
                 var attr = document.createElement('div');
                 attr.className = 'cam-attribution';
                 var domain = source.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-                attr.innerHTML = '<img src="https://www.google.com/s2/favicons?domain=' + domain + '&sz=16" alt="">' +
-                    '<a href="' + source.url + '" target="_blank" rel="noopener" onclick="event.stopPropagation();">' + source.name + '</a>';
+                var favicon = document.createElement('img');
+                favicon.src = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=16';
+                favicon.alt = '';
+                attr.appendChild(favicon);
+                var link = document.createElement('a');
+                link.href = source.url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.textContent = source.name;
+                link.addEventListener('click', function(e) { e.stopPropagation(); });
+                attr.appendChild(link);
                 contentEl.appendChild(attr);
             }
 

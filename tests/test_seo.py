@@ -186,11 +186,16 @@ class TestStructuredData:
         assert len(apps) == 1
         assert apps[0]['offers']['price'] == '0'
 
-    def test_faq_schema(self, client):
-        r = client.get('/')
-        html = r.data.decode()
-        faqs = _parse_json_ld(html, 'FAQPage')
-        assert len(faqs) == 1, "Should have FAQPage schema"
+    def test_faq_schema_on_about_only(self, client):
+        about = client.get('/about')
+        about_html = about.data.decode()
+        about_faqs = _parse_json_ld(about_html, 'FAQPage')
+        assert len(about_faqs) == 1, "About page should have FAQPage schema"
+
+        home = client.get('/')
+        home_html = home.data.decode()
+        home_faqs = _parse_json_ld(home_html, 'FAQPage')
+        assert len(home_faqs) == 0, "FAQPage schema should not be duplicated on forecast pages"
 
 
 # ===================================================================

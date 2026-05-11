@@ -2029,7 +2029,7 @@ def find_nearest_tide_station(target_lat, target_lon):
         url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
         params = {"type": "tidepredictions"}
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
 
@@ -2097,7 +2097,7 @@ def get_tide_data(station_id):
             "interval": "h"  # Hourly predictions
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
 
@@ -2108,7 +2108,7 @@ def get_tide_data(station_id):
         # Also get high/low tide times
         hilo_params = params.copy()
         hilo_params["interval"] = "hilo"
-        hilo_response = requests.get(url, params=hilo_params)
+        hilo_response = requests.get(url, params=hilo_params, timeout=15)
         hilo_data = hilo_response.json()
 
         tide_forecast = {
@@ -2728,6 +2728,20 @@ def add_cache_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(self)'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' https://nominatim.openstreetmap.org https://static.cloudflareinsights.com https://cloudflareinsights.com; "
+        "frame-src 'self' https:; "
+        "font-src 'self' data:; "
+        "worker-src 'self'; "
+        "manifest-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
     return response
 
 
