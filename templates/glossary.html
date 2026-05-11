@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surf & Oceanography Glossary | Free Surf Forecast</title>
+    <meta name="description" content="Definitions of surf, wave, and ocean-modeling terms used in surf forecasting — peak period, ground swell, beach orientation, fetch, refraction, and more.">
+    <link rel="canonical" href="https://freesurfforecast.com/glossary">
+
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Surf & Oceanography Glossary | Free Surf Forecast">
+    <meta property="og:description" content="Definitions of surf forecasting terms — period, swell, refraction, fetch, and more.">
+    <meta property="og:url" content="https://freesurfforecast.com/glossary">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Surf & Oceanography Glossary | Free Surf Forecast">
+    <meta name="twitter:description" content="Definitions of surf forecasting terms — period, swell, refraction, fetch, and more.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --border: #d4d4d4;
+            --text: #1a1a1a;
+            --text-dim: #555;
+            --text-muted: #6b6b6b;
+            --accent: #111;
+            --status-live: #16a34a;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header.site-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header.site-header a.brand {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        header.site-header a.brand:hover { color: var(--status-live); }
+        nav.site-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            margin-left: 16px;
+        }
+        nav.site-nav a:hover { color: var(--text); }
+
+        main.glossary {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 48px 20px 80px;
+        }
+        main.glossary h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+        main.glossary .tagline {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 32px;
+        }
+
+        .glossary-toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 14px 16px;
+            border-radius: 6px;
+            margin-bottom: 32px;
+            font-size: 12px;
+        }
+        .glossary-toc strong {
+            display: block;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .glossary-toc a {
+            color: var(--text);
+            text-decoration: none;
+            margin-right: 14px;
+            white-space: nowrap;
+        }
+        .glossary-toc a:hover { color: var(--status-live); }
+
+        section.glossary-section {
+            margin-top: 32px;
+        }
+        section.glossary-section h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text);
+            margin-bottom: 14px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        dl.terms {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+        dl.terms dt {
+            font-weight: 700;
+            color: var(--accent);
+            font-size: 13px;
+        }
+        dl.terms dd {
+            color: var(--text-dim);
+            margin-left: 0;
+            margin-top: 2px;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+        dl.terms dd code {
+            background: var(--surface);
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+        }
+
+        footer.site-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+        footer.site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        footer.site-footer a:hover { color: var(--text); text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            main.glossary { padding: 28px 16px 60px; }
+            main.glossary h1 { font-size: 22px; }
+        }
+    </style>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://freesurfforecast.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Glossary", "item": "https://freesurfforecast.com/glossary" }
+        ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "DefinedTermSet",
+        "name": "Surf & Oceanography Glossary",
+        "url": "https://freesurfforecast.com/glossary",
+        "description": "Definitions of surf, wave, and ocean-modeling terms used in surf forecasting.",
+        "hasDefinedTerm": [
+            { "@type": "DefinedTerm", "name": "Wave Height", "description": "The vertical distance from a wave's trough to its crest. Surf forecasts typically report significant wave height (Hs), not face height at the beach." },
+            { "@type": "DefinedTerm", "name": "Wave Period", "description": "Time in seconds between successive wave crests passing a fixed point. Longer periods mean more powerful, well-organized waves." },
+            { "@type": "DefinedTerm", "name": "Peak Period (Tp)", "description": "Period of the most energetic component of the wave spectrum. The 'classic' period number reported by NDBC buoys and most surf forecasts." },
+            { "@type": "DefinedTerm", "name": "Significant Wave Height (Hs)", "description": "The average height of the largest one-third of waves in a record. Used in nearly all wave forecasts." },
+            { "@type": "DefinedTerm", "name": "Ground Swell", "description": "Long-period waves (typically 12s or more) that have traveled far from a distant storm. Clean, powerful, well-organized lines." },
+            { "@type": "DefinedTerm", "name": "Wind Swell", "description": "Short-period waves (typically under 9s) generated by local winds. Less organized than ground swell; breaks rapidly." },
+            { "@type": "DefinedTerm", "name": "Beach Orientation", "description": "The compass direction the beach faces — perpendicular to the shoreline, pointing toward the ocean. Determines which swells reach the beach unobstructed." },
+            { "@type": "DefinedTerm", "name": "Offshore Wind", "description": "Wind blowing from land out to sea. Holds up wave faces and creates clean, glassy conditions." },
+            { "@type": "DefinedTerm", "name": "Onshore Wind", "description": "Wind blowing from sea onto land. Creates choppy, disorganized surf." },
+            { "@type": "DefinedTerm", "name": "Cross-shore Wind", "description": "Wind blowing parallel to the shoreline. Adds surface texture without destroying wave shape — surfable, often pleasantly so when light." },
+            { "@type": "DefinedTerm", "name": "Shoaling", "description": "The amplification of wave height as a swell moves into shallower water. Why a 4 ft offshore swell becomes a 6 ft wave at the beach." },
+            { "@type": "DefinedTerm", "name": "Refraction", "description": "Bending of waves as they cross varying water depth, turning swell direction toward shore-normal. Why a NE swell can wrap into a south-facing cove." },
+            { "@type": "DefinedTerm", "name": "Fetch", "description": "The over-water distance the wind blows in one direction. Long fetch + sustained winds = bigger, longer-period swells." },
+            { "@type": "DefinedTerm", "name": "Group Velocity", "description": "Speed at which wave energy (and thus swell) travels across the ocean. In deep water, ~0.78 × period m/s. A 14s swell travels ~10.9 m/s = 39 km/h." },
+            { "@type": "DefinedTerm", "name": "Wave Steepness", "description": "Ratio of wave height to wavelength (H/L). Low steepness (under 0.008) indicates long-decayed clean swell; high steepness (over 0.025) indicates locally-generated sea." },
+            { "@type": "DefinedTerm", "name": "Set Wave", "description": "The largest wave in a cluster of waves. Surfers wait for sets; lulls between sets are the gaps." },
+            { "@type": "DefinedTerm", "name": "Tide", "description": "Periodic rise and fall of sea level driven by the gravitational pull of the moon and sun. Affects how a break works — many spots favor a specific tide stage." },
+            { "@type": "DefinedTerm", "name": "Slack Tide", "description": "Brief period at high or low tide when the water stops moving. Many breaks lose shape during slack." },
+            { "@type": "DefinedTerm", "name": "Spring Tide", "description": "Extra-large tide range during full and new moons. Bigger high-low difference; stronger tidal currents." },
+            { "@type": "DefinedTerm", "name": "Neap Tide", "description": "Smaller-than-average tide range during quarter moons. Less variation between high and low." },
+            { "@type": "DefinedTerm", "name": "MLLW", "description": "Mean Lower Low Water — the average of the lower of the two daily low tides over 19 years. The tidal datum NOAA uses for predictions." },
+            { "@type": "DefinedTerm", "name": "WaveWatch III (WW3)", "description": "Third-generation spectral wave model run operationally by NOAA. Powers most public US wave forecasts at 0.16°–0.5° resolution." },
+            { "@type": "DefinedTerm", "name": "GFS-Wave", "description": "Global Forecast System wave product — the NOAA implementation of WaveWatch III coupled to GFS winds. Available on NOMADS and ERDDAP." },
+            { "@type": "DefinedTerm", "name": "NDBC Buoy", "description": "National Data Buoy Center station — moored or drifting buoys that measure waves, wind, and water properties in near-real time." },
+            { "@type": "DefinedTerm", "name": "CDIP", "description": "Coastal Data Information Program — a network of nearshore wave buoys (mostly West Coast) producing high-quality directional wave spectra." },
+            { "@type": "DefinedTerm", "name": "Wave Spectrum", "description": "Distribution of wave energy across frequencies. A 1D spectrum shows energy vs frequency; a 2D directional spectrum adds direction-of-arrival." },
+            { "@type": "DefinedTerm", "name": "Hindcast", "description": "A model run using past observations to reconstruct historical wave conditions. Used to validate forecasts and study extreme events." },
+            { "@type": "DefinedTerm", "name": "Nowcast", "description": "A model run using current observations to estimate present conditions. Distinct from forecast (future) and hindcast (past)." },
+            { "@type": "DefinedTerm", "name": "Forecast Skill", "description": "Measure of how well a forecast matches observations. Typically drops with lead time — wave-model skill (r²) falls from ~0.85 at lead 0 to ~0.55 at +144h." },
+            { "@type": "DefinedTerm", "name": "Model Bias", "description": "Systematic over- or under-prediction by a forecast model. Can be corrected against co-located buoy observations." },
+            { "@type": "DefinedTerm", "name": "Decay (swell)", "description": "Gradual loss of wave height as a swell propagates away from its source. Long-period swells decay slowly and can travel oceans intact." },
+            { "@type": "DefinedTerm", "name": "Mixed Seas", "description": "Wave field with multiple distinct swell trains plus local wind sea, often arriving from different directions. Common in winter on the East Coast." },
+            { "@type": "DefinedTerm", "name": "Swell Train", "description": "A coherent group of waves from one storm source, characterized by a single peak period and direction." },
+            { "@type": "DefinedTerm", "name": "Spectral Partitioning", "description": "Decomposing a complex wave field into separate components (primary swell, secondary swell, wind sea) — what wave models output for sophisticated forecasts." },
+            { "@type": "DefinedTerm", "name": "Reef Break", "description": "Surf break where waves break over a coral or rock reef. Typically more predictable and shape-consistent than beach breaks." },
+            { "@type": "DefinedTerm", "name": "Beach Break", "description": "Surf break where waves break over a sandy bottom. Sandbars shift over time so shape varies with the seasons." },
+            { "@type": "DefinedTerm", "name": "Point Break", "description": "Surf break where waves wrap around a headland or rocky point, producing long peeling rides in one direction." }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <header class="site-header">
+        <a href="/" class="brand">Free Surf Forecast</a>
+        <nav class="site-nav">
+            <a href="/">Dashboard</a>
+            <a href="/locations">Locations</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <main class="glossary">
+        <h1>Surf & Oceanography Glossary</h1>
+        <p class="tagline">Plain-language definitions of the terms behind every forecast on this site.</p>
+
+        <nav class="glossary-toc" aria-label="Glossary sections">
+            <strong>Jump to</strong>
+            <a href="#waves">Waves & Period</a>
+            <a href="#swells">Swells & Sea State</a>
+            <a href="#wind">Wind & Beach</a>
+            <a href="#coast">Coastal Effects</a>
+            <a href="#tides">Tides</a>
+            <a href="#models">Models & Forecasts</a>
+            <a href="#breaks">Break Types</a>
+        </nav>
+
+        <section class="glossary-section" id="waves">
+            <h2>Waves & Period</h2>
+            <dl class="terms">
+                <div><dt>Wave Height</dt><dd>The vertical distance from a wave's trough to its crest. Surf forecasts typically report <strong>significant wave height (Hs)</strong>, not the face height you see at the beach — face heights can be 1.5–2× larger at the moment of breaking due to shoaling.</dd></div>
+                <div><dt>Wave Period</dt><dd>Time in seconds between successive wave crests passing a fixed point. Longer periods mean more powerful, well-organized waves. The single most important number in a surf forecast after height.</dd></div>
+                <div><dt>Peak Period (Tp)</dt><dd>Period of the most energetic component of the wave spectrum — the "classic" period number reported by NDBC buoys and most surf forecasts. This site standardizes on Tp across all sources.</dd></div>
+                <div><dt>Mean Period (Tm)</dt><dd>The energy-weighted average period across all frequency components. Usually 1–2 s shorter than Tp. Open-Meteo's <code>wave_period</code> field is Tm; this site requests <code>wave_peak_period</code> instead.</dd></div>
+                <div><dt>Significant Wave Height (Hs)</dt><dd>The average height of the largest one-third of waves in a record. The standard wave-height metric used by NOAA, NDBC, and every operational wave model.</dd></div>
+                <div><dt>Wavelength</dt><dd>The horizontal distance between two successive crests. In deep water, wavelength <code>L = gT²/(2π)</code> ≈ 1.56 × T² in meters. A 14 s swell has a 306 m wavelength.</dd></div>
+                <div><dt>Group Velocity</dt><dd>Speed at which wave energy (and thus the swell itself) travels across the ocean. In deep water, <code>cg ≈ 0.78 × T</code> m/s. A 14 s swell travels ~10.9 m/s = 39 km/h.</dd></div>
+                <div><dt>Wave Steepness</dt><dd>Ratio of wave height to wavelength (H/L). Low steepness (under 0.008) indicates long-decayed clean swell; high steepness (over 0.025) indicates locally-generated wind sea. This site classifies swells by both period and steepness.</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="swells">
+            <h2>Swells & Sea State</h2>
+            <dl class="terms">
+                <div><dt>Ground Swell</dt><dd>Long-period waves (typically 12 s or more) that have traveled far from a distant storm. Clean, powerful, well-organized lines. The most desirable surf.</dd></div>
+                <div><dt>Wind Swell</dt><dd>Short-period waves (typically under 9 s) generated by local winds. Less organized than ground swell; breaks rapidly. Often what you ride day to day.</dd></div>
+                <div><dt>Mixed Seas</dt><dd>Wave field with multiple distinct swell trains plus local wind sea, often arriving from different directions. Common in winter and during transitional seasons.</dd></div>
+                <div><dt>Swell Train</dt><dd>A coherent group of waves from one storm source, characterized by a single peak period and direction. A "stack" of swells means multiple trains overlapping.</dd></div>
+                <div><dt>Set Wave</dt><dd>The largest wave in a cluster. Surfers wait for sets; lulls between sets are the gaps. Average set frequency is 6–10 waves per minute in organized swell.</dd></div>
+                <div><dt>Decay</dt><dd>Gradual loss of wave height as a swell propagates away from its source. Long-period swells decay slowly and can cross entire oceans intact (the Hawaiian winter season is fed by storms in the Gulf of Alaska).</dd></div>
+                <div><dt>Spectral Partitioning</dt><dd>Decomposing a complex wave field into separate components (primary swell, secondary swell, wind sea). Sophisticated forecasts publish all three; simple ones just report a single "Hs".</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="wind">
+            <h2>Wind & Beach Orientation</h2>
+            <dl class="terms">
+                <div><dt>Beach Orientation</dt><dd>The compass direction the beach faces — perpendicular to the shoreline, pointing toward the ocean. Determines which swell angles reach the beach unobstructed.</dd></div>
+                <div><dt>Offshore Wind</dt><dd>Wind blowing from land out to sea. Holds up wave faces and creates clean, glassy conditions. Surfers' favorite wind direction.</dd></div>
+                <div><dt>Onshore Wind</dt><dd>Wind blowing from sea onto land. Creates choppy, disorganized surf. Strong onshore destroys wave shape completely.</dd></div>
+                <div><dt>Cross-shore Wind</dt><dd>Wind blowing parallel to the shoreline. Adds surface texture without destroying wave shape — often surfable, sometimes preferable when very light.</dd></div>
+                <div><dt>Glassy</dt><dd>Conditions with virtually no wind, often at dawn before the sea breeze kicks in. Mirror-flat between waves; perfect for clean rides.</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="coast">
+            <h2>Coastal Effects</h2>
+            <dl class="terms">
+                <div><dt>Shoaling</dt><dd>The amplification of wave height as a swell moves into shallower water. Why a 4 ft offshore swell can become a 6 ft wave at the beach.</dd></div>
+                <div><dt>Refraction</dt><dd>Bending of waves as they cross varying water depth, turning swell direction toward shore-normal. Why a NE swell can wrap into a south-facing cove.</dd></div>
+                <div><dt>Diffraction</dt><dd>Spreading of waves around obstacles such as headlands or jetties. Allows energy to reach areas in a swell's geometric shadow.</dd></div>
+                <div><dt>Sandbar</dt><dd>Underwater ridge of sand that focuses where waves break. Beach breaks live and die by their sandbars, which shift with storms and seasons.</dd></div>
+                <div><dt>Fetch</dt><dd>The over-water distance the wind blows in one direction. Long fetch + sustained high winds = bigger, longer-period swells. A 1,000 nm fetch is how Pacific groundswells get their power.</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="tides">
+            <h2>Tides</h2>
+            <dl class="terms">
+                <div><dt>Tide</dt><dd>Periodic rise and fall of sea level driven by the gravitational pull of the moon and sun. Most US coasts see two highs and two lows per day (semi-diurnal).</dd></div>
+                <div><dt>Slack Tide</dt><dd>Brief period at high or low tide when the water effectively stops moving. Many breaks lose shape during slack; moving water keeps sandbars working.</dd></div>
+                <div><dt>Spring Tide</dt><dd>Extra-large tide range during full and new moons, when the sun and moon align. Bigger high-low difference; stronger tidal currents.</dd></div>
+                <div><dt>Neap Tide</dt><dd>Smaller-than-average tide range during quarter moons. Less variation between high and low.</dd></div>
+                <div><dt>MLLW</dt><dd>Mean Lower Low Water — the average of the lower of the two daily low tides over 19 years. NOAA's tidal datum for predictions.</dd></div>
+                <div><dt>Optimal Tide</dt><dd>The tide stage at which a particular break works best. Some spots fire on the push (incoming), some on the drop (outgoing); reef breaks tend to be more tide-sensitive than beach breaks.</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="models">
+            <h2>Models & Forecasts</h2>
+            <dl class="terms">
+                <div><dt>WaveWatch III (WW3)</dt><dd>Third-generation spectral wave model run operationally by NOAA. Powers most public US wave forecasts at 0.16°–0.5° resolution.</dd></div>
+                <div><dt>GFS-Wave</dt><dd>Global Forecast System wave product — NOAA's implementation of WaveWatch III coupled to GFS winds. Updated every 6 hours, available via NOMADS and ERDDAP.</dd></div>
+                <div><dt>NDBC Buoy</dt><dd>National Data Buoy Center station. Moored or drifting buoys measuring waves, wind, and water properties in near-real time. The ground truth used to validate models.</dd></div>
+                <div><dt>CDIP</dt><dd>Coastal Data Information Program — a network of nearshore wave buoys (mostly West Coast) producing high-quality directional wave spectra.</dd></div>
+                <div><dt>Wave Spectrum</dt><dd>Distribution of wave energy across frequencies. A 1D spectrum shows energy vs frequency; a 2D directional spectrum adds direction-of-arrival.</dd></div>
+                <div><dt>Hindcast</dt><dd>A model run using past observations to reconstruct historical wave conditions. Used to validate forecasts and study extreme events.</dd></div>
+                <div><dt>Nowcast</dt><dd>A model run using current observations to estimate present conditions. Distinct from forecast (future) and hindcast (past).</dd></div>
+                <div><dt>Forecast Skill</dt><dd>Measure of how well a forecast matches observations. Wave-model skill (r²) typically falls from ~0.85 at lead 0 to ~0.55 at +144 h. The confidence sparkline on this site reflects this decay.</dd></div>
+                <div><dt>Model Bias</dt><dd>Systematic over- or under-prediction by a forecast model. Can be corrected against co-located buoy observations — a planned future improvement here.</dd></div>
+            </dl>
+        </section>
+
+        <section class="glossary-section" id="breaks">
+            <h2>Break Types</h2>
+            <dl class="terms">
+                <div><dt>Beach Break</dt><dd>Surf break where waves break over a sandy bottom. Sandbars shift over time so shape varies with the seasons. Most US coast surf is beach breaks.</dd></div>
+                <div><dt>Reef Break</dt><dd>Surf break where waves break over a coral or rock reef. More predictable and shape-consistent than beach breaks but consequences for falling are higher.</dd></div>
+                <div><dt>Point Break</dt><dd>Surf break where waves wrap around a headland or rocky point, producing long peeling rides in one direction.</dd></div>
+                <div><dt>Jetty / Pier Break</dt><dd>Sandbar deposition at the up-current side of a man-made jetty or pier, focusing wave energy. Common on the East Coast (Manasquan, Wrightsville, etc.).</dd></div>
+            </dl>
+        </section>
+
+        <p style="margin-top: 48px; color: var(--text-muted); font-size: 11px;">
+            Got a term we should add or define better? The site is open-source —
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener" style="color: var(--text-dim);">suggest an edit on GitHub</a>.
+        </p>
+    </main>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Free Surf Forecast &middot;
+            <a href="/about">About</a> &middot;
+            <a href="/locations">Locations</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </footer>
+    <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "4838c7fb1ed34d59b891df1bb379ddfb"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>

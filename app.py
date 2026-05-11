@@ -1770,6 +1770,12 @@ def about():
     return render_template('about.html')
 
 
+@app.route('/glossary')
+def glossary():
+    """Renders the surf/oceanography glossary page (SEO topic-cluster anchor)."""
+    return render_template('glossary.html')
+
+
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope."""
@@ -1841,6 +1847,14 @@ def sitemap_xml():
     urls.append(f'    <lastmod>{today}</lastmod>')
     urls.append('    <changefreq>monthly</changefreq>')
     urls.append('    <priority>0.5</priority>')
+    urls.append('  </url>')
+
+    # Glossary — SEO topic-cluster anchor
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/glossary</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.6</priority>')
     urls.append('  </url>')
 
     # Location forecast pages. Tiered priority: top spots 0.9, others 0.6.
