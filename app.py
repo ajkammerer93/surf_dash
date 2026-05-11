@@ -101,7 +101,13 @@ def _build_location_index():
         seen_coords.add(key)
         slug = slugify(cam['name'])
         if slug not in by_slug:
-            by_slug[slug] = {'name': cam['name'], 'lat': cam['lat'], 'lon': cam['lon'], 'slug': slug}
+            by_slug[slug] = {
+                'name': cam['name'],
+                'lat': cam['lat'],
+                'lon': cam['lon'],
+                'slug': slug,
+                'state': cam.get('state'),
+            }
     return by_slug
 
 LOCATION_BY_SLUG = _build_location_index()
@@ -1553,37 +1559,14 @@ def locations_index():
         'TX': 'Texas', 'VA': 'Virginia', 'WA': 'Washington',
     }
 
-    # Explicit overrides for locations whose names lack a state suffix
-    name_to_state = {
-        'Avon Pier': 'NC', 'Carolina Beach': 'NC',
-        'Carolina Beach - Center Pier': 'NC', 'Hatteras': 'NC',
-        'Kitty Hawk': 'NC', 'Kure Beach': 'NC',
-        'Nags Head - Abalone St': 'NC', 'Nags Head - Jennettes Pier': 'NC',
-        'North Topsail Island': 'NC', 'Oak Island': 'NC',
-        'Ocean Isle Beach': 'NC', 'Ocean Isle Beach Pier': 'NC',
-        'Ocracoke': 'NC', 'Rodanthe': 'NC', 'Sunset Beach': 'NC',
-        'Surf City Line': 'NC', 'Surf City Pier North': 'NC',
-        'Topsail Beach': 'NC', 'Waves': 'NC',
-        'WB Mercers Pier': 'NC', 'Wrightsville Beach': 'NC',
-        'Virginia Beach': 'VA',
-    }
-
     grouped = {}
     for slug, loc in sorted(LOCATION_BY_SLUG.items(), key=lambda x: x[1]['name']):
-        name = loc['name']
-        parts = name.split()
-        region = 'Other'
-
-        if name in name_to_state:
-            region = state_map.get(name_to_state[name], name_to_state[name])
-        elif name.startswith('OC MD'):
-            region = state_map['MD']
-        elif len(parts) >= 2 and len(parts[-1]) == 2 and parts[-1].isupper():
-            region = state_map.get(parts[-1], parts[-1])
+        state_code = loc.get('state')
+        region = state_map.get(state_code, state_code) if state_code else 'Other'
 
         if region not in grouped:
             grouped[region] = []
-        grouped[region].append({'slug': slug, 'name': name, 'lat': loc['lat'], 'lon': loc['lon']})
+        grouped[region].append({'slug': slug, 'name': loc['name'], 'lat': loc['lat'], 'lon': loc['lon']})
 
     return render_template(
         'locations.html',
