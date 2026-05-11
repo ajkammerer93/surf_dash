@@ -144,7 +144,7 @@ The frontend has a security baseline of: Content-Security-Policy, X-Frame-Option
 
 ## Support
 
-If this site has helped you score a session, [buy me a coffee ☕](https://buymeacoffee.com/freesurfforecast) to keep the servers running. The site is and will stay free, no ads, no signup.
+If this site has helped you score a session, you can [buy me a coffee](https://buymeacoffee.com/freesurfforecast) to keep the servers running. The site is and will stay free, no ads, no signup.
 
 ## License
 
