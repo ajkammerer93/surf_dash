@@ -551,6 +551,66 @@
             .forecast-hero-row .height { font-size: 17px; }
         }
 
+        .far-buoy-warning {
+            background: rgba(245, 166, 35, 0.10);
+            border: 1px solid rgba(245, 166, 35, 0.3);
+            border-left-width: 3px;
+            color: var(--text-dim);
+            padding: 6px 10px;
+            font-size: 11px;
+            line-height: 1.4;
+            margin-bottom: 8px;
+            border-radius: 3px;
+        }
+        .far-buoy-warning strong { color: var(--status-warning); font-weight: 600; }
+
+        .nearby-spots {
+            max-width: 720px;
+            margin: 30px auto 12px;
+            padding: 14px 18px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .nearby-spots h2 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .nearby-spots ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 6px;
+        }
+        .nearby-spots li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .nearby-spots a {
+            color: var(--text);
+            text-decoration: none;
+        }
+        .nearby-spots a:hover {
+            color: var(--status-live);
+        }
+        .nearby-spots .nearby-distance {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+        }
+
         .site-footer {
             text-align: center;
             padding: 12px 16px;
@@ -2561,9 +2621,11 @@
                         </div>
                     </div>
                     <div class="panel-content" id="buoy-panel-content">
+                        <div class="far-buoy-warning" id="far-buoy-warning" style="display:none" role="note"></div>
                         <div class="buoy-panel-layout">
                             <div class="buoy-stats">
                                 <ul class="stat-list" id="buoy-stats-list">
+                                    <li class="stat-item"><span class="stat-label">Distance</span><span class="stat-value" id="buoy_distance">-</span></li>
                                     <li class="stat-item"><span class="stat-label">Wave Height</span><span class="stat-value" id="buoy_wave_height">-</span></li>
                                     <li class="stat-item"><span class="stat-label">Period</span><span class="stat-value" id="buoy_wave_period">-</span></li>
                                     <li class="stat-item"><span class="stat-label">Direction</span><span class="stat-value" id="buoy_wave_dir">-</span></li>
@@ -2795,6 +2857,20 @@
         </div>
 
     </div>
+
+    {% if nearby_spots %}
+    <aside class="nearby-spots" aria-label="Nearby surf spots">
+        <h2>Nearby surf spots</h2>
+        <ul>
+            {% for spot in nearby_spots %}
+            <li>
+                <a href="/forecast/{{ spot.slug }}">{{ spot.name }}{% if spot.state and not spot.name.upper().endswith(' ' + spot.state.upper()) %}, {{ spot.state }}{% endif %}</a>
+                <span class="nearby-distance">{{ spot.distance_mi }} mi</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </aside>
+    {% endif %}
     </main>
 
     <footer class="site-footer">
@@ -8759,6 +8835,32 @@
                 if (v == null) return '-';
                 if (conv) v = conv(v);
                 return (typeof v === 'number' ? v.toFixed(1) : v) + ' ' + unit;
+            }
+
+            // Distance + far-buoy warning. A buoy more than ~100km offshore
+            // measures open-ocean conditions; face heights at the beach are
+            // typically 30–50% lower due to shoaling/refraction loss.
+            var distEl = document.getElementById('buoy_distance');
+            var warnEl = document.getElementById('far-buoy-warning');
+            if (buoy.distance_km != null) {
+                var distMi = (buoy.distance_km * 0.621371);
+                distEl.textContent = distMi.toFixed(1) + ' mi (' + buoy.distance_km.toFixed(0) + ' km)';
+                if (buoy.distance_km > 100) {
+                    warnEl.textContent = '';
+                    var strong = document.createElement('strong');
+                    strong.textContent = 'Deep-water buoy';
+                    warnEl.appendChild(strong);
+                    warnEl.appendChild(document.createTextNode(
+                        ' — this station is ' + Math.round(distMi) +
+                        ' mi offshore. Face heights at the beach may be 30–50% lower than reported here due to nearshore transformation.'
+                    ));
+                    warnEl.style.display = '';
+                } else {
+                    warnEl.style.display = 'none';
+                }
+            } else {
+                distEl.textContent = '-';
+                warnEl.style.display = 'none';
             }
 
             var dirArrow = '';

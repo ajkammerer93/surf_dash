@@ -376,6 +376,26 @@ class TestSSRContent:
         assert 'Virginia Beach' in html
 
 
+class TestNearbySpots:
+    """Server-rendered "Nearby Spots" block — crawlable internal links to
+    seed PageRank into the long-tail forecast pages."""
+
+    def test_nearby_spots_block_present(self, client):
+        r = client.get('/forecast/virginia-beach')
+        html = r.data.decode()
+        assert 'class="nearby-spots"' in html, "Forecast page should render nearby-spots block"
+
+    def test_nearby_spots_links_are_internal_forecast_urls(self, client):
+        r = client.get('/forecast/virginia-beach')
+        html = r.data.decode()
+        m = re.search(r'<aside class="nearby-spots".*?</aside>', html, re.DOTALL)
+        assert m, "nearby-spots block missing"
+        links = re.findall(r'href="(/forecast/[^"]+)"', m.group(0))
+        assert len(links) >= 2, "Should link to at least 2 nearby spots"
+        # Should not link to itself
+        assert all('/forecast/virginia-beach' not in l for l in links)
+
+
 class TestTouristAttractionSchema:
     """Each forecast page should expose a TouristAttraction JSON-LD with geo +
     address region so it can rank for geo-intent queries."""

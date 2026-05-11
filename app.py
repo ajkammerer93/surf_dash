@@ -1519,6 +1519,30 @@ def _seasonal_climatology_note(state_code):
     return _SEASONAL_NOTES.get(state_code)
 
 
+def _find_nearby_spots(lat, lon, exclude_slug=None, count=5, max_km=80):
+    """Return up to `count` closest forecast locations within `max_km`.
+
+    Used for the server-rendered "Nearby Spots" footer block — each entry
+    becomes a crawlable internal link to /forecast/<slug>, seeding PageRank
+    into the long-tail forecast pages.
+    """
+    spots = []
+    for slug, loc in LOCATION_BY_SLUG.items():
+        if exclude_slug and slug == exclude_slug:
+            continue
+        dist = haversine_distance(lat, lon, loc['lat'], loc['lon'])
+        if dist <= max_km:
+            spots.append({
+                'slug': slug,
+                'name': loc['name'],
+                'distance_km': round(dist, 1),
+                'distance_mi': round(dist * 0.621371, 1),
+                'state': loc.get('state'),
+            })
+    spots.sort(key=lambda s: s['distance_km'])
+    return spots[:count]
+
+
 def _get_ssr_summary(lat, lon, location=None):
     """Build a server-side-rendered location summary for SEO/crawlers.
 
@@ -1636,6 +1660,11 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
     # Display-state for the SSR heading — same dedup logic as the meta string
     location_display_state = "" if has_state_in_name else (location_state or "")
 
+    # Server-rendered "Nearby Spots" list — crawlable internal links to seed
+    # PageRank into the long-tail forecast pages. Use ~150km (~93 mi) as
+    # a plausible surfer driving radius; 80 km was too tight at many spots.
+    nearby_spots = _find_nearby_spots(lat, lon, exclude_slug=location_slug, count=5, max_km=150)
+
     return render_template(
         'index.html',
         version=APP_VERSION,
@@ -1651,6 +1680,7 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
         location_state=location_state,
         location_display_state=location_display_state,
         ssr_summary=ssr_summary,
+        nearby_spots=nearby_spots,
         locations=LOCATION_BY_SLUG,
     )
 
