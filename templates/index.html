@@ -551,6 +551,75 @@
             .forecast-hero-row .height { font-size: 17px; }
         }
 
+        /* Skeleton loader — applied to stat values and similar placeholders
+           while data is still in flight. Removed once data populates. */
+        .skeleton {
+            display: inline-block;
+            min-width: 40px;
+            background: linear-gradient(90deg,
+                var(--border) 0%, var(--hover-bg-strong) 50%, var(--border) 100%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.4s ease-in-out infinite;
+            color: transparent !important;
+            border-radius: 2px;
+        }
+        @keyframes skeleton-shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* First-visit onboarding overlay — dismissable card explaining the
+           dashboard's main interactions. Gated by localStorage. */
+        .onboarding-overlay {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 380px;
+            width: calc(100% - 32px);
+            background: var(--surface);
+            border: 1px solid var(--status-live);
+            border-left-width: 3px;
+            padding: 14px 16px;
+            border-radius: 6px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            z-index: 1100;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+        .onboarding-overlay h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--status-live);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .onboarding-overlay p { margin: 4px 0; color: var(--text-dim); }
+        .onboarding-overlay-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            border-radius: 3px;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .onboarding-overlay-close:hover {
+            background: var(--hover-bg);
+            color: var(--text);
+        }
+
         .far-buoy-warning {
             background: rgba(245, 166, 35, 0.10);
             border: 1px solid rgba(245, 166, 35, 0.3);
@@ -2358,6 +2427,15 @@
 
     <div class="share-toast" id="share-toast" role="status" aria-live="polite">Link copied to clipboard</div>
 
+    <!-- First-visit onboarding card — hidden by default; shown by JS only on
+         first load, dismissed via localStorage so it never reappears. -->
+    <div id="onboarding-card" class="onboarding-overlay" style="display:none" role="dialog" aria-label="Welcome">
+        <button class="onboarding-overlay-close" id="onboarding-close" aria-label="Dismiss welcome card">&times;</button>
+        <h3>Welcome</h3>
+        <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows the full 7-day forecast.</p>
+        <p>Toggle the skill-level icon for beginner-friendly labels, or use the panes menu (☰) to show/hide panels.</p>
+    </div>
+
     <!-- Share Forecast Card Modal -->
     <div class="modal-overlay" id="shareCardModal" role="dialog" aria-modal="true" aria-label="Share forecast card">
         <div class="modal-card" style="max-width:520px;">
@@ -2480,20 +2558,20 @@
                             <li class="stat-item">
                                 <span class="stat-label">Wave Height</span>
                                 <span class="stat-right">
-                                    <span class="stat-value" id="current_wave_height">- ft</span>
+                                    <span class="stat-value skeleton" id="current_wave_height">- ft</span>
                                     <span class="stat-context" id="ctx_wave_height"></span>
                                 </span>
                             </li>
                             <li class="stat-item">
                                 <span class="stat-label">Wave Period</span>
                                 <span class="stat-right">
-                                    <span class="stat-value" id="current_wave_period">- s</span>
+                                    <span class="stat-value skeleton" id="current_wave_period">- s</span>
                                     <span class="stat-context" id="ctx_wave_period"></span>
                                 </span>
                             </li>
                             <li class="stat-item stat-hoverable" id="wave-dir-stat-item">
                                 <span class="stat-label">Wave Direction</span>
-                                <span class="stat-value" id="current_wave_direction">- &deg;</span>
+                                <span class="stat-value skeleton" id="current_wave_direction">- &deg;</span>
                                 <div class="direction-popup">
                                     <canvas id="wave-dir-diagram" width="120" height="120"></canvas>
                                 </div>
@@ -2501,8 +2579,8 @@
                             <li class="stat-item stat-hoverable" id="wind-stat-item">
                                 <span class="stat-label">Wind</span>
                                 <span class="stat-split">
-                                    <span class="stat-value" id="current_wind_speed">-</span>
-                                    <span class="stat-value" id="current_wind_direction">-</span>
+                                    <span class="stat-value skeleton" id="current_wind_speed">-</span>
+                                    <span class="stat-value skeleton" id="current_wind_direction">-</span>
                                 </span>
                                 <span class="stat-context" id="ctx_wind"></span>
                                 <div class="direction-popup">
@@ -2512,8 +2590,8 @@
                             <li class="stat-item">
                                 <span class="stat-label">Temperature</span>
                                 <span class="stat-split">
-                                    <span class="stat-value" id="current_air_temp">-</span>
-                                    <span class="stat-value" id="current_water_temp">-</span>
+                                    <span class="stat-value skeleton" id="current_air_temp">-</span>
+                                    <span class="stat-value skeleton" id="current_water_temp">-</span>
                                 </span>
                                 <span class="stat-context" id="ctx_wetsuit"></span>
                             </li>
@@ -5226,6 +5304,27 @@
         }
 
         // Confirm location button
+        // First-visit onboarding card: show once per browser, dismiss persists in localStorage.
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                if (localStorage.getItem('sd-seen-onboarding') === '1') return;
+            } catch (e) { return; }
+            var card = document.getElementById('onboarding-card');
+            var closeBtn = document.getElementById('onboarding-close');
+            if (!card || !closeBtn) return;
+            // Reveal after a small delay so it doesn't fight with the SSR fade-in.
+            setTimeout(function() { card.style.display = ''; }, 800);
+            function dismiss() {
+                card.style.display = 'none';
+                try { localStorage.setItem('sd-seen-onboarding', '1'); } catch (e) {}
+            }
+            closeBtn.addEventListener('click', dismiss);
+            // Also dismiss when the user opens the location modal — that's the
+            // first interaction the card points to.
+            var locBtn = document.querySelector('.header-location-btn');
+            if (locBtn) locBtn.addEventListener('click', dismiss, { once: true });
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             const confirmBtn = document.getElementById('confirm-location-btn');
 
@@ -5656,6 +5755,11 @@
                     if (tideChart && tideChart.canvas) {
                         tideChart.update('none');
                     }
+
+                    // Data has arrived — clear skeleton shimmer from current-conditions stats.
+                    document.querySelectorAll('#current-conditions-stats .skeleton').forEach(function(el) {
+                        el.classList.remove('skeleton');
+                    });
 
                     const current = data[0];
                     document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * M_TO_FT).toFixed(1)} ft` : '-';
