@@ -264,9 +264,15 @@
             background: rgba(255,255,255,0.03);
         }
 
+        /* Header clearance — applied to <main> so any content (SSR summary,
+           hero card, GridStack) starts below the fixed header rather than
+           being clipped under it. */
+        main {
+            padding-top: 68px;
+        }
+
         /* === GridStack Dashboard === */
         .grid-stack {
-            margin-top: 68px;
             min-height: calc(100vh - 68px);
         }
 
@@ -2053,7 +2059,8 @@
             .btn-text { display: none; }
             .btn-icon-only { display: inline-flex; align-items: center; justify-content: center; }
             .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 4px; }
-            .grid-stack { margin-top: 44px; min-height: calc(100vh - 44px); }
+            main { padding-top: 44px; }
+            .grid-stack { min-height: calc(100vh - 44px); }
             .modal-overlay { padding: 10px; }
             .modal-card { max-height: 95vh; }
             #location-map { height: 300px !important; }
@@ -3562,6 +3569,7 @@
 
         // === Panel Visibility Toggle ===
         const PANEL_NAMES = {
+            'forecast-hero': 'Next 6 Hours',
             'conditions': 'Current Conditions',
             'cam-1': 'Live Cam 1',
             'cam-2': 'Live Cam 2',
@@ -3577,6 +3585,11 @@
             'session-planner': 'Session Planner',
             'compare': 'Compare Breaks'
         };
+
+        // Panels that live outside the GridStack (fixed sections above the
+        // dashboard grid). Their visibility is still toggled via the same
+        // dropdown but they don't go through gridStack.addWidget/removeWidget.
+        const NON_GRIDSTACK_PANELS = new Set(['forecast-hero']);
 
         const DEFAULT_HIDDEN_PANELS = ['daylight', 'compare', 'tides'];
 
@@ -3595,9 +3608,7 @@
         }
 
         function togglePanel(panelId, visible) {
-            const el = document.querySelector(`.grid-stack-item[data-panel-id="${panelId}"]`);
-            if (!el || !dashboardGrid) return;
-
+            // Persist visibility regardless of panel kind
             const hidden = getHiddenPanels();
             if (visible) {
                 const idx = hidden.indexOf(panelId);
@@ -3606,6 +3617,16 @@
                 if (!hidden.includes(panelId)) hidden.push(panelId);
             }
             saveHiddenPanels(hidden);
+
+            // Non-GridStack panels (fixed sections) just flip display.
+            if (NON_GRIDSTACK_PANELS.has(panelId)) {
+                const section = document.getElementById(panelId);
+                if (section) section.style.display = visible ? '' : 'none';
+                return;
+            }
+
+            const el = document.querySelector(`.grid-stack-item[data-panel-id="${panelId}"]`);
+            if (!el || !dashboardGrid) return;
 
             if (visible) {
                 // Re-add widget to grid so it flows back into position
@@ -3632,6 +3653,11 @@
         function applyHiddenPanels() {
             const hidden = getHiddenPanels();
             hidden.forEach(function(panelId) {
+                if (NON_GRIDSTACK_PANELS.has(panelId)) {
+                    const section = document.getElementById(panelId);
+                    if (section) section.style.display = 'none';
+                    return;
+                }
                 const el = document.querySelector(`.grid-stack-item[data-panel-id="${panelId}"]`);
                 if (el && dashboardGrid) {
                     dashboardGrid.removeWidget(el, false);
@@ -4737,7 +4763,9 @@
                     weekday: 'short', month: 'short', day: 'numeric'
                 });
             }
-            hero.style.display = '';
+            // Respect the user's panel-visibility preference
+            var hiddenList = getHiddenPanels();
+            hero.style.display = hiddenList.indexOf('forecast-hero') !== -1 ? 'none' : '';
         }
 
         // Rebuild the daylight forecast table from cached data (used on skill level change)
