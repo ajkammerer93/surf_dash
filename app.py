@@ -1276,9 +1276,13 @@ def _fill_nan_nearest(grid_2d, max_iterations=None, min_valid_neighbors=1):
         if not np.any(eligible):
             break
         # Use the mean of valid neighbors as the fill value (more stable than
-        # picking one direction's value)
+        # picking one direction's value). Suppress the empty-slice warning
+        # numpy emits for all-NaN columns — those cells aren't eligible
+        # anyway, so the NaN mean is never written through.
         stack = np.stack(neighbors)
-        with np.errstate(invalid='ignore'):
+        import warnings as _warnings
+        with np.errstate(invalid='ignore'), _warnings.catch_warnings():
+            _warnings.simplefilter('ignore', RuntimeWarning)
             mean_neighbor = np.nanmean(stack, axis=0)
         filled[eligible] = mean_neighbor[eligible]
     return filled
