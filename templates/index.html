@@ -3817,7 +3817,9 @@
         // Global condition label mapping
         const CONDITION_LABELS = {
             clean: 'Offshore / Clean',
-            fair: 'Cross-shore / Fair',
+            'cross-light': 'Light Cross-shore',
+            'cross-shore': 'Cross-shore',
+            fair: 'Light Onshore',
             choppy: 'Onshore / Choppy',
             unknown: 'Unknown'
         };
@@ -3829,7 +3831,9 @@
             var diff = Math.abs(windDirection - BEACH_FACING_DIRECTION);
             if (diff > 180) diff = 360 - diff;
             if (diff >= 135) return 'clean';
-            if (diff >= 45) return 'fair';
+            if (diff >= 45) {
+                return (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD_GLOBAL) ? 'cross-light' : 'cross-shore';
+            }
             if (windSpeed !== null && windSpeed < LIGHT_ONSHORE_THRESHOLD_GLOBAL) return 'fair';
             return 'choppy';
         }
@@ -3901,7 +3905,8 @@
             if (level === 'beginner') {
                 if (mph < 3) return 'Nearly calm \u2014 smooth surface';
                 if (cond === 'clean') return 'Wind from land \u2014 nice and smooth';
-                if (cond === 'fair') return 'Some wind chop \u2014 still OK';
+                if (cond === 'cross-light' || cond === 'cross-shore') return 'Wind across the beach \u2014 some texture';
+                if (cond === 'fair') return 'Light wind from the sea \u2014 a bit bumpy';
                 return 'Very windy \u2014 not great for learning';
             }
 
@@ -3916,11 +3921,12 @@
                 if (mph < 25) return 'Strong offshore \u2014 spray off the lips';
                 return 'Howling offshore \u2014 hard to paddle out';
             }
-            if (cond === 'fair') {
-                if (mph < 8) return 'Light cross-shore \u2014 minor texture';
-                return 'Cross-shore \u2014 some bump';
+            if (cond === 'cross-light') return 'Light cross-shore \u2014 minor texture';
+            if (cond === 'cross-shore') {
+                if (mph < 18) return 'Cross-shore \u2014 some bump';
+                return 'Strong cross-shore \u2014 bumpy';
             }
-            if (mph < 10) return 'Light onshore \u2014 slightly bumpy';
+            if (cond === 'fair') return 'Light onshore \u2014 slightly bumpy';
             if (mph < 18) return 'Onshore \u2014 choppy, disorganized';
             return 'Strong onshore \u2014 blown out';
         }
@@ -3929,6 +3935,7 @@
         function scoreHour(forecastItem, tideHeight, tidePrev) {
             var ft = forecastItem.wave_height != null ? forecastItem.wave_height * M_TO_FT : 0;
             var period = forecastItem.wave_period || 0;
+            var waveDir = forecastItem.wave_direction;
             var windSpeed = forecastItem.wind_speed || 0;
             var windDir = forecastItem.wind_direction;
             var hour = getLocationHour(new Date(forecastItem.time));
@@ -3936,41 +3943,70 @@
 
             if (hour < 5 || hour > 20) return 5;
 
-            var score = 50;
+            // Height component — height bonus is multiplied by swell exposure below.
+            var heightScore = 0;
             if (level === 'beginner') {
-                if (ft >= 1 && ft <= 2.5) score += 20;
-                else if (ft < 0.5) score -= 30;
-                else if (ft > 3.5) score -= 25;
-                else if (ft > 2.5) score -= 15;
+                if (ft >= 1 && ft <= 2.5) heightScore = 20;
+                else if (ft < 0.5) heightScore = -30;
+                else if (ft > 3.5) heightScore = -25;
+                else if (ft > 2.5) heightScore = -15;
             } else if (level === 'intermediate') {
-                if (ft >= 2 && ft <= 5) score += 20;
-                else if (ft < 1) score -= 30;
-                else if (ft > 7) score -= 15;
+                if (ft >= 2 && ft <= 5) heightScore = 20;
+                else if (ft < 1) heightScore = -30;
+                else if (ft > 7) heightScore = -15;
             } else if (level === 'advanced') {
-                if (ft >= 4 && ft <= 10) score += 20;
-                else if (ft >= 3 && ft < 4) score += 10;
-                else if (ft < 2) score -= 20;
-                else if (ft > 15) score -= 25;
-                else if (ft > 12) score -= 15;
-                else if (ft > 10) score -= 5;
+                if (ft >= 4 && ft <= 10) heightScore = 20;
+                else if (ft >= 3 && ft < 4) heightScore = 10;
+                else if (ft < 2) heightScore = -20;
+                else if (ft > 15) heightScore = -25;
+                else if (ft > 12) heightScore = -15;
+                else if (ft > 10) heightScore = -5;
             } else {
-                if (ft >= 2 && ft <= 4) score += 20;
-                else if (ft < 0.5) score -= 40;
-                else if (ft > 6) score -= 10;
+                if (ft >= 2 && ft <= 4) heightScore = 20;
+                else if (ft < 0.5) heightScore = -40;
+                else if (ft > 6) heightScore = -10;
             }
 
-            if (period >= 12) score += 15;
-            else if (period >= 9) score += 8;
-            else if (period < 6) score -= 10;
+            // Swell exposure: refraction loss when swell direction misaligns with beach-facing normal.
+            // Diminishes both wave height and the value of period/wind, since clean wind on no waves
+            // is still no waves.
+            var swellMult = 1.0;
+            if (waveDir !== null && waveDir !== undefined
+                    && typeof BEACH_FACING_DIRECTION === 'number') {
+                var swellDiff = Math.abs(waveDir - BEACH_FACING_DIRECTION) % 360;
+                if (swellDiff > 180) swellDiff = 360 - swellDiff;
+                if (swellDiff <= 30) swellMult = 1.0;
+                else if (swellDiff <= 75) swellMult = 0.55;
+                else if (swellDiff <= 100) swellMult = 0.25;
+                else swellMult = 0.08;
+            }
+            // Only attenuate positive height bonuses — penalties for too-big/too-small still apply
+            var heightContribution = heightScore > 0 ? heightScore * swellMult : heightScore;
+            // Period is preserved better than height under refraction, so scale less aggressively
+            var periodMult = Math.sqrt(swellMult);
 
+            var score = 50 + heightContribution;
+
+            // Period: long-period ground swell dominates wind/short waves
+            if (period >= 15) score += 25 * periodMult;
+            else if (period >= 12) score += 20 * periodMult;
+            else if (period >= 9) score += 10 * periodMult;
+            else if (period < 6) score -= 5;
+
+            // Wind condition vs beach orientation
+            // Positive wind bonuses (offshore, cross-light) are gated by swell presence
             var cond = classifySurfConditionGlobal(windDir, windSpeed);
             var mph = windSpeed * KMH_TO_MPH;
             if (cond === 'clean') {
-                if (mph < 15) score += 25;
-                else if (mph < 25) score += 15;
-                else score += 5;
+                var bonus = mph < 15 ? 25 : (mph < 25 ? 15 : 5);
+                score += bonus * swellMult;
+            } else if (cond === 'cross-light') {
+                score += 10 * swellMult;
+            } else if (cond === 'cross-shore') {
+                if (mph < 18) score += 0;
+                else score -= 8;
             } else if (cond === 'fair') {
-                score += 10;
+                score -= 5;
             } else if (cond === 'choppy') {
                 if (mph >= 20) score -= 25;
                 else score -= 15;
@@ -3989,15 +4025,20 @@
         function buildWindowSummary(avgWH, avgWP, windCond) {
             var level = currentSkillLevel || 'all';
             var ft = avgWH * M_TO_FT;
+            function _windPhrase(c, beginner) {
+                if (c === 'clean') return beginner ? 'smooth water' : 'clean faces';
+                if (c === 'cross-light') return beginner ? 'a little texture' : 'light cross-shore';
+                if (c === 'cross-shore') return beginner ? 'cross-wind texture' : 'cross-shore';
+                if (c === 'fair') return beginner ? 'a little choppy' : 'light onshore';
+                return beginner ? 'very choppy' : 'choppy';
+            }
             if (level === 'beginner') {
                 var whDesc = ft < 0.5 ? 'Flat' : ft < 2 ? 'Small waves, good for practicing' : ft < 3.5 ? 'Medium waves, challenging' : 'Too big for beginners';
-                var windDesc = windCond === 'clean' ? 'smooth water' : (windCond === 'fair' ? 'a little choppy' : 'very choppy');
-                return whDesc + ', ' + windDesc;
+                return whDesc + ', ' + _windPhrase(windCond, true);
             }
             var whDesc = avgWH < 0.5 ? 'flat' : ft.toFixed(0) + 'ft';
             var wpDesc = avgWP >= 12 ? 'ground swell' : (avgWP >= 9 ? 'medium swell' : 'short-period swell');
-            var windDesc = windCond === 'clean' ? 'clean faces' : (windCond === 'fair' ? 'moderate texture' : 'choppy');
-            return whDesc + ' ' + wpDesc + ', ' + windDesc;
+            return whDesc + ' ' + wpDesc + ', ' + _windPhrase(windCond, false);
         }
 
         function computeSessionWindows() {
@@ -4933,7 +4974,8 @@
             return parseInt(getLocationParts(date).hour);
         }
 
-        // Day/night shading plugin — draws alternating bands behind chart data
+        // Day/night shading plugin — draws alternating bands behind chart data.
+        // Skips the top 10px so the surf condition color strip stays unobscured.
         const dayNightPlugin = {
             id: 'dayNight',
             beforeDraw(chart) {
@@ -4941,24 +4983,27 @@
                 const { ctx, chartArea, scales: { x } } = chart;
                 if (!chartArea) return;
                 const { left, right, top, bottom } = chartArea;
-                const height = bottom - top;
+                // Only the wave chart has the surf condition strip; leave room for it there.
+                const hasSurfStrip = chart.canvas && chart.canvas.id === 'waveChart';
+                const SURF_STRIP_HEIGHT = hasSurfStrip ? 10 : 0;
+                const bandTop = top + SURF_STRIP_HEIGHT;
+                const bandHeight = bottom - bandTop;
+                if (bandHeight <= 0) return;
 
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(left, top, right - left, height);
+                ctx.rect(left, bandTop, right - left, bandHeight);
                 ctx.clip();
 
-                // Night intervals: gaps between sunset(i) and sunrise(i+1), plus
-                // chart-start → first sunrise and last sunset → chart-end
                 var _dk = isDarkTheme();
-                const nightColor = _dk ? 'rgba(30, 45, 90, 0.55)' : 'rgba(40, 50, 90, 0.12)';
-                const dayColor = _dk ? 'rgba(255, 215, 120, 0.22)' : 'rgba(255, 220, 130, 0.18)';
+                const nightColor = _dk ? 'rgba(0, 0, 0, 0.50)' : 'rgba(40, 50, 90, 0.12)';
+                const dayColor = _dk ? 'rgba(255, 255, 255, 0.10)' : 'rgba(255, 220, 130, 0.18)';
 
                 // Draw night from chart start to first sunrise
                 const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);
                 if (firstSunrise > left) {
                     ctx.fillStyle = nightColor;
-                    ctx.fillRect(left, top, Math.min(firstSunrise, right) - left, height);
+                    ctx.fillRect(left, bandTop, Math.min(firstSunrise, right) - left, bandHeight);
                 }
 
                 // Draw day/night pairs for each day
@@ -4969,7 +5014,7 @@
                     // Day band: sunrise → sunset
                     if (ssPx > srPx) {
                         ctx.fillStyle = dayColor;
-                        ctx.fillRect(srPx, top, ssPx - srPx, height);
+                        ctx.fillRect(srPx, bandTop, ssPx - srPx, bandHeight);
                     }
 
                     // Night band: this sunset → next sunrise (or chart end)
@@ -4979,7 +5024,7 @@
                         : right;
                     if (nightEnd > nightStart) {
                         ctx.fillStyle = nightColor;
-                        ctx.fillRect(nightStart, top, nightEnd - nightStart, height);
+                        ctx.fillRect(nightStart, bandTop, nightEnd - nightStart, bandHeight);
                     }
                 });
 
