@@ -5454,15 +5454,27 @@
                         var labelEl = document.createElement('span');
                         labelEl.textContent = confLabel;
                         confBadge.appendChild(labelEl);
+                        var sparklineEl = null;
                         if (Array.isArray(c.per_hour) && c.per_hour.length > 1) {
-                            confBadge.appendChild(buildConfidenceSparkline(c.per_hour));
+                            sparklineEl = buildConfidenceSparkline(c.per_hour);
+                            confBadge.appendChild(sparklineEl);
                         }
                         var endScore = c.per_hour && c.per_hour.length ? c.per_hour[c.per_hour.length - 1] : c.score;
-                        confBadge.title = 'Forecast confidence\n' +
-                            'Source: ' + (c.source || rawResponse.source || '?') + '\n' +
-                            'Now: ' + c.score + '%  |  +' + (c.per_hour ? c.per_hour.length : 0) + 'h: ' + endScore + '%\n' +
-                            'Quality: ' + (c.factors ? c.factors.source_quality : '?') +
-                            '%  Completeness: ' + (c.factors ? c.factors.completeness : '?') + '%';
+                        confBadge.title = (
+                            'Forecast confidence over the next 7 days.\n' +
+                            'The sparkline shows how reliable each hour\'s forecast is,\n' +
+                            'from now (left) to ~7 days out (right). It slopes down\n' +
+                            'because wave-model skill decays with lead time.\n\n' +
+                            'Now: ' + c.score + '%   ·   7 days out: ' + endScore + '%\n' +
+                            'Source: ' + (c.source || rawResponse.source || '?') +
+                            ' (skill ceiling ' + (c.factors ? c.factors.source_quality : '?') + '%)\n' +
+                            'Field completeness: ' + (c.factors ? c.factors.completeness : '?') + '%'
+                        );
+                        if (sparklineEl) {
+                            sparklineEl.setAttribute('role', 'img');
+                            sparklineEl.setAttribute('aria-label',
+                                'Confidence sparkline: ' + c.score + '% now, falling to ' + endScore + '% at 7-day lead');
+                        }
                         confBadge.className = 'panel-badge' + (c.score >= 75 ? '' : c.score >= 50 ? ' warning' : ' error');
                         confBadge.style.display = '';
                     }
