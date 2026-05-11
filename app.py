@@ -509,7 +509,7 @@ def _get_point_from_open_meteo(latitude, longitude):
             params={
                 "latitude": latitude,
                 "longitude": longitude,
-                "hourly": "wave_height,wave_period,wave_direction,wind_wave_height,wind_wave_period,wind_wave_direction",
+                "hourly": "wave_height,wave_peak_period,wave_period,wave_direction,wind_wave_height,wind_wave_peak_period,wind_wave_period,wind_wave_direction",
                 "forecast_days": 7,
                 "timezone": "UTC",
             },
@@ -527,10 +527,16 @@ def _get_point_from_open_meteo(latitude, longitude):
             return None
 
         wh = hourly.get("wave_height", [])
-        wp = hourly.get("wave_period", [])
+        # Prefer peak period (Tp) to match NOMADS/WW3. Open-Meteo sometimes
+        # returns null peak period for individual hours, so fall back to the
+        # mean period array element-wise rather than letting the whole hour
+        # go missing.
+        wp_peak = hourly.get("wave_peak_period", [])
+        wp_mean = hourly.get("wave_period", [])
         wd = hourly.get("wave_direction", [])
         wwh = hourly.get("wind_wave_height", [])
-        wwp = hourly.get("wind_wave_period", [])
+        wwp_peak = hourly.get("wind_wave_peak_period", [])
+        wwp_mean = hourly.get("wind_wave_period", [])
         wwd = hourly.get("wind_wave_direction", [])
 
         # Compute sunrise/sunset for each unique date
@@ -549,6 +555,10 @@ def _get_point_from_open_meteo(latitude, longitude):
                 return round(float(arr[idx]), 2)
             return None
 
+        def _period_val(peak_arr, mean_arr, idx):
+            v = _val(peak_arr, idx)
+            return v if v is not None else _val(mean_arr, idx)
+
         forecast = []
         for i, t_str in enumerate(times):
             date_key = t_str[:10]
@@ -557,10 +567,10 @@ def _get_point_from_open_meteo(latitude, longitude):
             forecast.append({
                 "time": time_str,
                 "wave_height": _val(wh, i),
-                "wave_period": _val(wp, i),
+                "wave_period": _period_val(wp_peak, wp_mean, i),
                 "wave_direction": _val(wd, i),
                 "wind_wave_height": _val(wwh, i),
-                "wind_wave_period": _val(wwp, i),
+                "wind_wave_period": _period_val(wwp_peak, wwp_mean, i),
                 "wind_wave_direction": _val(wwd, i),
                 "wind_speed": None,
                 "wind_direction": None,
@@ -2600,10 +2610,13 @@ def swell_narrative():
         if not data or len(data) < 2:
             return None
 
-        # Extract swell parameters from first entry
+        # Extract swell parameters from first entry. Peak period (Tp) can be
+        # None when the upstream model didn't resolve a peak — treat as 0 so
+        # downstream classification falls through to "wind swell" instead of
+        # raising on None comparisons.
         wave_dir = data[0].get('wave_direction')
-        wave_period = data[0].get('wave_period', 0)
-        wave_height = data[0].get('wave_height', 0)
+        wave_period = data[0].get('wave_period') or 0
+        wave_height = data[0].get('wave_height') or 0
 
         # Compass direction label
         compass_dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
@@ -2612,7 +2625,7 @@ def swell_narrative():
         if wave_dir is not None:
             source_label = compass_dirs[round(wave_dir / 22.5) % 16]
 
-        # Swell type classification (3-tier)
+        # Swell type classification (3-tier, period-based)
         if wave_period >= 12:
             swell_type = 'Ground swell'
         elif wave_period >= 9:
@@ -2620,6 +2633,25 @@ def swell_narrative():
         else:
             swell_type = 'Wind swell'
         is_ground_swell = wave_period >= 12
+
+        # Wave steepness s = 2π·Hs / (g·T²). Distinguishes well-decayed remote
+        # swell (low steepness, clean lines) from locally-generated sea (high
+        # steepness, choppy) independent of period. Tuned thresholds so the
+        # typical 8-10ft @ 13-17s groundswell range (s ≈ 0.005-0.010) lands
+        # in 'ground', not 'mixed':
+        #   s < 0.008  — ground swell (long-decayed remote energy)
+        #   0.008-0.025 — mixed
+        #   s >= 0.025 — wind sea / locally generated
+        steepness = None
+        steepness_class = None
+        if wave_period and wave_height and wave_period > 0 and wave_height > 0:
+            steepness = (2 * math.pi * wave_height) / (9.81 * wave_period * wave_period)
+            if steepness < 0.008:
+                steepness_class = 'ground'
+            elif steepness < 0.025:
+                steepness_class = 'mixed'
+            else:
+                steepness_class = 'sea'
 
         # Estimated source distance range using deep-water group velocity
         # Group velocity (m/s) = g*T / (4*pi) ≈ 0.78 * T
@@ -2685,12 +2717,20 @@ def swell_narrative():
         if arrival_eta_hours is not None and arrival_eta_hours > 1:
             peak_ft = round(peak_height * m_to_ft, 1)
             parts.append(f"Peak {peak_ft}ft arriving in ~{arrival_eta_hours}h")
+        # Annotate notable period-vs-steepness disagreements; usually they
+        # agree, but when they don't it's a signal worth surfacing.
+        if is_ground_swell and steepness_class == 'sea':
+            parts.append("High steepness despite long period — locally mixed seas")
+        elif wave_period and wave_period < 9 and steepness_class == 'ground':
+            parts.append("Low steepness despite short period — cleanly organized")
         narrative = '. '.join(p for p in parts if p) + '.'
 
         return {
             'narrative': narrative,
             'swell_direction': wave_dir,
             'swell_type': swell_type.lower(),
+            'steepness': round(steepness, 4) if steepness is not None else None,
+            'steepness_class': steepness_class,
             'is_building': trend == 'building',
             'trend': trend,
             'estimated_source_km': estimated_source_km,
