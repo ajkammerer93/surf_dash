@@ -1796,6 +1796,36 @@ def learn_article(slug):
     return render_template('learn/article.html', article=article, related=related)
 
 
+@app.route('/regions')
+def regions_index():
+    """Index of /regions/<slug> landing pages."""
+    from region_pages import REGIONS
+    return render_template('regions/index.html', regions=REGIONS)
+
+
+@app.route('/regions/<slug>')
+def region_page(slug):
+    """Render one /regions/<slug> landing page with its spot roster."""
+    from region_pages import REGIONS_BY_SLUG
+    region = REGIONS_BY_SLUG.get(slug)
+    if not region:
+        from flask import abort
+        abort(404)
+    # Resolve the region's spot list. Prefer explicit slug_list, fall back
+    # to state_filter for the simpler regions (Jersey, Virginia, etc.).
+    spots = []
+    if region.get('slug_list'):
+        for s in region['slug_list']:
+            loc = LOCATION_BY_SLUG.get(s)
+            if loc:
+                spots.append(loc)
+    elif region.get('state_filter'):
+        spots = [loc for loc in LOCATION_BY_SLUG.values()
+                 if loc.get('state') == region['state_filter']]
+        spots.sort(key=lambda x: x['lat'])
+    return render_template('regions/page.html', region=region, spots=spots)
+
+
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope."""
@@ -1889,6 +1919,25 @@ def sitemap_xml():
         for _a in _LEARN_ARTICLES:
             urls.append('  <url>')
             urls.append(f'    <loc>https://freesurfforecast.com/learn/{_a["slug"]}</loc>')
+            urls.append(f'    <lastmod>{today}</lastmod>')
+            urls.append('    <changefreq>monthly</changefreq>')
+            urls.append('    <priority>0.7</priority>')
+            urls.append('  </url>')
+    except Exception:
+        pass
+
+    # /regions topic cluster — regional landing pages
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/regions</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.7</priority>')
+    urls.append('  </url>')
+    try:
+        from region_pages import REGIONS as _REGIONS
+        for _r in _REGIONS:
+            urls.append('  <url>')
+            urls.append(f'    <loc>https://freesurfforecast.com/regions/{_r["slug"]}</loc>')
             urls.append(f'    <lastmod>{today}</lastmod>')
             urls.append('    <changefreq>monthly</changefreq>')
             urls.append('    <priority>0.7</priority>')

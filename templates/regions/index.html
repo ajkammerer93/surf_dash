@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surf Forecast Regions | Free Surf Forecast</title>
+    <meta name="description" content="Regional surf forecast guides — Outer Banks, Jersey Shore, Space Coast, Southern California, North Shore Hawaii. Each region with seasonal swell context and a roster of local breaks.">
+    <link rel="canonical" href="https://freesurfforecast.com/regions">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Surf Forecast Regions | Free Surf Forecast">
+    <meta property="og:description" content="Regional surf forecast guides — Outer Banks, Jersey Shore, Space Coast, Southern California, North Shore Hawaii.">
+    <meta property="og:url" content="https://freesurfforecast.com/regions">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Surf Forecast Regions | Free Surf Forecast">
+    <meta name="twitter:description" content="Regional surf forecast guides for the US East Coast, West Coast, and Hawaii.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0a0a0a; --surface: #141414; --border: #2a2a2a;
+            --text: #e8e8e8; --text-dim: #888; --text-muted: #666;
+            --accent: #fff; --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f5f5f5; --surface: #ffffff; --border: #d4d4d4;
+            --text: #1a1a1a; --text-dim: #555; --text-muted: #6b6b6b;
+            --accent: #111; --status-live: #16a34a;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 13px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+        header.site-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
+        header.site-header a.brand { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+        header.site-header a.brand:hover { color: var(--status-live); }
+        nav.site-nav a { color: var(--text-dim); text-decoration: none; font-size: 12px; margin-left: 16px; }
+        nav.site-nav a:hover { color: var(--text); }
+        main.regions-index { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
+        main.regions-index h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--accent); }
+        main.regions-index .tagline { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
+        ul.region-list { list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: 1fr; gap: 14px; }
+        ul.region-list li { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px 18px; transition: border-color 0.15s; }
+        ul.region-list li:hover { border-color: var(--text-muted); }
+        ul.region-list li a { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 700; display: block; margin-bottom: 6px; }
+        ul.region-list li a:hover { color: var(--status-live); }
+        ul.region-list li p { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 0; }
+        footer.site-footer { text-align: center; padding: 12px 16px; font-size: 10px; color: var(--text-muted); border-top: 1px solid var(--border); background: var(--surface); }
+        footer.site-footer a { color: var(--text-muted); text-decoration: none; }
+        footer.site-footer a:hover { color: var(--text); text-decoration: underline; }
+        @media (max-width: 600px) { main.regions-index { padding: 28px 16px 60px; } main.regions-index h1 { font-size: 22px; } }
+    </style>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://freesurfforecast.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Regions", "item": "https://freesurfforecast.com/regions" }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <header class="site-header">
+        <a href="/" class="brand">Free Surf Forecast</a>
+        <nav class="site-nav">
+            <a href="/">Dashboard</a>
+            <a href="/locations">Locations</a>
+            <a href="/learn">Learn</a>
+            <a href="/glossary">Glossary</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <main class="regions-index">
+        <h1>Surf Forecast Regions</h1>
+        <p class="tagline">Regional context for the breaks on this site — dominant swell seasons, orientation, hazards.</p>
+
+        <ul class="region-list">
+            {% for region in regions %}
+            <li>
+                <a href="/regions/{{ region.slug }}">{{ region.short_title }}</a>
+                <p>{{ region.description }}</p>
+            </li>
+            {% endfor %}
+        </ul>
+    </main>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Free Surf Forecast &middot;
+            <a href="/about">About</a> &middot;
+            <a href="/locations">Locations</a> &middot;
+            <a href="/learn">Learn</a> &middot;
+            <a href="/glossary">Glossary</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a>
+        </div>
+    </footer>
+    <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "4838c7fb1ed34d59b891df1bb379ddfb"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>
