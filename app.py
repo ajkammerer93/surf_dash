@@ -107,6 +107,13 @@ def _build_location_index():
                 'lon': cam['lon'],
                 'slug': slug,
                 'state': cam.get('state'),
+                # Break-type metadata (optional, hand-curated over time).
+                # spot_type: 'beach' | 'reef' | 'point' | 'jetty' | 'pier'
+                # optimal_tide: 'low' | 'mid' | 'high' | 'any'
+                # shelf_depth_m: rough depth ~1-2km offshore (for Phase 4 shoaling)
+                'spot_type': cam.get('spot_type'),
+                'optimal_tide': cam.get('optimal_tide'),
+                'shelf_depth_m': cam.get('shelf_depth_m'),
             }
     return by_slug
 
@@ -1679,6 +1686,8 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
         location_slug=location_slug,
         location_state=location_state,
         location_display_state=location_display_state,
+        location_spot_type=(location or {}).get('spot_type'),
+        location_optimal_tide=(location or {}).get('optimal_tide'),
         ssr_summary=ssr_summary,
         nearby_spots=nearby_spots,
         locations=LOCATION_BY_SLUG,

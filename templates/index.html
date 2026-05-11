@@ -4300,14 +4300,59 @@
                 else score -= 15;
             }
 
-            // Tide: moving tide is generally better than slack
+            // Tide scoring — break-specific when metadata is curated, else
+            // fall back to the generic moving-vs-slack heuristic.
             if (tideHeight != null && tidePrev != null) {
-                var tideChange = Math.abs(tideHeight - tidePrev);
-                if (tideChange > 0.05) score += 7;
-                else score -= 3;
+                var meta = window._currentSpotMeta;
+                var optimal = meta && meta.optimal_tide;
+                if (optimal && optimal !== 'any') {
+                    var stage = _tideStageAt(forecastItem.time);
+                    if (stage === optimal) score += 10;
+                    else if (stage === _oppositeTide(optimal)) score -= 5;
+                    // 'mid' stage at low/high preference = neutral
+                } else {
+                    var tideChange = Math.abs(tideHeight - tidePrev);
+                    if (tideChange > 0.05) score += 7;
+                    else score -= 3;
+                }
             }
 
             return Math.max(0, Math.min(100, score));
+        }
+
+        // Map of opposite tide stages — used to penalize forecast hours when
+        // the tide is fighting the break's preferred stage.
+        function _oppositeTide(stage) {
+            if (stage === 'low') return 'high';
+            if (stage === 'high') return 'low';
+            return null;  // 'mid' has no clean opposite
+        }
+
+        // Determine tide stage at a given forecast time. Returns 'low', 'mid',
+        // or 'high' based on proximity to nearest high/low tide event.
+        // Null when high/low data isn't loaded yet.
+        function _tideStageAt(timeIso) {
+            if (!window._tideHighLow || !window._tideHighLow.length || !timeIso) return null;
+            var t = new Date(timeIso).getTime();
+            var prevEvent = null, nextEvent = null;
+            for (var i = 0; i < window._tideHighLow.length; i++) {
+                var et = new Date(window._tideHighLow[i].time).getTime();
+                if (et <= t) {
+                    prevEvent = window._tideHighLow[i];
+                } else {
+                    nextEvent = window._tideHighLow[i];
+                    break;
+                }
+            }
+            if (!prevEvent || !nextEvent) return null;
+            var prevTs = new Date(prevEvent.time).getTime();
+            var nextTs = new Date(nextEvent.time).getTime();
+            var prog = (t - prevTs) / Math.max(1, (nextTs - prevTs));
+            // Within ~25% of an event: that event's stage. Otherwise 'mid'.
+            // Tide event types are 'H' (high) or 'L' (low) from NOAA CO-OPS.
+            if (prog < 0.25) return prevEvent.type === 'H' ? 'high' : 'low';
+            if (prog > 0.75) return nextEvent.type === 'H' ? 'high' : 'low';
+            return 'mid';
         }
 
         function buildWindowSummary(avgWH, avgWP, windCond) {
@@ -4701,6 +4746,14 @@
             name: {{ location_name|tojson }},
             slug: {{ (location_slug or '')|tojson }}
         } : null;
+
+        // Hand-curated break-type metadata for the current location. Empty when
+        // not yet curated; scoring code falls back to the generic moving/slack
+        // tide bonus when these are null.
+        window._currentSpotMeta = {
+            spot_type: {{ (location_spot_type or '')|tojson }},
+            optimal_tide: {{ (location_optimal_tide or '')|tojson }}
+        };
 
         function getInitialLocation() {
             // Priority 1: Server-injected location (from /forecast/<slug> route)
