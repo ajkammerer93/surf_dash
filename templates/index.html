@@ -2053,6 +2053,33 @@
     }
     </script>
 
+    <!-- TouristAttraction per-location -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TouristAttraction",
+        "name": "{{ location_name }} Surf Forecast",
+        "url": "{{ canonical_url }}",
+        "description": "{{ meta_description }}",
+        "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": {{ location_lat }},
+            "longitude": {{ location_lon }}
+        }{% if location_state %},
+        "address": {
+            "@type": "PostalAddress",
+            "addressRegion": "{{ location_state }}",
+            "addressCountry": "US"
+        }{% endif %},
+        "amenityFeature": [
+            { "@type": "LocationFeatureSpecification", "name": "Live surf cam", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "7-day forecast", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "Tide predictions", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "Wind & wave data", "value": true }
+        ]
+    }
+    </script>
+
 </head>
 <body>
 
@@ -2239,13 +2266,24 @@
 
     {% if ssr_summary %}
     <section id="ssr-summary" style="max-width: 720px; margin: 12px auto; padding: 16px 20px; color: var(--text-dim); font-size: 12px; line-height: 1.6; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;">
-        <h2 style="font-size: 14px; color: var(--text); margin-bottom: 8px;">Current Conditions at {{ location_name }}</h2>
+        <h2 style="font-size: 14px; color: var(--text); margin-bottom: 8px;">Live Surf Forecast for {{ location_name }}{% if location_display_state %}, {{ location_display_state }}{% endif %}</h2>
+        {% if ssr_summary.live %}
         <p>
-            {% if ssr_summary.wave_height is not none %}{{ ssr_summary.wave_height }}ft waves{% endif %}
-            {% if ssr_summary.wave_period is not none %} at {{ ssr_summary.wave_period }}s period{% endif %}.
-            {% if ssr_summary.wind_speed is not none %}Wind {{ ssr_summary.wind_speed }}mph{% endif %}{% if ssr_summary.wind_direction is not none %} from {{ ssr_summary.wind_direction }}&deg;{% endif %}.
-            {{ ssr_summary.condition }}.
+            <strong>Now:</strong>
+            {% if ssr_summary.live.wave_height is not none %}{{ ssr_summary.live.wave_height }}ft waves{% endif %}
+            {% if ssr_summary.live.wave_period is not none %} at {{ ssr_summary.live.wave_period }}s period{% endif %}.
+            {% if ssr_summary.live.wind_speed is not none %}Wind {{ ssr_summary.live.wind_speed }}mph{% endif %}{% if ssr_summary.live.wind_direction is not none %} from {{ ssr_summary.live.wind_direction }}&deg;{% endif %}.
+            {{ ssr_summary.live.condition }}.
         </p>
+        {% endif %}
+        <p>
+            {% if ssr_summary.orientation_cardinal %}{{ ssr_summary.orientation_cardinal }}-facing beach ({{ ssr_summary.orientation_deg }}&deg;).{% endif %}
+            Coordinates {{ ssr_summary.lat }}, {{ ssr_summary.lon }}.
+            {% if ssr_summary.nearest_buoy_id %}Nearest NDBC buoy: <a href="https://www.ndbc.noaa.gov/station_page.php?station={{ ssr_summary.nearest_buoy_id }}" rel="noopener" target="_blank">{{ ssr_summary.nearest_buoy_id }}</a> ({{ ssr_summary.nearest_buoy_km }} km).{% endif %}
+        </p>
+        {% if ssr_summary.seasonal_note %}
+        <p style="margin-top: 6px;">{{ ssr_summary.seasonal_note }}</p>
+        {% endif %}
         <p style="margin-top: 6px;">{{ meta_description }}</p>
     </section>
     {% endif %}

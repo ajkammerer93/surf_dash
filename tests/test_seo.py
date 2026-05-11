@@ -331,32 +331,71 @@ class TestInternalLinking:
 # ===================================================================
 
 class TestSSRContent:
-    """SSR summary should appear when cache is warm, be absent when cold."""
+    """SSR summary is always present with location-specific static content,
+    plus an optional live-conditions block when the forecast cache is warm."""
 
-    def test_ssr_absent_when_cache_cold(self, client):
-        from app import _cache
-        # Use coords that are unlikely to be cached
-        r = client.get('/forecast/pipeline-north-shore-hi')
-        html = r.data.decode()
-        # May or may not have SSR depending on cache state — just verify page loads
-        assert r.status_code == 200
-
-    def test_ssr_section_has_correct_structure(self, client):
-        """If SSR is present, verify it has the right structure."""
-        # Warm cache first
-        loc = LOCATION_BY_SLUG['virginia-beach']
-        client.get(f'/api/forecast?lat={loc["lat"]}&lon={loc["lon"]}')
+    def test_ssr_always_present(self, client):
+        """Even on cold cache the SSR block must render with static location info."""
         r = client.get('/forecast/virginia-beach')
         html = r.data.decode()
-        if 'id="ssr-summary"' in html:
-            assert 'Current Conditions at Virginia Beach' in html
-            assert 'waves' in html.lower()
+        assert r.status_code == 200
+        assert 'id="ssr-summary"' in html, "SSR summary section must always render"
+
+    def test_ssr_section_has_correct_structure(self, client):
+        r = client.get('/forecast/virginia-beach')
+        html = r.data.decode()
+        assert 'id="ssr-summary"' in html
+        assert 'Live Surf Forecast for Virginia Beach' in html
+        # State should be present in the heading or body
+        assert 'VA' in html
+        # Either coordinates or facing direction should appear in the static block
+        assert 'Coordinates' in html or 'facing beach' in html
+
+    def test_ssr_includes_state_in_meta_description(self, client):
+        r = client.get('/forecast/virginia-beach')
+        html = r.data.decode()
+        desc = re.search(r'<meta name="description" content="([^"]+)"', html)
+        assert desc, "Missing meta description"
+        assert 'VA' in desc.group(1), "Meta description should include state code"
+
+    def test_ssr_content_differs_by_location(self, client):
+        """Each /forecast/<slug> page should have meaningfully different SSR
+        content so Google doesn't see 126 near-duplicate pages."""
+        r1 = client.get('/forecast/virginia-beach').data.decode()
+        r2 = client.get('/forecast/wrightsville-beach').data.decode()
+        # Extract just the SSR block from each
+        m1 = re.search(r'id="ssr-summary".*?</section>', r1, re.DOTALL)
+        m2 = re.search(r'id="ssr-summary".*?</section>', r2, re.DOTALL)
+        assert m1 and m2, "SSR block missing on one of the test pages"
+        assert m1.group(0) != m2.group(0), "SSR content must differ between locations"
 
     def test_noscript_fallback_present(self, client):
         r = client.get('/forecast/virginia-beach')
         html = r.data.decode()
         assert '<noscript>' in html
         assert 'Virginia Beach' in html
+
+
+class TestTouristAttractionSchema:
+    """Each forecast page should expose a TouristAttraction JSON-LD with geo +
+    address region so it can rank for geo-intent queries."""
+
+    def test_tourist_attraction_present(self, client):
+        r = client.get('/forecast/virginia-beach')
+        attractions = _parse_json_ld(r.data.decode(), 'TouristAttraction')
+        assert len(attractions) == 1, "Should have exactly 1 TouristAttraction per forecast page"
+        a = attractions[0]
+        assert a.get('name', '').startswith('Virginia Beach')
+        assert 'geo' in a and a['geo'].get('latitude') is not None
+        assert a.get('address', {}).get('addressRegion') == 'VA'
+
+    def test_tourist_attraction_unique_per_location(self, client):
+        """The TouristAttraction schema's name + geo must differ across pages."""
+        a1 = _parse_json_ld(client.get('/forecast/virginia-beach').data.decode(), 'TouristAttraction')
+        a2 = _parse_json_ld(client.get('/forecast/wrightsville-beach').data.decode(), 'TouristAttraction')
+        assert a1 and a2
+        assert a1[0]['name'] != a2[0]['name']
+        assert a1[0]['geo']['latitude'] != a2[0]['geo']['latitude']
 
 
 # ===================================================================

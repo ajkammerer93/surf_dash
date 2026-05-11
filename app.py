@@ -1436,74 +1436,165 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         traceback.print_exc()
         return None
 
-def _get_ssr_summary(lat, lon):
-    """Get server-side rendered forecast summary for SEO. Returns dict or None."""
+COMPASS_DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+
+def _deg_to_cardinal(deg):
+    """Convert a compass bearing in degrees to a 16-point cardinal label."""
+    if deg is None:
+        return ''
+    return COMPASS_DIRS[round(deg / 22.5) % 16]
+
+
+# Hand-curated seasonal climatology notes keyed by state code. Used in the
+# SSR block to give Googlebot (and humans on slow connections) unique
+# per-region indexable content even when no live forecast is cached.
+_SEASONAL_NOTES = {
+    'NC': "Hurricane season (Aug–Nov) brings the most consistent groundswell; nor'easters from late autumn through winter produce powerful but stormier conditions.",
+    'VA': "Best swells arrive with hurricanes (Aug–Oct) and winter nor'easters; summer mornings often offer the cleanest small wind swell.",
+    'MD': "Hurricane swells in late summer through autumn dominate the season; winter storms add shorter-period wind swell windows.",
+    'NJ': "Hurricane season (Aug–Oct) brings the best groundswells; spring and fall transitions deliver clean nor'easter energy.",
+    'NY': "Nor'easters from late autumn through winter generate the heaviest surf; summer brings small but clean tropical swell windows.",
+    'CT': "Sheltered Long Island Sound limits swell exposure; best windows come from large southerly hurricane swells and rare nor'easter wrap.",
+    'RI': "Hurricane swells (Aug–Oct) and winter nor'easters provide the most consistent surf; south-facing breaks work best on tropical systems.",
+    'MA': "Cape Cod fires on south and east hurricane swells; the North Shore picks up cleaner nor'easter energy from late autumn through winter.",
+    'NH': "Hurricane season and winter nor'easters drive most surf here; water stays cold year-round.",
+    'ME': "Summer hurricane swells (Aug–Oct) and winter nor'easters produce the cleanest conditions; expect cold water year-round.",
+    'DE': "Hurricane swells in late summer and winter nor'easters dominate; spring and fall transitions offer cleaner conditions.",
+    'SC': "Hurricane season (Aug–Nov) and winter nor'easters drive the best surf; summer is generally small.",
+    'GA': "Limited swell exposure with hurricane-driven windows in late summer and occasional winter storm pulses.",
+    'FL': "Best surf comes from offshore hurricanes (Aug–Nov), winter cold fronts, and the occasional nor'easter pushing south.",
+    'AL': "Gulf swells from tropical systems (Jun–Oct) and winter cold fronts produce most rideable conditions.",
+    'TX': "Tropical disturbances in the Gulf (Jun–Oct) generate most surf; winter cold fronts produce short windows of wind swell.",
+    'CA': "North Pacific winter storms (Dec–Mar) produce the largest groundswells; southern hemisphere swells (May–Sep) bring smaller but cleaner waves.",
+    'OR': "North Pacific winter swell (Nov–Mar) is consistently large; summer is small but clean.",
+    'WA': "North Pacific winter swell (Nov–Mar) drives most surf; summer is typically small or flat.",
+    'HI': "North Shore breaks fire November through March on North Pacific groundswells; summer brings smaller south swells to the South Shore.",
+    'PR': "Atlantic winter swells (Nov–Mar) drive the heaviest North Shore surf; trade winds shape the daily window year-round.",
+}
+
+def _seasonal_climatology_note(state_code):
+    if not state_code:
+        return None
+    return _SEASONAL_NOTES.get(state_code)
+
+
+def _get_ssr_summary(lat, lon, location=None):
+    """Build a server-side-rendered location summary for SEO/crawlers.
+
+    Returns a dict with deterministic location-specific fields (always
+    populated) plus an optional `live` block with the current forecast hour
+    when the forecast cache is warm. Previously returned None on cache miss
+    which left all 126 forecast pages near-duplicate to Googlebot.
+
+    `location` should be the LOCATION_BY_SLUG dict entry for the page; it's
+    used for the state code which drives the climatology note and address
+    region.
+    """
+    summary = {
+        'lat': round(lat, 4),
+        'lon': round(lon, 4),
+        'state': (location or {}).get('state'),
+        'spot_type': (location or {}).get('spot_type'),
+        'orientation_deg': None,
+        'orientation_cardinal': '',
+        'nearest_buoy_id': None,
+        'nearest_buoy_km': None,
+        'nearest_tide_station': None,
+        'seasonal_note': _seasonal_climatology_note((location or {}).get('state')),
+        'live': None,
+    }
+
+    # Beach orientation — cached per coord, may return None if inland.
+    try:
+        orientation = compute_beach_facing_direction(lat, lon)
+        if orientation and orientation.get('beach_facing_direction') is not None:
+            summary['orientation_deg'] = round(orientation['beach_facing_direction'])
+            summary['orientation_cardinal'] = _deg_to_cardinal(orientation['beach_facing_direction'])
+    except Exception:
+        pass
+
+    # Nearest NDBC buoy — uses the in-memory station list, no network call.
+    try:
+        nearby = find_nearest_buoys(lat, lon, count=1)
+        if nearby:
+            summary['nearest_buoy_id'] = nearby[0]['id']
+            summary['nearest_buoy_km'] = nearby[0]['distance_km']
+    except Exception:
+        pass
+
+    # Live forecast overlay — only if the forecast endpoint has cached data.
+    # This keeps the SSR call non-blocking.
     try:
         cache_key = f"forecast:{lat:.4f},{lon:.4f}"
         data = _cache.get(cache_key)
         if data and time.time() - data['time'] < CACHE_TTL:
-            forecast = data['data'].get('forecast', [])
-        else:
-            # Don't block page render — only use cached data
-            return None
-
-        if not forecast:
-            return None
-
-        # Find current/nearest hour
-        now = datetime.now(timezone.utc)
-        best = forecast[0]
-        for entry in forecast:
-            t = entry.get('time', '')
-            try:
-                entry_dt = datetime.fromisoformat(t.replace('Z', '+00:00'))
-                if entry_dt <= now:
-                    best = entry
-                else:
-                    break
-            except (ValueError, TypeError):
-                continue
-
-        wh = best.get('wave_height')
-        wp = best.get('wave_period')
-        ws = best.get('wind_speed')
-        wd = best.get('wind_direction')
-
-        # Build condition label
-        condition = 'Fair'
-        if wh is not None and wp is not None:
-            if wh < 1:
-                condition = 'Flat'
-            elif wp >= 12:
-                condition = 'Clean ground swell'
-            elif wp >= 9:
-                condition = 'Medium-period swell'
-            else:
-                condition = 'Wind swell'
-            if ws is not None and ws > 20:
-                condition += ', windy'
-
-        return {
-            'wave_height': round(wh, 1) if wh is not None else None,
-            'wave_period': round(wp, 1) if wp is not None else None,
-            'wind_speed': round(ws, 1) if ws is not None else None,
-            'wind_direction': round(wd) if wd is not None else None,
-            'condition': condition,
-        }
+            forecast_list = data['data'].get('forecast', [])
+            if forecast_list:
+                # Pick the forecast row nearest to "now"
+                now = datetime.now(timezone.utc)
+                best = forecast_list[0]
+                for entry in forecast_list:
+                    try:
+                        t = datetime.fromisoformat(entry.get('time', '').replace('Z', '+00:00'))
+                        if t <= now:
+                            best = entry
+                        else:
+                            break
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                wh = best.get('wave_height')
+                wp = best.get('wave_period')
+                ws = best.get('wind_speed')
+                wd = best.get('wind_direction')
+                condition = 'Fair'
+                if wh is not None and wp is not None:
+                    if wh < 1:
+                        condition = 'Flat'
+                    elif wp >= 12:
+                        condition = 'Clean ground swell'
+                    elif wp >= 9:
+                        condition = 'Medium-period swell'
+                    else:
+                        condition = 'Wind swell'
+                    if ws is not None and ws > 20:
+                        condition += ', windy'
+                summary['live'] = {
+                    'wave_height': round(wh, 1) if wh is not None else None,
+                    'wave_period': round(wp, 1) if wp is not None else None,
+                    'wind_speed': round(ws, 1) if ws is not None else None,
+                    'wind_direction': round(wd) if wd is not None else None,
+                    'condition': condition,
+                }
     except Exception as e:
-        print(f"SSR summary failed: {e}")
-        return None
+        print(f"SSR live overlay failed: {e}")
+
+    return summary
 
 def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
     """Shared renderer for index and forecast-by-slug routes."""
-    page_title = f"Surf Forecast for {name} | Free Surf Forecast"
+    location = LOCATION_BY_SLUG.get(location_slug) if location_slug else None
+    location_state = (location or {}).get('state')
+    ssr_summary = _get_ssr_summary(lat, lon, location=location)
+
+    # Include state + cardinal facing direction in the title/meta when
+    # available so each of the 126 forecast pages has differentiated meta.
+    # Skip the suffix when the location name already ends with the state code
+    # (e.g. "Manasquan NJ") to avoid "Manasquan NJ, NJ".
+    has_state_in_name = (
+        location_state and name.upper().endswith(f" {location_state.upper()}")
+    )
+    state_suffix = "" if (not location_state or has_state_in_name) else f", {location_state}"
+    facing = ssr_summary.get('orientation_cardinal')
+    facing_phrase = f" {facing}-facing beach. " if facing else " "
+    page_title = f"Surf Forecast for {name}{state_suffix} | Free Surf Forecast"
     meta_description = (
-        f"Free 7-day surf forecast for {name}. "
-        "Wave height, wave period, wind speed and direction, tide predictions, "
-        "and live surf cameras. No ads, no sign-up."
+        f"Free 7-day surf forecast for {name}{state_suffix}.{facing_phrase}"
+        "Wave height, period, wind, tides, and live surf cameras. No ads, no sign-up."
     )
 
-    ssr_summary = _get_ssr_summary(lat, lon)
+    # Display-state for the SSR heading — same dedup logic as the meta string
+    location_display_state = "" if has_state_in_name else (location_state or "")
 
     return render_template(
         'index.html',
@@ -1517,6 +1608,8 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
         location_lat=lat,
         location_lon=lon,
         location_slug=location_slug,
+        location_state=location_state,
+        location_display_state=location_display_state,
         ssr_summary=ssr_summary,
         locations=LOCATION_BY_SLUG,
     )
@@ -1623,6 +1716,22 @@ def robots_txt():
     return Response(content, mimetype='text/plain')
 
 
+# Hand-curated higher-priority forecast slugs — well-known surf locations
+# with historical search demand. Sitemap gives these priority=0.9 vs the
+# long-tail default of 0.6 so Google focuses crawl budget here first.
+_PRIORITY_FORECAST_SLUGS = {
+    'surf-city-line',
+    'wrightsville-beach',
+    'kitty-hawk',
+    'nags-head-jennettes-pier',
+    'hatteras',
+    'virginia-beach',
+    'manasquan-nj',
+    'cocoa-beach-pier-fl',
+    'sebastian-inlet-fl',
+}
+
+
 @app.route('/sitemap.xml')
 def sitemap_xml():
     """Generate sitemap.xml from location slugs."""
@@ -1631,12 +1740,12 @@ def sitemap_xml():
     urls = ['<?xml version="1.0" encoding="UTF-8"?>']
     urls.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
 
-    # Root URL
+    # Root URL — dashboard for default location (Surf City NC)
     urls.append('  <url>')
     urls.append('    <loc>https://freesurfforecast.com/</loc>')
     urls.append(f'    <lastmod>{today}</lastmod>')
-    urls.append('    <changefreq>daily</changefreq>')
-    urls.append('    <priority>1.0</priority>')
+    urls.append('    <changefreq>hourly</changefreq>')
+    urls.append('    <priority>0.9</priority>')
     urls.append('  </url>')
 
     # Locations index
@@ -1644,7 +1753,7 @@ def sitemap_xml():
     urls.append('    <loc>https://freesurfforecast.com/locations</loc>')
     urls.append(f'    <lastmod>{today}</lastmod>')
     urls.append('    <changefreq>weekly</changefreq>')
-    urls.append('    <priority>0.8</priority>')
+    urls.append('    <priority>0.7</priority>')
     urls.append('  </url>')
 
     # About page
@@ -1655,13 +1764,16 @@ def sitemap_xml():
     urls.append('    <priority>0.5</priority>')
     urls.append('  </url>')
 
-    # Location forecast pages
+    # Location forecast pages. Tiered priority: top spots 0.9, others 0.6.
+    # changefreq is hourly since wave-model output refreshes every 6h and
+    # JS overlays fresh data on every page load.
     for slug in sorted(LOCATION_BY_SLUG.keys()):
+        priority = '0.9' if slug in _PRIORITY_FORECAST_SLUGS else '0.6'
         urls.append('  <url>')
         urls.append(f'    <loc>https://freesurfforecast.com/forecast/{slug}</loc>')
         urls.append(f'    <lastmod>{today}</lastmod>')
-        urls.append('    <changefreq>daily</changefreq>')
-        urls.append('    <priority>0.7</priority>')
+        urls.append('    <changefreq>hourly</changefreq>')
+        urls.append(f'    <priority>{priority}</priority>')
         urls.append('  </url>')
 
     urls.append('</urlset>')
