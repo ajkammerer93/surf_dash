@@ -75,7 +75,7 @@
             --border: #d4d4d4;
             --text: #1a1a1a;
             --text-dim: #555;
-            --text-muted: #888;
+            --text-muted: #6b6b6b;  /* was #888 — 3.5:1 vs white; #6b6b6b is 4.7:1 (WCAG AA) */
             --accent: #111;
             --status-live: #16a34a;
             --status-warning: #d97706;
@@ -2059,6 +2059,14 @@
             .btn-text { display: none; }
             .btn-icon-only { display: inline-flex; align-items: center; justify-content: center; }
             .header-btn { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 4px; }
+            /* WCAG 2.5.5 — interactive items in dropdowns need a 44px tap target on touch devices */
+            .panel-toggle-item,
+            .skill-level-item,
+            .more-item,
+            .basin-layer-item {
+                min-height: 44px;
+                padding: 10px 12px;
+            }
             main { padding-top: 44px; }
             .grid-stack { min-height: calc(100vh - 44px); }
             .modal-overlay { padding: 10px; }
