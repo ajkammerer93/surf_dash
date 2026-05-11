@@ -4951,8 +4951,8 @@
                 // Night intervals: gaps between sunset(i) and sunrise(i+1), plus
                 // chart-start → first sunrise and last sunset → chart-end
                 var _dk = isDarkTheme();
-                const nightColor = _dk ? 'rgba(20, 30, 60, 0.45)' : 'rgba(40, 50, 90, 0.12)';
-                const dayColor = _dk ? 'rgba(255, 220, 130, 0.08)' : 'rgba(255, 220, 130, 0.18)';
+                const nightColor = _dk ? 'rgba(30, 45, 90, 0.55)' : 'rgba(40, 50, 90, 0.12)';
+                const dayColor = _dk ? 'rgba(255, 215, 120, 0.22)' : 'rgba(255, 220, 130, 0.18)';
 
                 // Draw night from chart start to first sunrise
                 const firstSunrise = x.getPixelForValue(window.sunTimes[0].sunrise);
