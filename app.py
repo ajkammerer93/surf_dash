@@ -1209,8 +1209,15 @@ def _get_point_from_nomads(lat, lon):
     print(f"  NOMADS point forecast: {len(forecast)} hourly steps")
     return forecast
 
-def _fill_nan_nearest(grid_2d, max_iterations=None):
-    """Fill NaN values in a 2D grid with nearest non-NaN value via iterative neighbor expansion."""
+def _fill_nan_nearest(grid_2d, max_iterations=None, min_valid_neighbors=1):
+    """Fill NaN values in a 2D grid with nearest non-NaN value.
+
+    min_valid_neighbors: require this many of the 4 orthogonal neighbors to
+    be non-NaN before filling. =1 is the original behavior (fill from any
+    single valid neighbor). =2 restricts fill to cells that border *actual*
+    ocean data, which prevents open-ocean wave values from being smeared
+    onto land cells through narrow inlets and capes.
+    """
     filled = grid_2d.copy()
     if max_iterations is None:
         max_iterations = max(filled.shape)
@@ -1218,11 +1225,39 @@ def _fill_nan_nearest(grid_2d, max_iterations=None):
         if not np.any(np.isnan(filled)):
             break
         padded = np.pad(filled, 1, constant_values=np.nan)
+        neighbors = []
         for dy, dx in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            shifted = padded[1+dy:1+dy+filled.shape[0], 1+dx:1+dx+filled.shape[1]]
-            mask = np.isnan(filled) & ~np.isnan(shifted)
-            filled[mask] = shifted[mask]
+            neighbors.append(
+                padded[1+dy:1+dy+filled.shape[0], 1+dx:1+dx+filled.shape[1]]
+            )
+        # Per-cell count of valid orthogonal neighbors
+        valid_count = sum(~np.isnan(n) for n in neighbors)
+        eligible = np.isnan(filled) & (valid_count >= min_valid_neighbors)
+        if not np.any(eligible):
+            break
+        # Use the mean of valid neighbors as the fill value (more stable than
+        # picking one direction's value)
+        stack = np.stack(neighbors)
+        with np.errstate(invalid='ignore'):
+            mean_neighbor = np.nanmean(stack, axis=0)
+        filled[eligible] = mean_neighbor[eligible]
     return filled
+
+
+def _fill_nan_circular(grid_2d, max_iterations=None, min_valid_neighbors=1):
+    """Fill NaN values in a circular field (e.g. wave direction in degrees).
+
+    Naive nearest-neighbor fill is wrong for circular data: 350° and 10°
+    average to 180° instead of 0°. Decompose into sin/cos components, fill
+    each, recombine via atan2 to preserve circular topology.
+    """
+    rad = np.deg2rad(grid_2d)
+    sin_filled = _fill_nan_nearest(np.sin(rad), max_iterations, min_valid_neighbors)
+    cos_filled = _fill_nan_nearest(np.cos(rad), max_iterations, min_valid_neighbors)
+    result = np.rad2deg(np.arctan2(sin_filled, cos_filled)) % 360
+    # Cells that remained NaN in either component stay NaN in the output
+    result[np.isnan(sin_filled) | np.isnan(cos_filled)] = np.nan
+    return result
 
 def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
     """
@@ -1259,14 +1294,19 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
     lons_360 = data['lons']
     wave_dts = data['times']  # already datetime objects
 
-    # Fill coastal wave gaps (limited iterations to smooth model coastline)
+    # Fill coastal wave gaps. min_valid_neighbors=2 prevents the model's
+    # open-ocean Hs from being smeared inland through narrow capes/inlets —
+    # a cell is only filled when at least two of its four orthogonal
+    # neighbors carry valid ocean data, so we don't extrapolate from a
+    # single ocean cell on a corner.
     wave_height = data['grids']['htsgwsfc'].copy()
     wave_period = data['grids']['perpwsfc'].copy()
     wave_dir = data['grids']['dirpwsfc'].copy()
     for t in range(wave_height.shape[0]):
-        wave_height[t] = _fill_nan_nearest(wave_height[t], max_iterations=3)
-        wave_period[t] = _fill_nan_nearest(wave_period[t], max_iterations=3)
-        wave_dir[t] = _fill_nan_nearest(wave_dir[t], max_iterations=3)
+        wave_height[t] = _fill_nan_nearest(wave_height[t], max_iterations=3, min_valid_neighbors=2)
+        wave_period[t] = _fill_nan_nearest(wave_period[t], max_iterations=3, min_valid_neighbors=2)
+        # Direction is a circular field — naive nearest fill averages 350°+10° to 180°
+        wave_dir[t] = _fill_nan_circular(wave_dir[t], max_iterations=3, min_valid_neighbors=2)
 
     # Compute wind from NOMADS U/V (same 0.16° grid as waves)
     # Wind blows over land too — fill all NaN so arrows appear inland
@@ -2787,7 +2827,13 @@ def swell_narrative():
                 elif diff_pct < -15:
                     trend = 'fading'
 
-        # Arrival time estimation: find peak wave height hour within forecast
+        # Locate the forecast hour with the maximum wave height in the first
+        # 72h. NOTE: this is just argmax(Hs) over the forecast — it's NOT a
+        # great-circle propagation back-trace from a fetch source. Real
+        # swell ETA would detect the leading-edge period rise and compute
+        # R = cg(T_arriving) × Δt. Deferred to Phase 4 alongside spectral
+        # partitioning. Field is named peak_hour_offset to be honest about
+        # what it represents.
         peak_hour_idx = 0
         peak_height = 0
         for idx, d in enumerate(data[:72]):
@@ -2796,14 +2842,13 @@ def swell_narrative():
                 peak_height = h
                 peak_hour_idx = idx
 
-        # Arrival ETA: hours until peak (only meaningful when building or for ground swell)
-        arrival_eta_hours = None
-        arrival_time_utc = None
+        peak_hour_offset = None
+        peak_time_utc = None
         if trend == 'building' and peak_hour_idx > 0:
-            arrival_eta_hours = peak_hour_idx
+            peak_hour_offset = peak_hour_idx
             try:
                 peak_time = datetime.fromisoformat(data[peak_hour_idx]['time'].replace('Z', '+00:00'))
-                arrival_time_utc = peak_time.isoformat()
+                peak_time_utc = peak_time.isoformat()
             except (KeyError, ValueError):
                 pass
 
@@ -2819,9 +2864,9 @@ def swell_narrative():
                         'fading': 'Fading over the next 24h',
                         'steady': 'Holding steady'}
         parts.append(trend_labels[trend])
-        if arrival_eta_hours is not None and arrival_eta_hours > 1:
+        if peak_hour_offset is not None and peak_hour_offset > 1:
             peak_ft = round(peak_height * m_to_ft, 1)
-            parts.append(f"Peak {peak_ft}ft arriving in ~{arrival_eta_hours}h")
+            parts.append(f"Peak {peak_ft}ft in +{peak_hour_offset}h of forecast")
         # Annotate notable period-vs-steepness disagreements; usually they
         # agree, but when they don't it's a signal worth surfacing.
         if is_ground_swell and steepness_class == 'sea':
@@ -2839,8 +2884,8 @@ def swell_narrative():
             'is_building': trend == 'building',
             'trend': trend,
             'estimated_source_km': estimated_source_km,
-            'arrival_eta_hours': arrival_eta_hours,
-            'arrival_time_utc': arrival_time_utc,
+            'peak_hour_offset': peak_hour_offset,
+            'peak_time_utc': peak_time_utc,
             'peak_height_ft': round(peak_height * m_to_ft, 1) if peak_height else None
         }
 
