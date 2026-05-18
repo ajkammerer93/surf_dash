@@ -484,6 +484,38 @@
             to { opacity: 1; }
         }
 
+        /* Crawler-friendly CTA strip — funnels visitors and Googlebot
+           into /locations, /regions, /learn. Server-rendered, JS-free. */
+        .browse-cta {
+            max-width: 720px;
+            margin: 8px auto 0;
+            padding: 8px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .browse-cta-label {
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+        }
+        .browse-cta a {
+            color: var(--status-live);
+            text-decoration: none;
+            font-weight: 600;
+            padding: 4px 0;
+            display: inline-flex;
+            align-items: center;
+        }
+        .browse-cta a:hover { text-decoration: underline; }
+        @media (max-width: 700px) {
+            .browse-cta { padding: 10px 16px; gap: 6px 12px; }
+            .browse-cta a { padding: 6px 4px; min-height: 32px; }
+        }
+
         /* Next-6-hours hero card — fixed above the GridStack so the
            decision-relevant window dominates regardless of panel layout. */
         .forecast-hero {
@@ -2541,6 +2573,13 @@
             </ul>
         </div>
     </noscript>
+
+    <nav class="browse-cta" aria-label="Browse spots">
+        <span class="browse-cta-label">Explore:</span>
+        <a href="/locations">All 126 spots &raquo;</a>
+        <a href="/regions">Browse by region &raquo;</a>
+        <a href="/learn">Surf forecast guides &raquo;</a>
+    </nav>
 
     <section id="forecast-hero" class="forecast-hero" style="display:none" aria-label="Next 6 hours forecast">
         <header class="forecast-hero-header">
