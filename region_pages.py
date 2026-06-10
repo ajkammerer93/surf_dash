@@ -153,6 +153,66 @@ REGIONS = [
 <p>Water temps are warm year-round — high 70s °F in winter, low 80s in summer. No wetsuit needed; many surfers use rashguards mainly for sun and reef protection. Hazards are substantial: shallow reef, strong currents, big rip channels at the major breaks. The North Shore is unforgiving when conditions are big — don't paddle out beyond your level.</p>
 ''',
     },
+    {
+        'slug': 'delmarva',
+        'title': 'Delmarva Surf Forecast',
+        'short_title': 'Delmarva (MD & DE)',
+        'description': 'Surf forecast for the Delmarva coast — Ocean City Maryland, Assateague, and the Delaware beaches (Rehoboth, Dewey, Bethany). Live cams, 7-day swell, tide and wind.',
+        'state_filter': None,
+        'slug_list': ['ocean-city-md', 'oc-md-inlet-cam', 'oc-md-assateague-cam',
+                      'rehoboth-beach-de', 'dewey-beach-de', 'bethany-beach-de'],
+        'intro_html': '''
+<p>The <strong>Delmarva peninsula</strong> — Delaware's Rehoboth, Dewey, and Bethany beaches running south into Ocean City, Maryland and Assateague Island — faces almost due east, wide open to Atlantic swell from NE through SE. It's a classic mid-Atlantic setup: long, straight barrier-island beach break with sandbars that shift after every significant storm.</p>
+<p>The standout wave is the <strong>Ocean City inlet</strong>, where the south jetty grooms NE swells into longer, more organized rights than anything on the open beach. Assateague, just across the inlet, offers uncrowded peaks for surfers willing to walk.</p>
+<p>The engines are the same as the rest of the mid-Atlantic: <strong>hurricane swells</strong> from August through November and <strong>nor'easters</strong> from late fall through early spring. Summer runs small with short-period wind swell — dawn patrol before the sea breeze is the play. The cleanest windows of the year often come in early fall: hurricane swell in the water and light offshore mornings.</p>
+<p>Water temps swing hard: low 40s °F in winter to high 70s in late summer. A 5/4 with hood and booties is standard January through March; trunks or a spring suit cover July through September. Rip currents around the inlet jetties are the main hazard.</p>
+''',
+    },
+    {
+        'slug': 'south-carolina-georgia',
+        'title': 'South Carolina & Georgia Surf Forecast',
+        'short_title': 'South Carolina & Georgia',
+        'description': 'Surf forecast for South Carolina and Georgia — Folly Beach, Isle of Palms, Myrtle Beach, Garden City, Hilton Head, and Tybee Island. Live cams, 7-day swell, tide and wind.',
+        'state_filter': None,
+        'slug_list': ['myrtle-beach-sc', 'garden-city-beach-sc', 'isle-of-palms-sc',
+                      'folly-beach-sc', 'hilton-head-island-sc', 'tybee-island-ga'],
+        'intro_html': '''
+<p>The <strong>South Carolina and Georgia coast</strong> curves from the Grand Strand (Myrtle Beach, Garden City) through Charleston's beaches (Isle of Palms, Folly) down to Hilton Head and Tybee Island. The continental shelf here is among the widest on the US East Coast, which drains energy from incoming swell — the same system that fires the Outer Banks arrives noticeably smaller here. What does get through tends to be clean and user-friendly.</p>
+<p><strong>Folly Beach</strong> is the region's surf hub: the Washout, a stretch left bare by Hurricane Hugo, picks up more swell than anywhere else in the state and hosts the bulk of the local scene. The northern Grand Strand beaches face more east and catch NE windswell slightly better; Hilton Head and Tybee face southeast across an even wider shelf and need genuine groundswell to break well.</p>
+<p><strong>Hurricane season</strong> (August–November) is the main event — long-period SE groundswell from offshore systems is what this shelf handles best. Winter cold fronts produce short-period windswell windows that clean up quickly behind the front. Summer is small but warm and forgiving — an ideal longboard and learner season.</p>
+<p>Water temps are the mildest north of Florida: mid-50s °F in winter, mid-80s at the summer peak. A 4/3 covers the coldest months; trunks from May through October. Strong tidal currents near the many inlets are the main hazard, and the large tide swing (5-7 ft) means many spots only break properly on part of the tide.</p>
+''',
+    },
+    {
+        'slug': 'new-england',
+        'title': 'New England Surf Forecast',
+        'short_title': 'New England',
+        'description': 'Surf forecast for New England — Narragansett Rhode Island, Hampton Beach New Hampshire, and the Maine beaches (Old Orchard, Ogunquit). Live cams, 7-day swell, tide and wind.',
+        'state_filter': None,
+        'slug_list': ['narragansett-ri', 'hampton-beach-nh',
+                      'old-orchard-beach-me', 'ogunquit-beach-me'],
+        'intro_html': '''
+<p><strong>New England</strong> surf runs from Rhode Island's south-facing shore up through New Hampshire's short coastline to the beach breaks of southern Maine. Geography splits the region in two: Rhode Island faces south and drinks in hurricane swell, while New Hampshire and Maine face east into the Gulf of Maine and run on nor'easter energy.</p>
+<p><strong>Narragansett</strong> and the Rhode Island south shore are the regional standouts — a mix of beach break, cobblestone points, and reefs that turn long-period S–SE hurricane swell into some of the best waves on the East Coast. September and October, when tropical swells meet the first offshore-wind cold fronts, are the prime window.</p>
+<p>North of Cape Ann, <strong>Hampton Beach</strong> and the Maine beaches (Old Orchard, Ogunquit) need NE wind swell or a nor'easter to break. The Gulf of Maine blocks most hurricane energy, so fall through winter is the consistent season — at the price of genuinely arctic conditions.</p>
+<p>Water is the coldest of any US surf region: high 30s °F in late winter in Maine, peaking in the mid-60s in August. A 5/4 or 6/5 with hood, gloves, and 7mm booties is standard from December through April. The reward for the rubber: empty lineups and some of the cleanest storm-groomed waves anywhere.</p>
+''',
+    },
+    {
+        'slug': 'gulf-coast',
+        'title': 'Gulf Coast Surf Forecast',
+        'short_title': 'Gulf Coast (TX & AL)',
+        'description': 'Surf forecast for the Gulf Coast — Galveston, Port Aransas, South Padre Island Texas, and Gulf Shores Alabama. Live cams, 7-day swell, tide and wind.',
+        'state_filter': None,
+        'slug_list': ['galveston-tx', 'port-aransas-tx', 'south-padre-island-tx',
+                      'gulf-shores-al'],
+        'intro_html': '''
+<p>The <strong>Gulf of Mexico</strong> is a fetch-limited basin — no open-ocean groundswell reaches it, so everything that breaks on the Texas and Alabama coast is generated inside the Gulf itself. That means short-period wind swell (4-8 seconds) is the staple diet, and timing matters more here than anywhere else: conditions can go from flat to fun and back inside a single day.</p>
+<p>The two engines are <strong>winter cold fronts</strong> and <strong>tropical systems</strong>. From October through March, fronts pushing off the coast generate days of onshore slop followed by a short, clean window as the wind swings offshore behind the front — the classic Gulf pattern. In hurricane season, a storm anywhere in the Gulf can light up the entire coast with the year's best surf, often while the weather at the beach is still sunny.</p>
+<p><strong>South Padre Island</strong> is the most consistent Texas spot — deeper water close to shore lets swell arrive with less bottom drag. <strong>Port Aransas</strong> and <strong>Galveston</strong> work the same patterns with a bit less size; Galveston's piers organize the sandbars and host the longest-running scene. <strong>Gulf Shores</strong>, Alabama picks up slightly better exposure to southeast fetch and shares the Florida panhandle's sugar-sand bars.</p>
+<p>Water temps run warm: low 60s °F in winter on the upper Texas coast (a 3/2 season) to bathwater mid-80s in summer. Hazards are modest — rip currents near piers and jetties, and stingrays in the shallows (shuffle your feet). It's one of the friendliest learning coastlines in the country when a clean window lines up.</p>
+''',
+    },
 ]
 
 REGIONS_BY_SLUG = {r['slug']: r for r in REGIONS}

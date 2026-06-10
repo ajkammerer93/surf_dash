@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Surfline Alternative (2026) | Free Surf Forecast</title>
+    <meta name="description" content="Looking for a free Surfline alternative? Free Surf Forecast offers 7-day NOAA-backed surf forecasts, buoy data, tides, and live cams for 126 US spots — no account, no ads, no paywall.">
+    <link rel="canonical" href="https://freesurfforecast.com/compare/surfline">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Free Surfline Alternative (2026) | Free Surf Forecast">
+    <meta property="og:description" content="Free 7-day NOAA-backed surf forecasts, buoy data, tides, and live cams for 126 US spots — no account, no ads, no paywall.">
+    <meta property="og:url" content="https://freesurfforecast.com/compare/surfline">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Free Surfline Alternative (2026) | Free Surf Forecast">
+    <meta name="twitter:description" content="Free 7-day surf forecasts, buoy data, tides, and live cams. No account, no ads, no paywall.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --border: #d4d4d4;
+            --text: #1a1a1a;
+            --text-dim: #555;
+            --text-muted: #888;
+            --accent: #111;
+            --status-live: #16a34a;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .about-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .about-header a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .about-header a:hover { color: var(--status-live); }
+
+        .about-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            margin-left: 16px;
+        }
+
+        .about-nav a:hover { color: var(--text); }
+
+        .about-content {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 48px 20px 80px;
+        }
+
+        .about-content h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+
+        .about-content .tagline {
+            font-size: 14px;
+            color: var(--status-live);
+            margin-bottom: 36px;
+        }
+
+        .about-content h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-top: 32px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .about-content p {
+            color: var(--text-dim);
+            margin-bottom: 16px;
+        }
+
+        .about-content ul {
+            color: var(--text-dim);
+            margin: 0 0 16px 20px;
+        }
+
+        .about-content li { margin-bottom: 6px; }
+
+        .about-content a {
+            color: var(--status-live);
+            text-decoration: none;
+        }
+
+        .about-content a:hover {
+            text-decoration: underline;
+        }
+
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 12px;
+        }
+
+        .compare-table th, .compare-table td {
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .compare-table th {
+            background: var(--surface);
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 11px;
+        }
+
+        .compare-table td:first-child {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .compare-table td { color: var(--text-dim); }
+
+        .compare-yes { color: var(--status-live) !important; }
+
+        .about-links {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        .about-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 12px;
+            transition: border-color 0.15s;
+        }
+
+        .about-links a:hover {
+            border-color: var(--text-dim);
+            text-decoration: none;
+        }
+
+        .disclaimer {
+            margin-top: 36px;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .about-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .about-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        .about-footer a:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+
+        @media (max-width: 560px) {
+            .about-content h1 { font-size: 22px; }
+            .compare-table { font-size: 11px; }
+            .compare-table th, .compare-table td { padding: 6px 8px; }
+            .compare-table td:first-child { white-space: normal; }
+        }
+    </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://freesurfforecast.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Free Surfline Alternative",
+                "item": "https://freesurfforecast.com/compare/surfline"
+            }
+        ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "Is there a free alternative to Surfline?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. Free Surf Forecast provides 7-day surf forecasts built on NOAA wave models (GFS-Wave, WaveWatch III), real-time NDBC and CDIP buoy observations, NOAA tide predictions, and live surf cameras for 126 US spots — with no account, no ads, and no paywall."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is Free Surf Forecast really free?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. Every feature — full 7-day forecasts, buoy data, tide charts, surf cameras, session planning, and skill-level filtering — is free with no account required. The project is open source and supported by optional donations."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What data does Free Surf Forecast use?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Forecasts come from NOAA's GFS-Wave model with Open-Meteo Marine as a fallback, gridded swell maps from WaveWatch III, tides from NOAA CO-OPS, and real-time observations from NDBC and CDIP buoys. All scoring logic is open source, so you can see exactly how every rating is calculated."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What happened to MagicSeaweed?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "MagicSeaweed was shut down in 2023 after being acquired by Surfline, and its users were redirected to Surfline's paid platform. Free Surf Forecast offers a similar open, no-account experience: search a spot and get a full 7-day forecast immediately."
+                }
+            }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <header class="about-header">
+        <a href="/">Free Surf Forecast</a>
+        <nav class="about-nav">
+            <a href="/">Dashboard</a>
+            <a href="/locations">Locations</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <main class="about-content">
+        <h1>A Free Surfline Alternative</h1>
+        <p class="tagline">Full 7-day forecasts, buoys, tides, and cams. No account, no ads, no paywall.</p>
+
+        <p>
+            If you landed here, you're probably looking for a surf forecast that doesn't cap your
+            surf checks, lock cameras behind a subscription, or make you create an account to see
+            tomorrow's swell. That's exactly why Free Surf Forecast exists: every feature is free,
+            for every visitor, with no sign-up — the way MagicSeaweed used to work.
+        </p>
+
+        <h2>Side by Side</h2>
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th scope="col"></th>
+                    <th scope="col">Free Surf Forecast</th>
+                    <th scope="col">Surfline</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Price</td>
+                    <td class="compare-yes">Free, everything included</td>
+                    <td>Free tier with limits; Premium subscription (roughly $120/year as of 2026) for full access</td>
+                </tr>
+                <tr>
+                    <td>Account required</td>
+                    <td class="compare-yes">No</td>
+                    <td>Yes, for most features</td>
+                </tr>
+                <tr>
+                    <td>Ads</td>
+                    <td class="compare-yes">None</td>
+                    <td>On the free tier</td>
+                </tr>
+                <tr>
+                    <td>Forecast length</td>
+                    <td>7 days, hourly</td>
+                    <td>16+ days with Premium</td>
+                </tr>
+                <tr>
+                    <td>Forecast source</td>
+                    <td>NOAA GFS-Wave / WaveWatch III, Open-Meteo fallback — methodology fully open source</td>
+                    <td>Proprietary LOTUS model plus human forecasters</td>
+                </tr>
+                <tr>
+                    <td>Buoy data</td>
+                    <td class="compare-yes">NDBC + CDIP real-time observations and wave spectra</td>
+                    <td>Included</td>
+                </tr>
+                <tr>
+                    <td>Tides</td>
+                    <td class="compare-yes">NOAA CO-OPS, 7-day, on the wave chart</td>
+                    <td>Included</td>
+                </tr>
+                <tr>
+                    <td>Surf cameras</td>
+                    <td>Free where public cams exist (Windy, SurfChex, and others)</td>
+                    <td>Largest cam network, but Premium-only without ads and rewind</td>
+                </tr>
+                <tr>
+                    <td>Spot coverage</td>
+                    <td>126 US spots (East Coast, Gulf, California, Oregon, Hawaii)</td>
+                    <td>Thousands of spots worldwide</td>
+                </tr>
+                <tr>
+                    <td>Session planning</td>
+                    <td class="compare-yes">Scored 3-hour windows by skill level, calendar export</td>
+                    <td>Premium forecast tools</td>
+                </tr>
+                <tr>
+                    <td>Open source</td>
+                    <td class="compare-yes">Yes, entire codebase on GitHub</td>
+                    <td>No</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>What You Give Up</h2>
+        <p>
+            Honesty matters more than a sales pitch. Surfline has the largest surf camera network in
+            the world, human forecasters writing regional analysis, a proprietary wave model tuned per
+            spot, and global coverage. If you need cams at a specific break we don't cover, or
+            16-day outlooks for a surf trip abroad, Surfline Premium earns its price.
+        </p>
+
+        <h2>What You Get</h2>
+        <ul>
+            <li>The same government wave models professionals start from — NOAA GFS-Wave, WaveWatch III — presented raw, with transparent scoring on top</li>
+            <li>Real-time NDBC and CDIP buoy observations, including wave energy spectra</li>
+            <li>Swell-direction-aware spot scoring that accounts for each beach's facing direction</li>
+            <li>A session planner that scores every daylight 3-hour window for your skill level</li>
+            <li>Live swell maps: ocean-basin overview plus local wave height, period, and wind grids</li>
+            <li>Push alerts when conditions at your spot turn good — no email address required</li>
+            <li>An installable app (PWA) that works on your phone's home screen</li>
+        </ul>
+
+        <p>
+            No account. No limit on how many times you check it. If it saves you a skunked session,
+            it did its job.
+        </p>
+
+        <div class="about-links">
+            <a href="/">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Open the Dashboard
+            </a>
+            <a href="/locations">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                Browse 126 Spots
+            </a>
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                View the Source
+            </a>
+        </div>
+
+        <div class="disclaimer">
+            Surfline is a trademark of Surfline\Wavetrak, Inc. Free Surf Forecast is not affiliated
+            with, endorsed by, or sponsored by Surfline. Feature and pricing descriptions reflect
+            publicly available information as of June 2026 and may change; check surfline.com for
+            current details.
+        </div>
+    </main>
+
+    <footer class="about-footer">
+        <div>&copy; 2026 Free Surf Forecast &nbsp;|&nbsp; <a href="/">Dashboard</a> &nbsp;|&nbsp; <a href="/locations">All Locations</a> &nbsp;|&nbsp; <a href="/about">About</a> &nbsp;|&nbsp; <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a> &nbsp;|&nbsp; <a href="https://buymeacoffee.com/freesurfforecast" target="_blank" rel="noopener">Buy me a coffee</a></div>
+    </footer>
+    <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "4838c7fb1ed34d59b891df1bb379ddfb"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>

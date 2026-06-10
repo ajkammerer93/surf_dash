@@ -1851,6 +1851,12 @@ def about():
     return render_template('about.html')
 
 
+@app.route('/compare/surfline')
+def compare_surfline():
+    """Comparison landing page targeting 'free Surfline alternative' queries."""
+    return render_template('compare.html')
+
+
 @app.route('/glossary')
 def glossary():
     """Renders the surf/oceanography glossary page (SEO topic-cluster anchor)."""
@@ -2163,6 +2169,14 @@ def sitemap_xml():
     # Glossary — SEO topic-cluster anchor
     urls.append('  <url>')
     urls.append('    <loc>https://freesurfforecast.com/glossary</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.6</priority>')
+    urls.append('  </url>')
+
+    # Surfline-alternative comparison landing page
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/compare/surfline</loc>')
     urls.append(f'    <lastmod>{today}</lastmod>')
     urls.append('    <changefreq>monthly</changefreq>')
     urls.append('    <priority>0.6</priority>')

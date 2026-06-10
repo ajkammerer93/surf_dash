@@ -463,3 +463,67 @@ class TestSlugConsistency:
             assert not slug.startswith('-'), f"Slug '{slug}' starts with hyphen"
             assert not slug.endswith('-'), f"Slug '{slug}' ends with hyphen"
             assert '--' not in slug, f"Slug '{slug}' has double hyphens"
+
+
+# ===================================================================
+# 13. COMPARISON PAGE + REGION EXPANSION
+# ===================================================================
+
+class TestComparePage:
+    """/compare/surfline landing page targeting Surfline-alternative queries."""
+
+    def test_compare_page_returns_200(self, client):
+        resp = client.get('/compare/surfline')
+        assert resp.status_code == 200
+
+    def test_compare_meta_tags(self, client):
+        html = client.get('/compare/surfline').data.decode()
+        assert '<title>' in html and 'Surfline Alternative' in html
+        assert 'name="description"' in html
+        assert 'rel="canonical" href="https://freesurfforecast.com/compare/surfline"' in html
+
+    def test_compare_has_faq_schema(self, client):
+        html = client.get('/compare/surfline').data.decode()
+        faqs = _parse_json_ld(html, 'FAQPage')
+        assert len(faqs) == 1
+
+    def test_compare_has_trademark_disclaimer(self, client):
+        html = client.get('/compare/surfline').data.decode()
+        assert 'not affiliated' in html
+
+    def test_compare_in_sitemap(self, client):
+        xml = client.get('/sitemap.xml').data.decode()
+        assert 'https://freesurfforecast.com/compare/surfline' in xml
+
+    def test_about_links_to_compare(self, client):
+        html = client.get('/about').data.decode()
+        assert 'href="/compare/surfline"' in html
+
+
+class TestRegionExpansion:
+    """New regional hubs: Delmarva, SC/GA, New England, Gulf Coast."""
+
+    NEW_REGIONS = ['delmarva', 'south-carolina-georgia', 'new-england', 'gulf-coast']
+
+    @pytest.mark.parametrize('slug', NEW_REGIONS)
+    def test_region_page_returns_200(self, client, slug):
+        resp = client.get(f'/regions/{slug}')
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize('slug', NEW_REGIONS)
+    def test_region_in_sitemap(self, client, slug):
+        xml = client.get('/sitemap.xml').data.decode()
+        assert f'https://freesurfforecast.com/regions/{slug}' in xml
+
+    def test_all_region_slug_lists_resolve(self):
+        from region_pages import REGIONS
+        for region in REGIONS:
+            for slug in (region.get('slug_list') or []):
+                assert slug in LOCATION_BY_SLUG, (
+                    f"Region {region['slug']} references unknown spot {slug}"
+                )
+
+    def test_region_pages_list_their_spots(self, client):
+        html = client.get('/regions/gulf-coast').data.decode()
+        assert 'galveston-tx' in html
+        assert 'gulf-shores-al' in html
