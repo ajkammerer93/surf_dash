@@ -5,11 +5,13 @@ import re
 import numpy as np
 import math
 import subprocess
+import threading
 import time
 import traceback
 import os
 import json
 import logging
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 try:
     from dotenv import load_dotenv
@@ -374,20 +376,57 @@ def compute_beach_facing_direction(lat, lon):
     }
 
 
-# Simple time-based response cache
-_cache = {}
+# Simple time-based response cache.
+# OrderedDict + lock: gunicorn runs 1 worker / 4 threads, and cache keys
+# include lat/lon, so an unbounded plain dict grows forever under crawler
+# traffic. LRU eviction caps memory; per-key locks stop a thundering herd
+# of threads all refreshing the same expired entry against slow upstreams.
+_cache = OrderedDict()
+_cache_lock = threading.Lock()
+_cache_key_locks = {}
 CACHE_TTL = 900  # 15 minutes
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
+CACHE_MAX_ENTRIES = 1000
+
+def _cache_get_fresh(key, ttl):
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.time() - entry['time'] < ttl:
+            _cache.move_to_end(key)
+            return entry['data']
+    return None
 
 def cached(key, fn, ttl=CACHE_TTL):
-    """Return cached result if fresh, otherwise call fn() and cache it."""
-    now = time.time()
-    if key in _cache and now - _cache[key]['time'] < ttl:
-        return _cache[key]['data']
-    result = fn()
-    if result is not None:
-        _cache[key] = {'data': result, 'time': now}
-    return result
+    """Return cached result if fresh, otherwise call fn() and cache it.
+
+    Only one thread refreshes a given expired key at a time; concurrent
+    requests for the same key block on the per-key lock and then read the
+    fresh entry instead of issuing duplicate upstream calls.
+    """
+    data = _cache_get_fresh(key, ttl)
+    if data is not None:
+        return data
+    with _cache_lock:
+        key_lock = _cache_key_locks.setdefault(key, threading.Lock())
+    with key_lock:
+        # Another thread may have refreshed while we waited on the lock
+        data = _cache_get_fresh(key, ttl)
+        if data is not None:
+            return data
+        result = fn()
+        if result is not None:
+            with _cache_lock:
+                _cache[key] = {'data': result, 'time': time.time()}
+                _cache.move_to_end(key)
+                while len(_cache) > CACHE_MAX_ENTRIES:
+                    evicted, _ = _cache.popitem(last=False)
+                    _cache_key_locks.pop(evicted, None)
+                # Keys whose fn() kept failing never enter _cache, so their
+                # locks aren't reaped by eviction — prune separately.
+                if len(_cache_key_locks) > 2 * CACHE_MAX_ENTRIES:
+                    for k in [k for k in _cache_key_locks if k not in _cache]:
+                        _cache_key_locks.pop(k, None)
+        return result
 
 DEFAULT_LAT = 34.42711
 DEFAULT_LON = -77.54608
@@ -804,7 +843,9 @@ def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_ra
     url = f"https://{server}/erddap/griddap/{dataset}.json?{query}"
     logger.info(f"  ERDDAP request: {url[:150]}...")
 
-    response = requests.get(url, timeout=90)
+    # 30s, not longer: with 1 gunicorn worker x 4 threads, a hung upstream
+    # pins a thread and starves other requests; callers fall back anyway.
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
     return response.json()
 
@@ -1029,7 +1070,10 @@ def _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice)
     url = f"{base_url}.ascii?{constraint}"
     logger.info(f"  NOMADS request: {url[:180]}...")
 
-    resp = requests.get(url, timeout=120)
+    # NOMADS ASCII slices can be slow but 120s pinned gunicorn threads for
+    # two minutes per hung request; 45s still passes normal grid fetches and
+    # the Open-Meteo fallback covers the rest.
+    resp = requests.get(url, timeout=45)
     resp.raise_for_status()
     return _parse_opendap_ascii(resp.text, variables)
 
@@ -2607,11 +2651,17 @@ def get_tide_data(station_id):
             logger.info(f"No predictions in tide data: {data}")
             return None
 
-        # Also get high/low tide times
+        # Also get high/low tide times — a failure here should degrade to
+        # hourly-only output, not throw away the predictions we already have
         hilo_params = params.copy()
         hilo_params["interval"] = "hilo"
-        hilo_response = requests.get(url, params=hilo_params, timeout=15)
-        hilo_data = hilo_response.json()
+        hilo_data = {}
+        try:
+            hilo_response = requests.get(url, params=hilo_params, timeout=15)
+            hilo_response.raise_for_status()
+            hilo_data = hilo_response.json()
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.warning(f"High/low tide fetch failed, returning hourly only: {e}")
 
         tide_forecast = {
             "hourly": [
@@ -2737,7 +2787,10 @@ def _fetch_ndbc_observation(station_id):
         yr, mo, dy, hr, mn = val('YY'), val('MM'), val('DD'), val('hh'), val('mm')
         time_str = None
         if yr and mo and dy:
-            time_str = f"{int(yr)}-{int(mo):02d}-{int(dy):02d} {int(hr or 0):02d}:{int(mn or 0):02d} UTC"
+            # realtime2 files use 4-digit years despite the "YY" header, but
+            # guard against the literal 2-digit form
+            year = int(yr) + 2000 if int(yr) < 100 else int(yr)
+            time_str = f"{year}-{int(mo):02d}-{int(dy):02d} {int(hr or 0):02d}:{int(mn or 0):02d} UTC"
 
         return {
             'time': time_str,
@@ -2823,17 +2876,23 @@ def _fetch_ndbc_directional(station_id):
 
 
 _cdip_dds_cache = {}
+_cdip_dds_lock = threading.Lock()
 
 def _cdip_last_index(station_id, dim_name='waveTime'):
     """Get the last valid index for a CDIP OPeNDAP dimension."""
     import re
-    if station_id not in _cdip_dds_cache or time.time() - _cdip_dds_cache[station_id]['t'] > 900:
+    with _cdip_dds_lock:
+        entry = _cdip_dds_cache.get(station_id)
+        fresh = entry and time.time() - entry['t'] <= 900
+    if not fresh:
         base = f"https://thredds.cdip.ucsd.edu/thredds/dodsC/cdip/realtime/{station_id}p1_rt.nc"
         resp = requests.get(base + ".dds", timeout=10)
         if not resp.ok:
             return None
-        _cdip_dds_cache[station_id] = {'text': resp.text, 't': time.time()}
-    text = _cdip_dds_cache[station_id]['text']
+        with _cdip_dds_lock:
+            _cdip_dds_cache[station_id] = {'text': resp.text, 't': time.time()}
+    with _cdip_dds_lock:
+        text = _cdip_dds_cache[station_id]['text']
     m = re.search(dim_name + r'\s*=\s*(\d+)', text)
     return int(m.group(1)) - 1 if m else None
 
@@ -2869,8 +2928,10 @@ def _fetch_cdip_observation(station_id):
         m = re.search(r'waveTime\[\d+\]\s*\n\s*([\d.eE+\-]+)', text)
         if m:
             epoch = float(m.group(1))
-            dt = datetime.fromtimestamp(epoch, timezone.utc)
-            time_str = dt.strftime('%Y-%m-%d %H:%M UTC')
+            # Fill values like 9.999E20 crash fromtimestamp; bound to 1970-2096
+            if 0 < epoch < 4e9:
+                dt = datetime.fromtimestamp(epoch, timezone.utc)
+                time_str = dt.strftime('%Y-%m-%d %H:%M UTC')
 
         return {
             'time': time_str,
