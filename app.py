@@ -3344,5 +3344,67 @@ def add_cache_headers(response):
     return response
 
 
+# --- SSR cache warmer --------------------------------------------------
+# The /forecast/<slug> SSR summary only includes live conditions when the
+# forecast cache is warm for that spot, and crawlers rarely arrive on a
+# warm cache. A background thread keeps one representative spot per state
+# refreshed so crawler-visible pages carry live data (and the first human
+# visitor to those spots gets an instant forecast).
+SSR_WARM_ENABLED = os.environ.get('SSR_WARM', '1') == '1'
+SSR_WARM_INTERVAL_S = int(os.environ.get('SSR_WARM_INTERVAL', '720'))
+_ssr_warmer_started = False
+_ssr_warmer_lock = threading.Lock()
+
+
+def _ssr_warm_slugs():
+    """One spot per state, in surf_cameras.json order — broad regional
+    coverage without hammering upstreams for all 126 locations."""
+    seen = set()
+    slugs = []
+    for slug, loc in LOCATION_BY_SLUG.items():
+        state = loc.get('state')
+        if not state or state in seen:
+            continue
+        seen.add(state)
+        slugs.append(slug)
+    return slugs
+
+
+def _ssr_cache_warmer():
+    time.sleep(30)  # let the worker finish booting before upstream calls
+    slugs = _ssr_warm_slugs()
+    logger.info(f"SSR cache warmer running: {len(slugs)} spots every {SSR_WARM_INTERVAL_S}s")
+    while True:
+        for slug in slugs:
+            loc = LOCATION_BY_SLUG.get(slug)
+            if not loc:
+                continue
+            try:
+                lat, lon = float(loc['lat']), float(loc['lon'])
+                cache_key = f"forecast:{lat:.4f},{lon:.4f}"
+                # Refresh when less than ~3 min of freshness remains so the
+                # entry never goes cold between passes
+                if _cache_get_fresh(cache_key, CACHE_TTL - 180) is None:
+                    cached(cache_key, lambda lat=lat, lon=lon: get_point_weather_data(lat, lon))
+            except Exception as e:
+                logger.warning(f"SSR warmer failed for {slug}: {e}")
+            time.sleep(3)  # gentle pacing between spots
+        time.sleep(SSR_WARM_INTERVAL_S)
+
+
+@app.before_request
+def _start_ssr_warmer():
+    # Started lazily on first request (not at import) so the thread lives in
+    # the gunicorn worker process, not the preload master.
+    global _ssr_warmer_started
+    if not SSR_WARM_ENABLED or _ssr_warmer_started:
+        return
+    with _ssr_warmer_lock:
+        if _ssr_warmer_started:
+            return
+        _ssr_warmer_started = True
+        threading.Thread(target=_ssr_cache_warmer, daemon=True, name='ssr-warmer').start()
+
+
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
