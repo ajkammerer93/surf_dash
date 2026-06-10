@@ -463,6 +463,46 @@ def _enrich_in_parallel(forecast, latitude, longitude):
     return location_tz
 
 
+# US state -> IANA timezone for the timezone fallback. All current spots
+# resolve unambiguously except FL (panhandle is Central; our FL spots are
+# Eastern-side) and TX/AL which are Central.
+_STATE_TIMEZONES = {
+    'NJ': 'America/New_York', 'VA': 'America/New_York', 'NC': 'America/New_York',
+    'SC': 'America/New_York', 'NY': 'America/New_York', 'DE': 'America/New_York',
+    'MD': 'America/New_York', 'GA': 'America/New_York', 'FL': 'America/New_York',
+    'ME': 'America/New_York', 'NH': 'America/New_York', 'RI': 'America/New_York',
+    'TX': 'America/Chicago', 'AL': 'America/Chicago',
+    'OR': 'America/Los_Angeles', 'CA': 'America/Los_Angeles',
+    'HI': 'Pacific/Honolulu',
+}
+
+
+def _fallback_timezone(latitude, longitude):
+    """Resolve a location timezone without the Open-Meteo weather API.
+
+    The normal path gets the IANA zone from Open-Meteo's timezone=auto; when
+    that API is rate-limited the dashboard would otherwise fall back to UTC
+    and render chart times wrong. Known spots resolve via their state;
+    unknown coords use rough US longitude bands.
+    """
+    slug = SLUG_BY_COORDS.get((round(latitude, 4), round(longitude, 4)))
+    if slug:
+        tz = _STATE_TIMEZONES.get((LOCATION_BY_SLUG.get(slug) or {}).get('state'))
+        if tz:
+            return tz
+    if longitude < -135:
+        return 'Pacific/Honolulu' if latitude < 25 else 'America/Anchorage'
+    if longitude < -115:
+        return 'America/Los_Angeles'
+    if longitude < -102:
+        return 'America/Denver'
+    if longitude < -87.5:
+        return 'America/Chicago'
+    if longitude < -60:
+        return 'America/New_York'
+    return 'UTC'
+
+
 def get_point_weather_data(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point.
@@ -475,6 +515,8 @@ def get_point_weather_data(latitude, longitude):
             result = _get_point_from_nomads(latitude, longitude)
             if result:
                 location_tz = _enrich_in_parallel(result, latitude, longitude)
+                if location_tz == 'UTC':
+                    location_tz = _fallback_timezone(latitude, longitude)
                 return {"forecast": result, "location_timezone": location_tz, "source": "NOMADS"}
             logger.warning("NOMADS point forecast returned no data, falling back to Open-Meteo Marine")
         except Exception as e:
@@ -483,6 +525,8 @@ def get_point_weather_data(latitude, longitude):
     result = _get_point_from_open_meteo(latitude, longitude)
     if result:
         location_tz = _enrich_in_parallel(result, latitude, longitude)
+        if location_tz == 'UTC':
+            location_tz = _fallback_timezone(latitude, longitude)
         return {"forecast": result, "location_timezone": location_tz, "source": "Open-Meteo"}
     return None
 
@@ -521,8 +565,12 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
             water_temp = resp.json().get("current", {}).get("sea_surface_temperature")
 
         if forecast:
-            forecast[0]["air_temperature"] = air_temp
-            forecast[0]["water_temperature"] = water_temp
+            # Don't clobber a value the ERDDAP wind fallback may have set
+            # concurrently (it fills air_temperature when this call fails)
+            if air_temp is not None or forecast[0].get("air_temperature") is None:
+                forecast[0]["air_temperature"] = air_temp
+            if water_temp is not None or forecast[0].get("water_temperature") is None:
+                forecast[0]["water_temperature"] = water_temp
             logger.info(f"  Temperatures: air={air_temp}°C, water={water_temp}°C")
     except Exception as e:
         logger.warning(f"  Temperature fetch failed (non-critical): {e}")
@@ -549,7 +597,8 @@ def _enrich_with_wind(forecast, latitude, longitude):
             timeout=10,
         ))
         if not resp.ok:
-            logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), keeping original wind")
+            logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), trying ERDDAP fallback")
+            _enrich_wind_from_erddap(forecast, latitude, longitude)
             return
         om = resp.json().get("hourly", {})
         om_times = om.get("time", [])
@@ -571,8 +620,102 @@ def _enrich_with_wind(forecast, latitude, longitude):
                     entry["wind_direction"] = round(float(om_wd[oi]), 1)
                 matched += 1
         logger.info(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
+        if matched == 0:
+            _enrich_wind_from_erddap(forecast, latitude, longitude)
     except Exception as e:
         logger.warning(f"  Open-Meteo wind fetch failed (non-critical): {e}")
+        try:
+            _enrich_wind_from_erddap(forecast, latitude, longitude)
+        except Exception as e2:
+            logger.warning(f"  ERDDAP wind fallback also failed: {e2}")
+
+
+def _enrich_wind_from_erddap(forecast, latitude, longitude):
+    """Fallback wind + air-temperature enrichment from ERDDAP GFS.
+
+    The Open-Meteo weather API rate-limits per IP, and Render's shared
+    egress IPs can be over the limit even when our own volume is low (the
+    marine API is a separate pool and keeps working). NOAA CoastWatch
+    ERDDAP serves the same GFS 10m wind and 2m temperature without that
+    failure mode. Fills wind_speed / wind_direction only for hours where
+    they are missing; sets air_temperature on the current row if absent.
+    """
+    try:
+        lon_360 = longitude % 360
+        lat_range = f"({latitude - 0.5}):({latitude + 0.5})"
+        lon_range = f"({lon_360 - 0.5}):({lon_360 + 0.5})"
+
+        wind_json = None
+        for hours_back in [6, 12, 24]:
+            try:
+                start = datetime.now(timezone.utc).replace(
+                    minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
+                time_range = f"({start.isoformat()}Z):(last)"
+                wind_json = _fetch_erddap_grid(
+                    server="coastwatch.pfeg.noaa.gov",
+                    dataset="NCEP_Global_Best",
+                    variables=["ugrd10m", "vgrd10m", "tmp2m"],
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                )
+                break
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                    continue
+                raise
+        if not wind_json:
+            return
+
+        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m", "tmp2m"])
+        wind_lats = np.array(wind['lats'])
+        wind_lons = np.array(wind['lons'])
+        wlat_i = int(np.argmin(np.abs(wind_lats - latitude)))
+        wlon_i = int(np.argmin(np.abs(wind_lons - lon_360)))
+        wind_dts = [_parse_erddap_time(t) for t in wind['times']]
+        u_series = wind['grids']['ugrd10m'][:, wlat_i, wlon_i]
+        v_series = wind['grids']['vgrd10m'][:, wlat_i, wlon_i]
+        t2_series = wind['grids']['tmp2m'][:, wlat_i, wlon_i]
+        wind_secs = np.array([(w - wind_dts[0]).total_seconds() for w in wind_dts])
+
+        filled = 0
+        for entry in forecast:
+            if entry.get('wind_speed') is not None and entry.get('wind_direction') is not None:
+                continue
+            try:
+                edt = datetime.fromisoformat(entry['time'].replace('Z', '+00:00')).replace(tzinfo=None)
+            except (KeyError, ValueError, AttributeError):
+                continue
+            t_sec = (edt - wind_dts[0]).total_seconds()
+            # Interpolate GFS 3-hourly wind to the forecast hour
+            if t_sec <= wind_secs[0]:
+                u, v = float(u_series[0]), float(v_series[0])
+            elif t_sec >= wind_secs[-1]:
+                u, v = float(u_series[-1]), float(v_series[-1])
+            else:
+                idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
+                dt = wind_secs[idx + 1] - wind_secs[idx]
+                w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
+                u = float(u_series[idx] * (1 - w) + u_series[idx + 1] * w)
+                v = float(v_series[idx] * (1 - w) + v_series[idx + 1] * w)
+            if math.isnan(u) or math.isnan(v):
+                continue
+            entry['wind_speed'] = round(math.sqrt(u * u + v * v) * 3.6, 1)  # m/s -> km/h
+            entry['wind_direction'] = round((270 - math.degrees(math.atan2(v, u))) % 360, 1)
+            filled += 1
+
+        # Air temperature for the current row (tmp2m is Kelvin)
+        if forecast and forecast[0].get('air_temperature') is None and len(t2_series):
+            now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+            ti = int(np.argmin(np.abs(np.array(
+                [(w - now_dt).total_seconds() for w in wind_dts]))))
+            t2 = float(t2_series[ti])
+            if not math.isnan(t2):
+                forecast[0]['air_temperature'] = round(t2 - 273.15, 1)
+
+        logger.info(f"  ERDDAP wind fallback: filled {filled}/{len(forecast)} hours")
+    except Exception as e:
+        logger.warning(f"  ERDDAP wind fallback failed (non-critical): {e}")
 
 
 def _get_point_from_open_meteo(latitude, longitude):

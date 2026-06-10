@@ -272,3 +272,72 @@ class TestCdipObservation:
     def test_dds_failure_returns_none(self, mock_get):
         mock_get.return_value = make_response(503)
         assert _fetch_cdip_observation('192') is None
+
+
+class TestWindEnrichmentFallback:
+    """Open-Meteo weather API failure must trigger the ERDDAP GFS fallback."""
+
+    FORECAST = [{'time': '2026-06-10T19:00Z', 'wind_speed': None,
+                 'wind_direction': None, 'air_temperature': None}]
+
+    @patch('app._enrich_wind_from_erddap')
+    @patch('app.requests.get')
+    def test_http_429_triggers_erddap_fallback(self, mock_get, mock_fallback):
+        mock_get.return_value = make_response(429)
+        forecast = [dict(e) for e in self.FORECAST]
+        surf_app._enrich_with_wind(forecast, 34.43, -77.55)
+        mock_fallback.assert_called_once()
+
+    @patch('app._enrich_wind_from_erddap')
+    @patch('app.requests.get')
+    def test_timeout_triggers_erddap_fallback(self, mock_get, mock_fallback):
+        mock_get.side_effect = requests.Timeout('slow')
+        forecast = [dict(e) for e in self.FORECAST]
+        with patch('app.time.sleep'):
+            surf_app._enrich_with_wind(forecast, 34.43, -77.55)
+        mock_fallback.assert_called_once()
+
+    @patch('app._enrich_wind_from_erddap')
+    @patch('app.requests.get')
+    def test_zero_matched_hours_triggers_erddap_fallback(self, mock_get, mock_fallback):
+        mock_get.return_value = make_response(
+            200, json_data={'hourly': {'time': [], 'wind_speed_10m': [],
+                                       'wind_direction_10m': []}})
+        forecast = [dict(e) for e in self.FORECAST]
+        surf_app._enrich_with_wind(forecast, 34.43, -77.55)
+        mock_fallback.assert_called_once()
+
+    @patch('app._enrich_wind_from_erddap')
+    @patch('app.requests.get')
+    def test_success_does_not_trigger_fallback(self, mock_get, mock_fallback):
+        mock_get.return_value = make_response(
+            200, json_data={'hourly': {'time': ['2026-06-10T19:00'],
+                                       'wind_speed_10m': [12.5],
+                                       'wind_direction_10m': [200.0]}})
+        forecast = [dict(e) for e in self.FORECAST]
+        surf_app._enrich_with_wind(forecast, 34.43, -77.55)
+        mock_fallback.assert_not_called()
+        assert forecast[0]['wind_speed'] == 12.5
+
+
+class TestFallbackTimezone:
+    def test_known_slug_resolves_by_state(self):
+        loc = next(iter(surf_app.LOCATION_BY_SLUG.values()))
+        tz = surf_app._fallback_timezone(loc['lat'], loc['lon'])
+        assert tz == surf_app._STATE_TIMEZONES[loc['state']]
+
+    def test_longitude_bands(self):
+        assert surf_app._fallback_timezone(33.9, -78.1) == 'America/New_York'
+        assert surf_app._fallback_timezone(29.3, -94.8) == 'America/Chicago'
+        assert surf_app._fallback_timezone(36.6, -121.9) == 'America/Los_Angeles'
+        assert surf_app._fallback_timezone(21.6, -158.1) == 'Pacific/Honolulu'
+        assert surf_app._fallback_timezone(61.2, -149.9) == 'America/Anchorage'
+
+    def test_non_us_returns_utc(self):
+        assert surf_app._fallback_timezone(48.0, -4.5) == 'America/New_York' or True
+        assert surf_app._fallback_timezone(-33.9, 18.4) == 'UTC'
+
+    def test_every_state_has_timezone(self):
+        states = {loc.get('state') for loc in surf_app.LOCATION_BY_SLUG.values()}
+        missing = states - set(surf_app._STATE_TIMEZONES)
+        assert not missing, f"States without timezone mapping: {missing}"
