@@ -551,3 +551,34 @@ class TestMagicSeaweedPage:
     def test_cross_linked_from_surfline_page(self, client):
         html = client.get('/compare/surfline').data.decode()
         assert 'href="/compare/magicseaweed"' in html
+
+
+class TestEmbedWidget:
+    """Iframe-embeddable forecast card at /embed/<slug>."""
+
+    def test_embed_returns_200(self, client):
+        slug = next(iter(LOCATION_BY_SLUG))
+        assert client.get(f'/embed/{slug}').status_code == 200
+
+    def test_embed_unknown_slug_404(self, client):
+        assert client.get('/embed/not-a-real-spot').status_code == 404
+
+    def test_embed_is_frameable(self, client):
+        slug = next(iter(LOCATION_BY_SLUG))
+        resp = client.get(f'/embed/{slug}')
+        assert 'X-Frame-Options' not in resp.headers
+        assert 'frame-ancestors *' in resp.headers.get('Content-Security-Policy', '')
+
+    def test_other_pages_still_deny_framing(self, client):
+        resp = client.get('/')
+        assert resp.headers.get('X-Frame-Options') == 'DENY'
+        assert 'frame-ancestors *' not in resp.headers.get('Content-Security-Policy', '')
+
+    def test_embed_noindex(self, client):
+        slug = next(iter(LOCATION_BY_SLUG))
+        html = client.get(f'/embed/{slug}').data.decode()
+        assert 'noindex' in html
+
+    def test_about_documents_embed(self, client):
+        html = client.get('/about').data.decode()
+        assert '/embed/' in html

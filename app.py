@@ -2006,6 +2006,26 @@ def compare_magicseaweed():
     return render_template('compare_magicseaweed.html')
 
 
+@app.route('/embed/<slug>')
+def embed_widget(slug):
+    """Iframe-embeddable mini forecast card for third-party sites.
+
+    Distribution play: surf shops, schools, and beach-town sites embed the
+    card and link back to the full forecast page.
+    """
+    location = LOCATION_BY_SLUG.get(slug)
+    if not location:
+        from flask import abort
+        abort(404)
+    return render_template(
+        'embed.html',
+        location_name=location['name'],
+        location_slug=slug,
+        location_lat=location['lat'],
+        location_lon=location['lon'],
+    )
+
+
 @app.route('/glossary')
 def glossary():
     """Renders the surf/oceanography glossary page (SEO topic-cluster anchor)."""
@@ -3486,7 +3506,13 @@ def add_cache_headers(response):
         response.headers['Cache-Control'] = 'public, max-age=86400'
     elif response.content_type and 'text/html' in response.content_type:
         response.headers['Cache-Control'] = 'public, max-age=300'
-    response.headers['X-Frame-Options'] = 'DENY'
+    # /embed/* must be frameable by third-party sites; everything else
+    # keeps clickjacking protection.
+    if request.path.startswith('/embed/'):
+        frame_ancestors = "frame-ancestors *; "
+    else:
+        response.headers['X-Frame-Options'] = 'DENY'
+        frame_ancestors = ""
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(self)'
@@ -3498,6 +3524,7 @@ def add_cache_headers(response):
         "connect-src 'self' https: blob:; "
         "media-src 'self' https: blob:; "
         "frame-src 'self' https:; "
+        + frame_ancestors +
         "font-src 'self' data:; "
         "worker-src 'self' blob:; "
         "manifest-src 'self'; "

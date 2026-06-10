@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>{{ location_name }} Surf Forecast Widget</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --live: #44ff88;
+            --font: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+        }
+        .embed-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            padding: 10px 14px 8px;
+            min-height: 0;
+        }
+        .embed-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .embed-spot {
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .embed-cond { font-size: 11px; color: var(--live); white-space: nowrap; }
+        .embed-stats {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            align-items: center;
+        }
+        .embed-stat { text-align: center; }
+        .embed-stat .v { font-size: 22px; font-weight: 700; }
+        .embed-stat .v small { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+        .embed-stat .l { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .embed-foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid var(--border);
+            font-size: 9px;
+            color: var(--text-dim);
+        }
+        .embed-foot a {
+            color: var(--live);
+            text-decoration: none;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .embed-foot a:hover { text-decoration: underline; }
+        .embed-loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 11px; }
+    </style>
+</head>
+<body>
+    <div class="embed-card">
+        <div class="embed-head">
+            <span class="embed-spot">{{ location_name }}</span>
+            <span class="embed-cond" id="embed-cond"></span>
+        </div>
+        <div class="embed-loading" id="embed-loading">Loading forecast&hellip;</div>
+        <div class="embed-stats" id="embed-stats" style="display:none">
+            <div class="embed-stat"><div class="v" id="e-wave">-</div><div class="l">Waves</div></div>
+            <div class="embed-stat"><div class="v" id="e-period">-</div><div class="l">Period</div></div>
+            <div class="embed-stat"><div class="v" id="e-wind">-</div><div class="l">Wind</div></div>
+        </div>
+        <div class="embed-foot">
+            <span id="embed-updated"></span>
+            <a href="https://freesurfforecast.com/forecast/{{ location_slug }}" target="_top" rel="noopener">freesurfforecast.com &rarr;</a>
+        </div>
+    </div>
+    <script>
+        (function() {
+            var LAT = {{ location_lat }}, LON = {{ location_lon }};
+            fetch('/api/forecast?lat=' + LAT + '&lon=' + LON)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var f = d.forecast || [];
+                    if (!f.length) throw new Error('no data');
+                    // Row nearest to now
+                    var now = Date.now(), cur = f[0];
+                    for (var i = 0; i < f.length; i++) {
+                        if (new Date(f[i].time).getTime() <= now) cur = f[i];
+                        else break;
+                    }
+                    var wh = cur.wave_height != null ? (cur.wave_height * 3.28084).toFixed(1) : '-';
+                    var wp = cur.wave_period != null ? Math.round(cur.wave_period) : '-';
+                    var ws = cur.wind_speed != null ? Math.round(cur.wind_speed * 0.621371) : '-';
+                    var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+                    var wd = cur.wind_direction != null ? dirs[Math.round(cur.wind_direction / 22.5) % 16] : '';
+                    document.getElementById('e-wave').innerHTML = wh + '<small>ft</small>';
+                    document.getElementById('e-period').innerHTML = wp + '<small>s</small>';
+                    document.getElementById('e-wind').innerHTML = ws + '<small>mph ' + wd + '</small>';
+                    var cond = '';
+                    if (cur.wave_period != null) {
+                        cond = cur.wave_period >= 12 ? 'Ground swell' : cur.wave_period >= 9 ? 'Mid-period swell' : 'Wind swell';
+                    }
+                    document.getElementById('embed-cond').textContent = cond;
+                    var t = new Date(cur.time);
+                    document.getElementById('embed-updated').textContent =
+                        'Updated ' + t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    document.getElementById('embed-loading').style.display = 'none';
+                    document.getElementById('embed-stats').style.display = '';
+                })
+                .catch(function() {
+                    document.getElementById('embed-loading').textContent = 'Forecast unavailable';
+                });
+        })();
+    </script>
+</body>
+</html>
