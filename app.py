@@ -2000,6 +2000,12 @@ def compare_surfline():
     return render_template('compare.html')
 
 
+@app.route('/compare/magicseaweed')
+def compare_magicseaweed():
+    """Landing page targeting 'MagicSeaweed replacement' queries."""
+    return render_template('compare_magicseaweed.html')
+
+
 @app.route('/glossary')
 def glossary():
     """Renders the surf/oceanography glossary page (SEO topic-cluster anchor)."""
@@ -2317,13 +2323,14 @@ def sitemap_xml():
     urls.append('    <priority>0.6</priority>')
     urls.append('  </url>')
 
-    # Surfline-alternative comparison landing page
-    urls.append('  <url>')
-    urls.append('    <loc>https://freesurfforecast.com/compare/surfline</loc>')
-    urls.append(f'    <lastmod>{today}</lastmod>')
-    urls.append('    <changefreq>monthly</changefreq>')
-    urls.append('    <priority>0.6</priority>')
-    urls.append('  </url>')
+    # Comparison landing pages
+    for _cmp in ('surfline', 'magicseaweed'):
+        urls.append('  <url>')
+        urls.append(f'    <loc>https://freesurfforecast.com/compare/{_cmp}</loc>')
+        urls.append(f'    <lastmod>{today}</lastmod>')
+        urls.append('    <changefreq>monthly</changefreq>')
+        urls.append('    <priority>0.6</priority>')
+        urls.append('  </url>')
 
     # /learn topic cluster — evergreen guides
     urls.append('  <url>')

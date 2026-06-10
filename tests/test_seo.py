@@ -527,3 +527,27 @@ class TestRegionExpansion:
         html = client.get('/regions/gulf-coast').data.decode()
         assert 'galveston-tx' in html
         assert 'gulf-shores-al' in html
+
+
+class TestMagicSeaweedPage:
+    """/compare/magicseaweed landing page for MSW-replacement queries."""
+
+    def test_returns_200(self, client):
+        assert client.get('/compare/magicseaweed').status_code == 200
+
+    def test_meta_and_canonical(self, client):
+        html = client.get('/compare/magicseaweed').data.decode()
+        assert 'MagicSeaweed Replacement' in html
+        assert 'rel="canonical" href="https://freesurfforecast.com/compare/magicseaweed"' in html
+
+    def test_has_faq_schema(self, client):
+        html = client.get('/compare/magicseaweed').data.decode()
+        assert len(_parse_json_ld(html, 'FAQPage')) == 1
+
+    def test_in_sitemap(self, client):
+        xml = client.get('/sitemap.xml').data.decode()
+        assert 'https://freesurfforecast.com/compare/magicseaweed' in xml
+
+    def test_cross_linked_from_surfline_page(self, client):
+        html = client.get('/compare/surfline').data.decode()
+        assert 'href="/compare/magicseaweed"' in html
