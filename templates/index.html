@@ -53,6 +53,17 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-velocity@2.1.4/dist/leaflet-velocity.css" integrity="sha384-pl8PC81aYCmcJzQSyvD5iTdjHL+H6KjRKasELwYyh1fgroB+bkJqt1+7zP7NRG5v" crossorigin="anonymous" />
     <!-- GridStack CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" integrity="sha384-3466xzONp5jWI9wRY4i5C4LQqPF7wQiNl2TPqqWNEKMxqleN1p3y+uCjs5rObTFv" crossorigin="anonymous" />
+    <script>
+        // Apply theme before first paint so light-theme users don't get a
+        // dark flash while the page parses (full theme logic loads later)
+        (function() {
+            var saved = null;
+            try { saved = localStorage.getItem('theme'); } catch (e) {}
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <style>
         /* === Design Tokens === */
         :root {
@@ -958,12 +969,26 @@
 
         .chart-unavailable {
             display: flex;
+            flex-direction: column;
+            gap: 6px;
             align-items: center;
             justify-content: center;
             height: 100%;
             color: var(--status-warning);
             font-size: 11px;
             letter-spacing: 0.5px;
+        }
+        .chart-retry-btn {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 3px 14px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+        .chart-retry-btn:hover {
+            border-color: var(--text-muted);
         }
 
         /* === Leaflet Legend === */
@@ -3916,6 +3941,17 @@
                 const isOpen = dropdown.classList.contains('open');
                 if (!isOpen) buildPanelToggleDropdown();
                 dropdown.classList.toggle('open');
+                this.setAttribute('aria-expanded', dropdown.classList.contains('open'));
+            });
+
+            // Escape closes the panels dropdown and returns focus to the button
+            document.getElementById('panel-toggle-dropdown').addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    this.classList.remove('open');
+                    var btn = document.getElementById('panels-toggle-btn');
+                    btn.setAttribute('aria-expanded', 'false');
+                    btn.focus();
+                }
             });
 
             // Close panel toggle dropdown on outside click
@@ -4689,7 +4725,7 @@
             ctrl.addTo(map);
         }
 
-        function showChartUnavailable(canvasId, message) {
+        function showChartUnavailable(canvasId, message, retryFn) {
             const canvas = document.getElementById(canvasId);
             const wrap = canvas.parentElement;
             canvas.style.display = 'none';
@@ -4699,7 +4735,20 @@
                 overlay.className = 'chart-unavailable';
                 wrap.appendChild(overlay);
             }
-            overlay.textContent = message;
+            overlay.textContent = navigator.onLine === false
+                ? message + ' — you appear to be offline'
+                : message;
+            if (retryFn) {
+                const btn = document.createElement('button');
+                btn.className = 'chart-retry-btn';
+                btn.type = 'button';
+                btn.textContent = 'Retry';
+                btn.addEventListener('click', function() {
+                    overlay.textContent = 'Loading...';
+                    retryFn();
+                });
+                overlay.appendChild(btn);
+            }
         }
 
         function clearChartUnavailable(canvasId) {
@@ -5433,8 +5482,22 @@
             });
         });
 
+        // Location generation counter — incremented on every location change.
+        // Loaders capture the value at fetch start via staleGuard(); a slow
+        // response that lands after the user has switched locations is
+        // discarded instead of painting stale data over the new location.
+        window._locationGen = 0;
+        function staleGuard(fn) {
+            var gen = window._locationGen;
+            return function() {
+                if (gen !== window._locationGen) return;
+                return fn.apply(this, arguments);
+            };
+        }
+
         // Function to reload all dashboard data
         function reloadAllData() {
+            window._locationGen++;
             // Remove SSR summary once JS takes over
             const ssrEl = document.getElementById('ssr-summary');
             if (ssrEl) ssrEl.remove();
@@ -5724,7 +5787,7 @@
             Promise.all([
                 orientationPromise,
                 fetch(`/api/forecast?${params}`).then(r => r.json())
-            ]).then(([orientation, rawResponse]) => {
+            ]).then(staleGuard(([orientation, rawResponse]) => {
                     // Extract forecast list and location timezone from response
                     const data = rawResponse.error ? rawResponse : rawResponse.forecast;
                     if (!rawResponse.error) {
@@ -5774,7 +5837,7 @@
 
                     if (data.error) {
                         console.error('API Error (Point Data):', data.error);
-                        showChartUnavailable('waveChart', 'Forecast data unavailable');
+                        showChartUnavailable('waveChart', 'Forecast data unavailable', loadPointForecast);
                         document.getElementById('current-conditions-stats').style.display = 'none';
                         document.getElementById('current-conditions-error').textContent = 'Conditions data unavailable';
                         document.getElementById('current-conditions-error').style.display = '';
@@ -6334,14 +6397,14 @@
                     _forecastLoaded = true;
                     checkSessionPlannerReady();
                     refreshCompareForCurrentLocation();
-                })
-                .catch(error => {
+                }))
+                .catch(staleGuard(error => {
                     console.error('Error fetching point forecast data:', error);
-                    showChartUnavailable('waveChart', 'Forecast data unavailable');
+                    showChartUnavailable('waveChart', 'Forecast data unavailable', loadPointForecast);
                     document.getElementById('current-conditions-stats').style.display = 'none';
                     document.getElementById('current-conditions-error').textContent = 'Conditions data unavailable';
                     document.getElementById('current-conditions-error').style.display = '';
-                });
+                }));
         }
 
         // Initial load — stagger heavy API calls to avoid rate limits
@@ -6744,7 +6807,7 @@
             // Fetch swell narrative in parallel (non-blocking)
             fetch(`/api/swell-narrative?${params}`)
                 .then(function(r) { return r.ok ? r.json() : null; })
-                .then(function(narr) {
+                .then(staleGuard(function(narr) {
                     var el = document.getElementById('basin-narrative');
                     if (!el || !narr || !narr.narrative) {
                         if (el) el.style.display = 'none';
@@ -6761,7 +6824,7 @@
                     // Narrative text (no duplicate swell type label)
                     el.appendChild(document.createTextNode(narr.narrative));
                     el.style.display = '';
-                })
+                }))
                 .catch(function() {
                     var el = document.getElementById('basin-narrative');
                     if (el) el.style.display = 'none';
@@ -6769,7 +6832,7 @@
 
             return fetch(`/api/ocean-basin?${params}`)
                 .then(response => response.json())
-                .then(data => {
+                .then(staleGuard(data => {
                     if (data.error) {
                         console.error('API Error (Basin Data):', data.error);
                         const center = [currentLocation.lat, currentLocation.lon];
@@ -6786,12 +6849,12 @@
                         renderBasinMap();
                     }
                     // Otherwise IntersectionObserver will trigger renderBasinMap when visible
-                })
-                .catch(error => {
+                }))
+                .catch(staleGuard(error => {
                     console.error('Error fetching ocean basin data:', error);
                     const center = [currentLocation.lat, currentLocation.lon];
                     mapBasin = initEmptyMap('map-basin', center, 3, 'Ocean data unavailable');
-                });
+                }));
         }
 
         // Basin maps loaded via staggered init in loadPointForecast listener
@@ -6908,7 +6971,7 @@
 
             return fetch(`/api/map-forecast?${params}`)
                 .then(response => response.json())
-                .then(gridData => {
+                .then(staleGuard(gridData => {
                     if (gridData.error) {
                         console.error('API Error (Map Data):', gridData.error);
                         const center = [currentLocation.lat, currentLocation.lon];
@@ -6936,14 +6999,14 @@
                         renderLocalMaps();
                     }
                     // Otherwise IntersectionObserver will trigger renderLocalMaps when visible
-                })
-                .catch(error => {
+                }))
+                .catch(staleGuard(error => {
                     console.error('Error fetching map forecast data:', error);
                     const center = [currentLocation.lat, currentLocation.lon];
                     map1 = initEmptyMap('map-wave-period', center, 8, 'Forecast data unavailable');
                     map2 = initEmptyMap('map-wave-height', center, 8, 'Forecast data unavailable');
                     map3 = initEmptyMap('map-wind', center, 8, 'Forecast data unavailable');
-                });
+                }));
         }
 
         // === Unified Map Time Slider Logic ===
@@ -7771,10 +7834,10 @@
 
             fetch(`/api/tides?${params}`)
                 .then(response => response.json())
-                .then(tideData => {
+                .then(staleGuard(tideData => {
                     if (tideData.error) {
                         console.error('API Error (Tide Data):', tideData.error);
-                        showChartUnavailable('tideChart', 'Tide data unavailable');
+                        showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
                         document.getElementById('tide-station-info').textContent = 'Unavailable';
                         return;
                     }
@@ -7973,12 +8036,12 @@
                     addTideToWaveChart();
                     _tidesLoaded = true;
                     checkSessionPlannerReady();
-                })
-                .catch(error => {
+                }))
+                .catch(staleGuard(error => {
                     console.error('Error fetching tide data:', error);
-                    showChartUnavailable('tideChart', 'Tide data unavailable');
+                    showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
                     document.getElementById('tide-station-info').textContent = 'Unavailable';
-                });
+                }));
         }
 
         // Tide data loaded via staggered init in loadPointForecast listener
@@ -8029,6 +8092,10 @@
 
             grid.textContent = '';
             var bestWindow = windows.reduce(function(best, w) { return w.score > best.score ? w : best; }, windows[0]);
+            // Only highlight a "best" window when it clears the Good (55+)
+            // bar — a relative best on an all-poor week reads as a
+            // recommendation to paddle out into junk
+            var highlightWindow = bestWindow.score >= 55 ? bestWindow : null;
 
             Object.keys(dayMap).forEach(function(day) {
                 var dayCol = document.createElement('div');
@@ -8086,7 +8153,7 @@
                         if (iconEl.textContent) block.appendChild(iconEl);
                     }
 
-                    if (w === bestWindow) {
+                    if (w === highlightWindow) {
                         block.classList.add('session-best');
                     }
 
@@ -8098,6 +8165,8 @@
 
             var existingLegend = grid.parentNode.querySelector('.session-score-legend');
             if (existingLegend) existingLegend.remove();
+            var existingNote = grid.parentNode.querySelector('.session-no-best-note');
+            if (existingNote) existingNote.remove();
             var legend = document.createElement('div');
             legend.className = 'session-score-legend';
             legend.style.cssText = 'font-size:11px;color:var(--text-muted);text-align:center;margin-top:6px;';
@@ -8106,9 +8175,19 @@
 
             var primeCount = windows.filter(function(w) { return w.rating === 'prime'; }).length;
             var goodCount = windows.filter(function(w) { return w.rating === 'good'; }).length;
+            var fairCount = windows.filter(function(w) { return w.rating === 'fair'; }).length;
             if (primeCount > 0) badge.textContent = primeCount + ' Prime';
             else if (goodCount > 0) badge.textContent = goodCount + ' Good';
-            else badge.textContent = 'Fair';
+            else if (fairCount > 0) badge.textContent = 'Fair';
+            else badge.textContent = 'Poor';
+
+            if (!highlightWindow) {
+                var note = document.createElement('div');
+                note.className = 'session-no-best-note';
+                note.style.cssText = 'font-size:11px;color:var(--text-muted);text-align:center;margin-top:4px;';
+                note.textContent = 'No recommended windows this week — best is ' + bestWindow.score + '/100';
+                grid.parentNode.appendChild(note);
+            }
 
             // Schedule surf alert after session planner renders
             scheduleSurfAlert();
@@ -8900,7 +8979,7 @@
 
             fetch('/api/buoys?' + params)
                 .then(function(r) { return r.json(); })
-                .then(function(data) {
+                .then(staleGuard(function(data) {
                     hideBuoyLoading();
                     if (data.error || !data.buoys || data.buoys.length === 0) {
                         layout.style.display = 'none';
@@ -8925,15 +9004,26 @@
                     sel.onchange = function() { selectBuoy(data.buoys[parseInt(sel.value)]); };
 
                     selectBuoy(data.buoys[0]);
-                })
-                .catch(function(err) {
+                }))
+                .catch(staleGuard(function(err) {
                     console.error('Buoy fetch error:', err);
                     hideBuoyLoading();
                     layout.style.display = 'none';
-                    error.textContent = 'Buoy data unavailable';
+                    error.textContent = '';
+                    var msg = document.createElement('span');
+                    msg.textContent = navigator.onLine === false
+                        ? 'Buoy data unavailable — you appear to be offline'
+                        : 'Buoy data unavailable';
+                    error.appendChild(msg);
+                    var retry = document.createElement('button');
+                    retry.className = 'chart-retry-btn';
+                    retry.type = 'button';
+                    retry.textContent = 'Retry';
+                    retry.addEventListener('click', loadBuoyData);
+                    error.appendChild(retry);
                     error.style.display = '';
                     badge.textContent = 'Error';
-                });
+                }));
         }
 
         let buoyMap = null;
@@ -9528,16 +9618,16 @@
             }
             fetch('/api/webcams?' + params)
                 .then(function(r) { return r.json(); })
-                .then(function(data) {
+                .then(staleGuard(function(data) {
                     window.nearbyCameras = data.cameras || [];
                     setCamPanel(0, window.nearbyCameras[0] || null, 0);
                     setCamPanel(1, window.nearbyCameras[1] || null, 1);
-                })
-                .catch(function() {
+                }))
+                .catch(staleGuard(function() {
                     window.nearbyCameras = [];
                     setCamPanel(0, null);
                     setCamPanel(1, null);
-                });
+                }));
         }
 
         document.addEventListener('DOMContentLoaded', function() {
