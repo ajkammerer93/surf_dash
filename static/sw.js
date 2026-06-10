@@ -1,8 +1,11 @@
-const CACHE_NAME = 'fsf-v3';
+const CACHE_NAME = 'fsf-v4';
 const APP_SHELL = ['/', '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
 const CDN_HOSTS = ['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'];
 const API_CACHE = 'fsf-api-v1';
-const API_MAX_AGE = 15 * 60 * 1000; // 15 minutes
+// Offline fallback window: a 6-hour-old forecast in a no-signal beach
+// parking lot beats an empty dashboard. The page reads sw-cached-at and
+// shows the data's true age in the staleness badge.
+const API_OFFLINE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
@@ -51,7 +54,7 @@ self.addEventListener('fetch', function(event) {
                     return cache.match(event.request).then(function(cached) {
                         if (cached) {
                             var cachedAt = parseInt(cached.headers.get('sw-cached-at') || '0');
-                            if (Date.now() - cachedAt < API_MAX_AGE) return cached;
+                            if (Date.now() - cachedAt < API_OFFLINE_MAX_AGE) return cached;
                         }
                         return new Response(JSON.stringify({error: 'offline'}), {
                             status: 503,

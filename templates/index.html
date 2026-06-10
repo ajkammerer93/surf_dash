@@ -971,6 +971,18 @@
             display: none;
         }
         .alert-btn-active .alert-btn-dot { display: block; }
+        .alert-threshold-pill {
+            margin-left: 2px;
+            padding: 2px 7px;
+            font-family: var(--font-body);
+            font-size: 10px;
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            align-self: center;
+        }
+        .alert-threshold-pill:hover { border-color: var(--status-live); color: var(--status-live); }
 
         .panel-content {
             padding: 8px;
@@ -2485,6 +2497,10 @@
                         <span class="btn-icon-only"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></span>
                     </button>
                     <span class="alert-btn-dot"></span>
+                    <button class="alert-threshold-pill" id="alert-threshold-pill" style="display:none"
+                        onclick="cycleAlertThreshold()" type="button"
+                        title="Minimum surf score that triggers an alert — click to change"
+                        aria-label="Alert threshold"></button>
                 </div>
                 <span class="header-sep mobile-collapse"></span>
                 <button class="header-btn mobile-collapse" onclick="openShareCardModal()" title="Share Forecast Card" aria-label="Share forecast card">
@@ -5955,7 +5971,13 @@
             // Wait for both orientation and forecast before rendering
             Promise.all([
                 orientationPromise,
-                fetch(`/api/forecast?${params}`).then(r => r.json())
+                fetch(`/api/forecast?${params}`).then(r => {
+                    // Present when the service worker served a cached copy
+                    // offline — drives the staleness badge to show true age
+                    var cachedAt = parseInt(r.headers.get('sw-cached-at'), 10);
+                    window._forecastServedFromCacheAt = isNaN(cachedAt) ? null : cachedAt;
+                    return r.json();
+                })
             ]).then(staleGuard(([orientation, rawResponse]) => {
                     // Extract forecast list and location timezone from response
                     const data = rawResponse.error ? rawResponse : rawResponse.forecast;
@@ -6558,8 +6580,10 @@
                     const ssrEl = document.getElementById('ssr-summary');
                     if (ssrEl) ssrEl.remove();
 
-                    // Track data freshness and signal session planner
-                    window._forecastFetchedAt = Date.now();
+                    // Track data freshness and signal session planner.
+                    // Offline cache hits report when the data was actually
+                    // fetched, not when it was served.
+                    window._forecastFetchedAt = window._forecastServedFromCacheAt || Date.now();
                     startStalenessTimer();
                     _forecastLoaded = true;
                     checkSessionPlannerReady();
@@ -8466,11 +8490,13 @@
                 localStorage.setItem('surf-alerts', 'off');
                 btn.classList.remove('alert-btn-active'); btn.setAttribute('aria-pressed', 'false');
                 if (_alertTimeout) { clearTimeout(_alertTimeout); _alertTimeout = null; }
+                updateAlertThresholdPill();
                 return;
             }
             if (Notification.permission === 'granted') {
                 localStorage.setItem('surf-alerts', 'on');
                 btn.classList.add('alert-btn-active'); btn.setAttribute('aria-pressed', 'true');
+                updateAlertThresholdPill();
                 scheduleSurfAlert();
             } else if (Notification.permission === 'denied') {
                 showToast('Notifications are blocked. Enable them in your browser settings, then try again.', 'error', 4500);
@@ -8479,12 +8505,42 @@
                     if (perm === 'granted') {
                         localStorage.setItem('surf-alerts', 'on');
                         btn.classList.add('alert-btn-active'); btn.setAttribute('aria-pressed', 'true');
+                        updateAlertThresholdPill();
                         scheduleSurfAlert();
                     } else if (perm === 'denied') {
                         showToast('Notifications denied. You can change this in browser settings.', 'warning', 4500);
                     }
                 });
             }
+        }
+
+        // Minimum session score that triggers a notification. Cycles
+        // Fair (35) -> Good (55) -> Prime (75); default Good.
+        var ALERT_THRESHOLDS = [
+            { score: 35, label: '35+ Fair' },
+            { score: 55, label: '55+ Good' },
+            { score: 75, label: '75+ Prime' }
+        ];
+        function alertThreshold() {
+            var v = parseInt(localStorage.getItem('alert-threshold'), 10);
+            return ALERT_THRESHOLDS.some(function(t) { return t.score === v; }) ? v : 55;
+        }
+        function cycleAlertThreshold() {
+            var idx = ALERT_THRESHOLDS.findIndex(function(t) { return t.score === alertThreshold(); });
+            var next = ALERT_THRESHOLDS[(idx + 1) % ALERT_THRESHOLDS.length];
+            try { localStorage.setItem('alert-threshold', String(next.score)); } catch (e) {}
+            updateAlertThresholdPill();
+            window._lastAlertWindow = null;  // allow re-alerting under the new bar
+            showToast('Alerting for windows scoring ' + next.label, 'info', 2500);
+            scheduleSurfAlert();
+        }
+        function updateAlertThresholdPill() {
+            var pill = document.getElementById('alert-threshold-pill');
+            if (!pill) return;
+            var active = surfAlertsEnabled() && Notification.permission === 'granted';
+            pill.style.display = active ? '' : 'none';
+            var t = ALERT_THRESHOLDS.find(function(x) { return x.score === alertThreshold(); });
+            pill.textContent = t ? t.label.split(' ')[0] : '55+';
         }
 
         function initAlertButton() {
@@ -8499,6 +8555,7 @@
                 btn.classList.remove('alert-btn-active'); btn.setAttribute('aria-pressed', 'false');
                 if (surfAlertsEnabled()) localStorage.setItem('surf-alerts', 'off');
             }
+            updateAlertThresholdPill();
         }
 
         function scheduleSurfAlert() {
@@ -8514,7 +8571,9 @@
                 if (w.endTime.getTime() < now) return;
                 if (!bestUpcoming || w.score > bestUpcoming.score) bestUpcoming = w;
             });
-            if (!bestUpcoming) return;
+            // Only alert when the window clears the user's threshold —
+            // an alert for a 30-point day trains people to ignore alerts
+            if (!bestUpcoming || bestUpcoming.score < alertThreshold()) return;
 
             var startMs = bestUpcoming.startTime.getTime();
             if (window._lastAlertWindow && window._lastAlertWindow === startMs) return;
