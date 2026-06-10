@@ -2246,16 +2246,9 @@ def og_image(slug):
     return resp
 
 
-@app.route('/regions/<slug>')
-def region_page(slug):
-    """Render one /regions/<slug> landing page with its spot roster."""
-    from region_pages import REGIONS_BY_SLUG
-    region = REGIONS_BY_SLUG.get(slug)
-    if not region:
-        from flask import abort
-        abort(404)
-    # Resolve the region's spot list. Prefer explicit slug_list, fall back
-    # to state_filter for the simpler regions (Jersey, Virginia, etc.).
+def _resolve_region_spots(region):
+    """Resolve a region dict to its location list. Prefers the explicit
+    slug_list; falls back to state_filter for single-state regions."""
     spots = []
     if region.get('slug_list'):
         for s in region['slug_list']:
@@ -2266,7 +2259,272 @@ def region_page(slug):
         spots = [loc for loc in LOCATION_BY_SLUG.values()
                  if loc.get('state') == region['state_filter']]
         spots.sort(key=lambda x: x['lat'])
-    return render_template('regions/page.html', region=region, spots=spots)
+    return spots
+
+
+@app.route('/regions/<slug>')
+def region_page(slug):
+    """Render one /regions/<slug> landing page with its spot roster."""
+    from region_pages import REGIONS_BY_SLUG
+    region = REGIONS_BY_SLUG.get(slug)
+    if not region:
+        from flask import abort
+        abort(404)
+    return render_template('regions/page.html', region=region,
+                           spots=_resolve_region_spots(region))
+
+
+# --- Social content pipeline -------------------------------------------
+# /social/daily/<region>.png renders an Instagram-ready (1080x1350 portrait)
+# regional report card from live data; /api/social-card/<region> returns the
+# matching caption + metadata. scripts/instagram_publish.py consumes both —
+# in dry-run mode for a manual weekly scheduling routine, or fully automated
+# via the Instagram Graph API once credentials are configured.
+
+SOCIAL_HASHTAGS = {
+    'outer-banks': '#obx #outerbanks #obxsurf #hatteras',
+    'north-carolina-coast': '#ncsurf #wrightsvillebeach #surfcitync',
+    'virginia-coast': '#virginiabeach #vbsurf',
+    'jersey-shore': '#jerseyshore #njsurf #newjerseysurf',
+    'long-island': '#longislandsurf #montauk #nysurf',
+    'florida-space-coast': '#floridasurf #spacecoast #cocoabeach',
+    'southern-california': '#socalsurf #californiasurf #sandiegosurf',
+    'northern-california': '#norcalsurf #santacruz #coldwatersurf',
+    'oregon-coast': '#oregonsurf #pnwsurf #coldwatersurf',
+    'hawaii-north-shore': '#northshore #pipeline #hawaiisurf #oahu',
+    'delmarva': '#ocmd #oceancitymd #delawaresurf',
+    'south-carolina-georgia': '#follybeach #charlestonsurf #scsurf',
+    'new-england': '#newenglandsurf #risurf #coldwatersurf',
+    'gulf-coast': '#texassurf #galveston #gulfsurf',
+    'great-lakes': '#greatlakessurfing #lakesurfing #lakemichigan #freshwatersurf',
+    'puerto-rico': '#rincon #puertoricosurf #aguadilla #caribbeansurf',
+}
+SOCIAL_BASE_HASHTAGS = '#surf #surfing #surfforecast #surfreport'
+
+
+def _simple_surf_score(entry):
+    """Rough server-side ranking for the social card. This is NOT the
+    dashboard's session score (that lives in JS with tide and orientation
+    inputs) — just a size/period/wind heuristic to order spots."""
+    wh = entry.get('wave_height') or 0    # meters
+    wp = entry.get('wave_period') or 0    # seconds
+    ws = entry.get('wind_speed') or 0     # km/h
+    score = wh * 3.28084 * 10             # ~10 points per foot of face
+    score *= 1.0 + max(0.0, wp - 8.0) * 0.06
+    if ws > 30:
+        score *= 0.6
+    elif ws > 20:
+        score *= 0.8
+    return round(score, 1)
+
+
+def _current_forecast_row(forecast_list):
+    """Return the forecast row nearest to (but not after) now."""
+    now = datetime.now(timezone.utc)
+    current = None
+    for entry in forecast_list:
+        try:
+            t = datetime.fromisoformat(entry.get('time', '').replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            continue
+        if t <= now:
+            current = entry
+        else:
+            break
+    return current or (forecast_list[0] if forecast_list else None)
+
+
+def _social_card_data(region_slug):
+    """Build the data behind a regional social card: top 3 spots right now
+    by the simple score, with display strings and a ready-to-post caption."""
+    from region_pages import REGIONS_BY_SLUG
+    region = REGIONS_BY_SLUG.get(region_slug)
+    if not region:
+        return None
+    spots = _resolve_region_spots(region)[:6]  # cap upstream fetches
+
+    def fetch_spot(loc):
+        lat, lon = float(loc['lat']), float(loc['lon'])
+        cache_key = f"forecast:{lat:.4f},{lon:.4f}"
+        data = cached(cache_key, lambda: get_point_weather_data(lat, lon))
+        if not data:
+            return None
+        cur = _current_forecast_row(data.get('forecast') or [])
+        if not cur or cur.get('wave_height') is None:
+            return None
+        return {'loc': loc, 'entry': cur}
+
+    from concurrent.futures import ThreadPoolExecutor
+    rows = []
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for result in pool.map(fetch_spot, spots):
+            if result:
+                rows.append(result)
+    if not rows:
+        return None
+
+    rows.sort(key=lambda r: _simple_surf_score(r['entry']), reverse=True)
+    top = []
+    for r in rows[:3]:
+        e = r['entry']
+        wh_ft = round((e.get('wave_height') or 0) * 3.28084, 1)
+        wp = round(e.get('wave_period') or 0)
+        ws_mph = round((e.get('wind_speed') or 0) * 0.621371)
+        wd = _deg_to_cardinal(e['wind_direction']) if e.get('wind_direction') is not None else ''
+        if wp >= 12:
+            cond = 'Ground swell'
+        elif wp >= 9:
+            cond = 'Mid-period swell'
+        else:
+            cond = 'Wind swell'
+        top.append({
+            'name': r['loc']['name'],
+            'slug': r['loc'].get('slug'),
+            'height_ft': wh_ft,
+            'period_s': wp,
+            'wind_mph': ws_mph,
+            'wind_dir': wd,
+            'condition': cond,
+            'score': _simple_surf_score(e),
+        })
+
+    date_str = datetime.now(timezone.utc).strftime('%a %b %-d')
+    lines = [f"{region['short_title']} surf check - {date_str}", '']
+    for t in top:
+        wind = f"{t['wind_mph']}mph {t['wind_dir']}".strip()
+        lines.append(f"{t['name']}: {t['height_ft']}ft @ {t['period_s']}s, {wind} wind")
+    lines.append('')
+    lines.append('Full 7-day forecasts, buoys, tides and cams - free, no account.')
+    lines.append('Link in bio or freesurfforecast.com')
+    lines.append('')
+    lines.append(f"{SOCIAL_BASE_HASHTAGS} {SOCIAL_HASHTAGS.get(region_slug, '')}".strip())
+
+    return {
+        'region_slug': region_slug,
+        'region_title': region['short_title'],
+        'date': date_str,
+        'top': top,
+        'caption': '\n'.join(lines),
+    }
+
+
+def _render_social_card(data):
+    """Render the 1080x1350 (4:5 portrait) Instagram card PNG."""
+    from PIL import Image, ImageDraw
+    import io
+
+    W, H = 1080, 1350
+    BG = (10, 10, 10)
+    SURFACE = (20, 20, 20)
+    BORDER = (42, 42, 42)
+    TEXT = (232, 232, 232)
+    TEXT_DIM = (136, 136, 136)
+    ACCENT = (68, 255, 136)
+    COND_COLORS = {
+        'Ground swell': (68, 255, 136),
+        'Mid-period swell': (90, 169, 255),
+        'Wind swell': (255, 206, 86),
+    }
+
+    img = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W, 10)], fill=ACCENT)
+
+    pad = 64
+    f_brand = _load_og_font('sans_bold', 28)
+    f_title = _load_og_font('sans_bold', 58)
+    f_date = _load_og_font('sans', 28)
+    f_spot = _load_og_font('sans_bold', 40)
+    f_huge = _load_og_font('mono_bold', 110)
+    f_unit = _load_og_font('sans', 34)
+    f_meta = _load_og_font('sans', 32)
+    f_cond = _load_og_font('sans_bold', 28)
+    f_foot = _load_og_font('sans_bold', 30)
+
+    draw.text((pad, 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    date_w = draw.textlength(data['date'], font=f_date)
+    draw.text((W - pad - date_w, 52), data['date'], fill=TEXT_DIM, font=f_date)
+
+    title = f"{data['region_title']} Surf Check"
+    draw.text((pad, 120), title, fill=TEXT, font=f_title)
+    draw.text((pad, 200), "TODAY'S TOP SPOTS", fill=ACCENT, font=f_brand)
+
+    # Center the row block between the header and footer
+    row_h = 300
+    block_top, block_bottom = 270, H - 90
+    total = len(data['top']) * row_h - 30
+    y = block_top + max(0, (block_bottom - block_top - total) // 2)
+    for i, t in enumerate(data['top']):
+        draw.rectangle([(pad - 20, y), (W - pad + 20, y + row_h - 30)],
+                       fill=SURFACE, outline=BORDER)
+        draw.text((pad, y + 24), f"{i + 1}.  {t['name']}", fill=TEXT, font=f_spot)
+        # Big height number + unit
+        num = f"{t['height_ft']:.1f}"
+        draw.text((pad, y + 90), num, fill=ACCENT, font=f_huge)
+        num_w = draw.textlength(num, font=f_huge)
+        draw.text((pad + num_w + 12, y + 156), 'ft', fill=TEXT_DIM, font=f_unit)
+        # Period + wind on the right
+        rx = W - pad - 20
+        meta1 = f"{t['period_s']}s period"
+        wind = f"{t['wind_mph']}mph {t['wind_dir']}".strip()
+        meta2 = f"{wind} wind"
+        draw.text((rx - draw.textlength(meta1, font=f_meta), y + 104), meta1, fill=TEXT, font=f_meta)
+        draw.text((rx - draw.textlength(meta2, font=f_meta), y + 152), meta2, fill=TEXT, font=f_meta)
+        cond_color = COND_COLORS.get(t['condition'], TEXT_DIM)
+        draw.text((rx - draw.textlength(t['condition'], font=f_cond), y + 208),
+                  t['condition'], fill=cond_color, font=f_cond)
+        y += row_h
+
+    # Footer
+    draw.rectangle([(0, H - 90), (W, H)], fill=SURFACE)
+    draw.line([(0, H - 90), (W, H - 90)], fill=BORDER)
+    foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
+    foot_w = draw.textlength(foot, font=f_foot)
+    draw.text(((W - foot_w) / 2, H - 64), foot, fill=TEXT_DIM, font=f_foot)
+
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
+@app.route('/social/daily/<region_slug>.png')
+def social_card_png(region_slug):
+    """Instagram-ready regional report card (1080x1350 PNG, live data)."""
+    from region_pages import REGIONS_BY_SLUG
+    if region_slug not in REGIONS_BY_SLUG:
+        from flask import abort
+        abort(404)
+    data = cached(f"social:{region_slug}", lambda: _social_card_data(region_slug), ttl=3600)
+    if not data:
+        from flask import abort
+        abort(503)
+    try:
+        png_bytes = _render_social_card(data)
+    except Exception as e:
+        logger.error(f"Social card render failed for {region_slug}: {e}")
+        from flask import abort
+        abort(500)
+    resp = Response(png_bytes, mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=1800'
+    return resp
+
+
+@app.route('/api/social-card/<region_slug>')
+def social_card_meta(region_slug):
+    """Caption + spot metadata matching /social/daily/<region>.png."""
+    from region_pages import REGIONS_BY_SLUG
+    if region_slug not in REGIONS_BY_SLUG:
+        return jsonify({'error': 'unknown region'}), 404
+    data = cached(f"social:{region_slug}", lambda: _social_card_data(region_slug), ttl=3600)
+    if not data:
+        return jsonify({'error': 'no forecast data available'}), 503
+    return jsonify({
+        'region': data['region_slug'],
+        'date': data['date'],
+        'caption': data['caption'],
+        'image_url': f"https://freesurfforecast.com/social/daily/{region_slug}.png",
+        'spots': data['top'],
+    })
 
 
 @app.route('/sw.js')

@@ -582,3 +582,48 @@ class TestEmbedWidget:
     def test_about_documents_embed(self, client):
         html = client.get('/about').data.decode()
         assert '/embed/' in html
+
+
+class TestSocialCards:
+    """Social content pipeline: /social/daily/<region>.png + caption API."""
+
+    FAKE_FORECAST = {
+        'forecast': [{
+            'time': '2020-01-01T00:00Z',
+            'wave_height': 1.0, 'wave_period': 10.0,
+            'wind_speed': 15.0, 'wind_direction': 270.0,
+        }],
+        'location_timezone': 'America/New_York', 'source': 'Open-Meteo',
+    }
+
+    def _with_fake_upstream(self, client, path):
+        from unittest.mock import patch
+        import app as a
+        a._cache.pop('social:virginia-coast', None)
+        with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST):
+            return client.get(path)
+
+    def test_png_route(self, client):
+        resp = self._with_fake_upstream(client, '/social/daily/virginia-coast.png')
+        assert resp.status_code == 200
+        assert resp.content_type == 'image/png'
+        assert resp.data[:8] == b'\x89PNG\r\n\x1a\n'
+
+    def test_caption_api(self, client):
+        resp = self._with_fake_upstream(client, '/api/social-card/virginia-coast')
+        assert resp.status_code == 200
+        d = resp.get_json()
+        assert 'freesurfforecast.com' in d['caption']
+        assert '#surf' in d['caption']
+        assert d['image_url'].endswith('/social/daily/virginia-coast.png')
+        assert d['spots'][0]['height_ft'] == 3.3  # 1.0 m
+
+    def test_unknown_region_404(self, client):
+        assert client.get('/social/daily/atlantis.png').status_code == 404
+        assert client.get('/api/social-card/atlantis').status_code == 404
+
+    def test_simple_score_ranking(self):
+        import app as a
+        big_clean = {'wave_height': 2.0, 'wave_period': 14, 'wind_speed': 5}
+        small_blown = {'wave_height': 0.5, 'wave_period': 5, 'wind_speed': 35}
+        assert a._simple_surf_score(big_clean) > a._simple_surf_score(small_blown)

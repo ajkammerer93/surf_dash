@@ -1,0 +1,45 @@
+name: Daily social post
+
+# Posts the day's regional surf card to Instagram via the Graph API.
+# Requires two repository secrets (Settings -> Secrets and variables -> Actions):
+#   IG_USER_ID       Instagram Business account id
+#   IG_ACCESS_TOKEN  long-lived token with instagram_content_publish scope
+#
+# The schedule is commented out until the secrets are configured — uncomment
+# it to enable automatic daily posting. Until then the workflow can be run
+# manually from the Actions tab (use dry_run to test without posting).
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Region slug (blank = weekday rotation)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Print the card without posting'
+        type: boolean
+        default: false
+  # schedule:
+  #   - cron: '0 11 * * *'  # 11:00 UTC, around dawn US East Coast
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Post card
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          INPUT_REGION: ${{ inputs.region }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=""
+          if [ -n "$INPUT_REGION" ]; then ARGS="$ARGS --region $INPUT_REGION"; fi
+          if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python scripts/instagram_publish.py $ARGS
