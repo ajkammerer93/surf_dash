@@ -554,6 +554,35 @@
             font-size: 10px;
             color: var(--text-muted);
         }
+        .hero-verdict {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 8px;
+            font-size: 12px;
+        }
+        .hero-verdict-badge {
+            padding: 3px 12px;
+            font-weight: 700;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .hero-verdict-badge.verdict-prime { color: #44ff88; border-color: rgba(68,255,136,0.5); background: rgba(68,255,136,0.08); }
+        .hero-verdict-badge.verdict-good { color: #5aa9ff; border-color: rgba(90,169,255,0.5); background: rgba(90,169,255,0.08); }
+        .hero-verdict-badge.verdict-fair { color: #ffce56; border-color: rgba(255,206,86,0.5); background: rgba(255,206,86,0.08); }
+        .hero-verdict-badge.verdict-poor { color: var(--text-muted); }
+        .hero-verdict-badge.verdict-night { color: var(--text-dim); }
+        [data-theme="light"] .hero-verdict-badge.verdict-prime { color: #16a34a; }
+        [data-theme="light"] .hero-verdict-badge.verdict-good { color: #2563eb; }
+        [data-theme="light"] .hero-verdict-badge.verdict-fair { color: #d97706; }
+        .hero-verdict-text { color: var(--text-dim); }
+        @media (max-width: 700px) {
+            .hero-verdict { flex-wrap: wrap; gap: 6px; }
+        }
+
         .forecast-hero-rows {
             display: grid;
             grid-template-columns: repeat(6, 1fr);
@@ -648,6 +677,21 @@
             font-weight: 600;
         }
         .onboarding-overlay p { margin: 4px 0; color: var(--text-dim); }
+        .onboarding-geo-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 6px 14px;
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            font-family: var(--font-body);
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+        .onboarding-geo-btn:hover { border-color: var(--status-live); color: var(--status-live); }
         .onboarding-overlay-close {
             position: absolute;
             top: 8px;
@@ -2455,6 +2499,7 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
                     </span>
                 </button>
+                <button class="header-btn mobile-collapse" id="units-toggle-btn" onclick="toggleUnits()" title="Switch between imperial and metric units" aria-label="Toggle units"><span id="units-toggle-label">ft</span></button>
                 <button class="header-btn mobile-collapse" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
                 <div class="more-menu">
                     <button class="header-btn more-menu-btn" id="more-menu-btn" onclick="toggleMoreMenu()" title="More options" aria-label="More options" aria-haspopup="true" aria-expanded="false">&#x22EE;</button>
@@ -2479,6 +2524,10 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Install App
                         </button>
+                        <button class="more-item" role="menuitem" onclick="toggleUnits();" aria-label="Switch between imperial and metric units">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                            <span id="more-units-label">Units: ft / mph</span>
+                        </button>
                         <div class="more-divider" role="separator"></div>
                         <button class="more-item" role="menuitem" onclick="togglePageFullscreen(); closeMoreMenu();" aria-label="Toggle fullscreen mode">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -2499,6 +2548,10 @@
         <h3>Welcome</h3>
         <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows the full 7-day forecast.</p>
         <p>Toggle the skill-level icon for beginner-friendly labels, or use the panes menu (☰) to show/hide panels.</p>
+        <button id="onboarding-geo-btn" class="onboarding-geo-btn" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Use my location
+        </button>
     </div>
 
     <!-- Share Forecast Card Modal -->
@@ -2539,6 +2592,9 @@
                 <div class="location-search">
                     <input type="text" id="location-search-input" placeholder="Search for a location (e.g. Santa Monica, Pipeline Hawaii)">
                     <button id="location-search-btn">Search</button>
+                    <button id="modal-geo-btn" type="button" title="Use my location" aria-label="Use my location">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </button>
                 </div>
                 <p>Or click anywhere on the map to select a location.</p>
                 <div id="location-map" style="height: 420px;"></div>
@@ -2611,6 +2667,7 @@
             <h2>Next 6 Hours</h2>
             <span class="forecast-hero-sub" id="forecast-hero-sub"></span>
         </header>
+        <div class="hero-verdict" id="hero-verdict" style="display:none" aria-live="polite"></div>
         <div class="forecast-hero-rows" id="forecast-hero-rows"></div>
     </section>
 
@@ -3151,12 +3208,12 @@
         function _getShareText() {
             if (!window._forecastData || !window._forecastData.length) return 'Check the surf forecast';
             var c = window._forecastData[0];
-            var ft = c.wave_height != null ? (c.wave_height * M_TO_FT).toFixed(1) : '?';
+            var ft = c.wave_height != null ? (c.wave_height * D_HEIGHT).toFixed(1) : '?';
             var per = c.wave_period != null ? c.wave_period.toFixed(0) : '?';
             var cond = classifySurfConditionGlobal(c.wind_direction, c.wind_speed);
             var condLabel = {clean: 'Clean', fair: 'Fair', choppy: 'Choppy', unknown: ''}[cond] || '';
             var loc = currentLocation && currentLocation.name ? currentLocation.name : '';
-            return ft + 'ft @ ' + per + 's' + (condLabel ? ' - ' + condLabel : '') + (loc ? ' at ' + loc : '');
+            return ft + U_HEIGHT + ' @ ' + per + 's' + (condLabel ? ' - ' + condLabel : '') + (loc ? ' at ' + loc : '');
         }
 
         function showToast(msg, variant, duration) {
@@ -3335,10 +3392,10 @@
 
             // === Hero Conditions ===
             var fc = window._forecastData && window._forecastData[0];
-            var waveFt = fc && fc.wave_height != null ? (fc.wave_height * M_TO_FT).toFixed(1) : '--';
+            var waveFt = fc && fc.wave_height != null ? (fc.wave_height * D_HEIGHT).toFixed(1) : '--';
             var wavePer = fc && fc.wave_period != null ? fc.wave_period.toFixed(0) : '--';
             var waveDir = fc && fc.wave_direction != null ? fc.wave_direction.toFixed(0) : '--';
-            var windSpd = fc && fc.wind_speed != null ? (fc.wind_speed * KMH_TO_MPH).toFixed(0) : '--';
+            var windSpd = fc && fc.wind_speed != null ? (fc.wind_speed * D_SPEED).toFixed(0) : '--';
             var windDir = fc && fc.wind_direction != null ? fc.wind_direction.toFixed(0) : '--';
             var cond = fc ? classifySurfConditionGlobal(fc.wind_direction, fc.wind_speed) : 'unknown';
             var condLabel = {clean: 'Clean', fair: 'Fair', choppy: 'Choppy', unknown: 'N/A'}[cond];
@@ -3367,7 +3424,7 @@
             ctx.fillText(waveFt, pad + 30, heroY + (isPost ? 72 : 90));
             ctx.fillStyle = textDim;
             ctx.font = (isPost ? 28 : 34) + 'px ' + fontStack;
-            ctx.fillText('ft', pad + 30, heroY + (isPost ? 105 : 126));
+            ctx.fillText(U_HEIGHT, pad + 30, heroY + (isPost ? 105 : 126));
 
             // Period + direction — right side
             ctx.font = (isPost ? 28 : 36) + 'px ' + fontStack;
@@ -3389,7 +3446,7 @@
             ctx.fillStyle = text;
             ctx.fillText('Wind', pad + 30, windRowY);
             ctx.fillStyle = textDim;
-            ctx.fillText(windSpd + ' mph ' + windDirLabel + ' ' + windDir + '\u00B0', pad + 150, windRowY);
+            ctx.fillText(windSpd + ' ' + U_SPEED + ' ' + windDirLabel + ' ' + windDir + '\u00B0', pad + 150, windRowY);
 
             // Condition badge + temps on same row for post format
             var badgeY = windRowY + (isPost ? 22 : 35);
@@ -3409,8 +3466,8 @@
             // Temperatures — inline after badge for post
             var airC = fc ? fc.air_temperature : null;
             var waterC = fc ? fc.water_temperature : null;
-            var airF = airC != null ? (airC * 9/5 + 32).toFixed(0) + '\u00B0F' : '--';
-            var waterF = waterC != null ? (waterC * 9/5 + 32).toFixed(0) + '\u00B0F' : '--';
+            var airF = airC != null ? dispTemp(airC) : '--';
+            var waterF = waterC != null ? dispTemp(waterC) : '--';
 
             ctx.font = (isPost ? 24 : 30) + 'px ' + fontStack;
             ctx.fillStyle = textDim;
@@ -4175,13 +4232,13 @@
         }
         function exportForecastCSV() {
             if (!window._forecastData || !window._forecastData.length) return;
-            var rows = [['Time','Wave Height (ft)','Wave Period (s)','Wind Speed (mph)','Wind Direction']];
+            var rows = [['Time','Wave Height (' + U_HEIGHT + ')','Wave Period (s)','Wind Speed (' + U_SPEED + ')','Wind Direction']];
             window._forecastData.forEach(function(item) {
                 rows.push([
                     item.time,
-                    item.wave_height != null ? (item.wave_height * 3.28084).toFixed(1) : '',
+                    item.wave_height != null ? (item.wave_height * D_HEIGHT).toFixed(1) : '',
                     item.wave_period != null ? item.wave_period.toFixed(1) : '',
-                    item.wind_speed != null ? (item.wind_speed * 0.621371).toFixed(1) : '',
+                    item.wind_speed != null ? (item.wind_speed * D_SPEED).toFixed(1) : '',
                     item.wind_direction != null ? item.wind_direction.toFixed(0) : ''
                 ]);
             });
@@ -4209,7 +4266,7 @@
                 return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
             }
             var locName = (currentLocation && currentLocation.name) || 'Surf Spot';
-            var heightFt = best.avgWH != null ? (best.avgWH * M_TO_FT).toFixed(1) : '?';
+            var heightFt = best.avgWH != null ? (best.avgWH * D_HEIGHT).toFixed(1) : '?';
             var period = best.avgWP != null ? best.avgWP.toFixed(0) : '?';
             var ratingLabel = best.rating.charAt(0).toUpperCase() + best.rating.slice(1);
             // RFC 5545 escaping: backslash, semicolon, comma, newlines
@@ -4217,7 +4274,7 @@
                 return String(str || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
             }
             var summary = icalEscape('Surf Session — ' + ratingLabel + ' (' + best.score + '/100)');
-            var description = icalEscape(heightFt + 'ft @ ' + period + 's — ' + ratingLabel + '\n' + (best.summary || ''));
+            var description = icalEscape(heightFt + U_HEIGHT + ' @ ' + period + 's — ' + ratingLabel + '\n' + (best.summary || ''));
 
             var ics = [
                 'BEGIN:VCALENDAR',
@@ -4248,6 +4305,41 @@
         const M_TO_FT = 3.28084;
         const KMH_TO_MPH = 0.621371;
         const KM_TO_MI = 0.621371;
+
+        // Display unit system. The physical constants above stay fixed —
+        // scoring and classification always work in ft/mph internally; only
+        // display sites use the D_* factors and U_* labels.
+        const METRIC_UNITS = (function() {
+            try { return localStorage.getItem('units') === 'metric'; } catch (e) { return false; }
+        })();
+        const D_HEIGHT = METRIC_UNITS ? 1 : M_TO_FT;       // meters -> display height
+        const D_SPEED = METRIC_UNITS ? 1 : KMH_TO_MPH;     // km/h -> display speed
+        const D_DIST = METRIC_UNITS ? 1 : KM_TO_MI;        // km -> display distance
+        const U_HEIGHT = METRIC_UNITS ? 'm' : 'ft';
+        const U_SPEED = METRIC_UNITS ? 'km/h' : 'mph';
+        const U_DIST = METRIC_UNITS ? 'km' : 'mi';
+        function dispTemp(c) {
+            if (c == null) return null;
+            return METRIC_UNITS ? Math.round(c) + '°C' : Math.round(c * 9 / 5 + 32) + '°F';
+        }
+        function toggleUnits() {
+            try { localStorage.setItem('units', METRIC_UNITS ? 'imperial' : 'metric'); } catch (e) {}
+            location.reload();
+        }
+        // Static markup is authored with imperial labels; rewrite the few
+        // fixed headers when the metric preference is active.
+        document.addEventListener('DOMContentLoaded', function() {
+            var unitsLabel = document.getElementById('units-toggle-label');
+            if (unitsLabel) unitsLabel.textContent = METRIC_UNITS ? 'm' : 'ft';
+            var moreUnitsLabel = document.getElementById('more-units-label');
+            if (moreUnitsLabel) moreUnitsLabel.textContent = METRIC_UNITS ? 'Units: m / km/h' : 'Units: ft / mph';
+            if (!METRIC_UNITS) return;
+            document.querySelectorAll('.panel-title, th').forEach(function(el) {
+                if (el.textContent.indexOf('(ft)') !== -1 || el.textContent.indexOf('(mph)') !== -1) {
+                    el.textContent = el.textContent.replace('(ft)', '(m)').replace('(mph)', '(km/h)');
+                }
+            });
+        });
 
         // === Surf Condition Thresholds (global for reuse in scoring/descriptions) ===
         const CALM_WIND_THRESHOLD_GLOBAL = 5;
@@ -4532,7 +4624,7 @@
                 var whDesc = ft < 0.5 ? 'Flat' : ft < 2 ? 'Small waves, good for practicing' : ft < 3.5 ? 'Medium waves, challenging' : 'Too big for beginners';
                 return whDesc + ', ' + _windPhrase(windCond, true);
             }
-            var whDesc = avgWH < 0.5 ? 'flat' : ft.toFixed(0) + 'ft';
+            var whDesc = avgWH < 0.5 ? 'flat' : (avgWH * D_HEIGHT).toFixed(0) + U_HEIGHT;
             var wpDesc = avgWP >= 12 ? 'ground swell' : (avgWP >= 9 ? 'medium swell' : 'short-period swell');
             return whDesc + ' ' + wpDesc + ', ' + _windPhrase(windCond, false);
         }
@@ -4915,6 +5007,31 @@
             return window._slugByCoords[key] || null;
         }
 
+        // All known spots — used for nearest-spot geolocation snapping
+        window._knownSpots = [
+            {% for slug, loc in locations.items() %}
+            { slug: '{{ slug }}', name: {{ loc.name|tojson }}, lat: {{ loc.lat }}, lon: {{ loc.lon }} },
+            {% endfor %}
+        ];
+
+        function _distKm(lat1, lon1, lat2, lon2) {
+            var R = 6371, toRad = Math.PI / 180;
+            var dLat = (lat2 - lat1) * toRad, dLon = (lon2 - lon1) * toRad;
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return 2 * R * Math.asin(Math.sqrt(a));
+        }
+
+        function findNearestSpot(lat, lon) {
+            var best = null, bestD = Infinity;
+            window._knownSpots.forEach(function(s) {
+                var d = _distKm(lat, lon, s.lat, s.lon);
+                if (d < bestD) { bestD = d; best = s; }
+            });
+            return best ? { spot: best, distance_km: bestD } : null;
+        }
+
         // Server-injected location (only active on /forecast/<slug> routes, not on /)
         window._serverLocation = (window.location.pathname.startsWith('/forecast/') && {{ (location_slug or '')|tojson }}) ? {
             lat: {{ location_lat }},
@@ -5051,7 +5168,7 @@
                 var height = document.createElement('div');
                 height.className = 'height';
                 height.textContent = item.wave_height != null
-                    ? (item.wave_height * M_TO_FT).toFixed(1) + 'ft'
+                    ? (item.wave_height * D_HEIGHT).toFixed(1) + U_HEIGHT
                     : '—';
                 row.appendChild(height);
                 var meta = document.createElement('div');
@@ -5059,7 +5176,7 @@
                 var per = item.wave_period != null
                     ? Math.round(item.wave_period) + 's' : '—';
                 var ws = item.wind_speed != null
-                    ? Math.round(item.wind_speed * KMH_TO_MPH) + 'mph' : '—';
+                    ? Math.round(item.wind_speed * D_SPEED) + U_SPEED : '—';
                 meta.textContent = per + ' · ' + ws;
                 row.appendChild(meta);
                 var bar = document.createElement('div');
@@ -5103,14 +5220,14 @@
                 if (key === lastKey) return;
                 lastKey = key;
                 var cond = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
-                var windMph = item.wind_speed != null ? (item.wind_speed * KMH_TO_MPH).toFixed(1) : '-';
+                var windMph = item.wind_speed != null ? (item.wind_speed * D_SPEED).toFixed(1) : '-';
                 var windDir = item.wind_direction != null ? dc(item.wind_direction) + ' (' + item.wind_direction.toFixed(0) + '\u00B0)' : '-';
                 var condText = [
                     item.wave_height != null ? describeWaveHeight(item.wave_height) : '',
                     item.wave_period != null ? describeWavePeriod(item.wave_period) : ''
                 ].filter(Boolean).join('; ');
                 var heightFt = item.wave_height != null ? item.wave_height * M_TO_FT : null;
-                var heightStr = heightFt != null ? heightFt.toFixed(1) : '-';
+                var heightStr = item.wave_height != null ? (item.wave_height * D_HEIGHT).toFixed(1) : '-';
                 var heightArrow = trendArrow(heightFt, prevHeightFt, 1.0, 0.3);
                 var periodVal = item.wave_period != null ? item.wave_period.toFixed(1) : '-';
                 var periodArrow = trendArrow(item.wave_period, prevPeriod, 1.5, 0.5);
@@ -5421,6 +5538,82 @@
             // first interaction the card points to.
             var locBtn = document.querySelector('.header-location-btn');
             if (locBtn) locBtn.addEventListener('click', dismiss, { once: true });
+            var geoBtn = document.getElementById('onboarding-geo-btn');
+            if (geoBtn) geoBtn.addEventListener('click', function() {
+                dismiss();
+                useMyLocation(false);
+            });
+        });
+
+        // "Use my location" button inside the location modal
+        document.addEventListener('DOMContentLoaded', function() {
+            var btn = document.getElementById('modal-geo-btn');
+            if (btn) btn.addEventListener('click', function() {
+                closeModal();
+                useMyLocation(false);
+            });
+        });
+
+        // Switch the dashboard to a new location: persist, update URL +
+        // header display, and reload every panel. Shared by the location
+        // modal confirm button and geolocation.
+        function applyLocation(loc) {
+            currentLocation = { ...loc };
+            try { localStorage.setItem('last-location', JSON.stringify(currentLocation)); } catch (e) {}
+
+            const slug = findSlugForCoords(currentLocation.lat, currentLocation.lon);
+            if (slug) {
+                currentLocation.slug = slug;
+                history.replaceState(null, '', '/forecast/' + slug);
+            } else {
+                const newUrl = '/?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon + '&name=' + encodeURIComponent(currentLocation.name);
+                history.replaceState(null, '', newUrl);
+            }
+
+            document.getElementById('location-name').textContent = currentLocation.name;
+            updatePanelLocations();
+            document.getElementById('display-lat').textContent = currentLocation.lat.toFixed(2);
+            document.getElementById('display-lon').textContent = currentLocation.lon.toFixed(2);
+
+            reloadAllData();
+        }
+
+        // Geolocate the visitor and snap to the nearest known spot.
+        function useMyLocation(silent) {
+            if (!navigator.geolocation) {
+                if (!silent) showToast('Geolocation is not supported by this browser', 'warning', 3000);
+                return;
+            }
+            if (!silent) showToast('Finding your nearest surf spot...', 'info', 2500);
+            navigator.geolocation.getCurrentPosition(function(pos) {
+                var nearest = findNearestSpot(pos.coords.latitude, pos.coords.longitude);
+                if (!nearest) return;
+                var miles = Math.round(nearest.distance_km * D_DIST);
+                applyLocation({ lat: nearest.spot.lat, lon: nearest.spot.lon, name: nearest.spot.name });
+                showToast('Nearest spot: ' + nearest.spot.name + ' (' + miles + ' ' + U_DIST + ' away)', 'success', 4000);
+            }, function(err) {
+                if (!silent) {
+                    var msg = err.code === 1 ? 'Location permission denied'
+                        : 'Could not determine your location';
+                    showToast(msg, 'warning', 3000);
+                }
+            }, { timeout: 10000, maximumAge: 600000 });
+        }
+
+        // Returning visitors who already granted geolocation but have no
+        // saved spot get auto-located without any prompt. First-time
+        // visitors are never prompted automatically — the onboarding card
+        // offers a button instead.
+        document.addEventListener('DOMContentLoaded', function() {
+            var hasSaved = false;
+            try { hasSaved = !!localStorage.getItem('last-location'); } catch (e) {}
+            if (hasSaved || window._serverLocation) return;
+            if (new URLSearchParams(window.location.search).get('lat')) return;
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'geolocation' }).then(function(status) {
+                    if (status.state === 'granted') useMyLocation(true);
+                }).catch(function() {});
+            }
         });
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -5428,32 +5621,8 @@
 
             confirmBtn.addEventListener('click', function() {
                 if (selectedLocation) {
-                    currentLocation = { ...selectedLocation };
-
-                    // Persist last location
-                    localStorage.setItem('last-location', JSON.stringify(currentLocation));
-
-                    // Update URL to reflect new location
-                    const slug = findSlugForCoords(currentLocation.lat, currentLocation.lon);
-                    if (slug) {
-                        currentLocation.slug = slug;
-                        history.replaceState(null, '', '/forecast/' + slug);
-                    } else {
-                        const newUrl = '/?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon + '&name=' + encodeURIComponent(currentLocation.name);
-                        history.replaceState(null, '', newUrl);
-                    }
-
-                    // Update display
-                    document.getElementById('location-name').textContent = currentLocation.name;
-                    updatePanelLocations();
-                    document.getElementById('display-lat').textContent = currentLocation.lat.toFixed(2);
-                    document.getElementById('display-lon').textContent = currentLocation.lon.toFixed(2);
-
-                    // Close modal
+                    applyLocation(selectedLocation);
                     closeModal();
-
-                    // Reload all data
-                    reloadAllData();
                 }
             });
 
@@ -5874,20 +6043,18 @@
                     });
 
                     const current = data[0];
-                    document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * M_TO_FT).toFixed(1)} ft` : '-';
+                    document.getElementById('current_wave_height').textContent = current.wave_height != null ? `${(current.wave_height * D_HEIGHT).toFixed(1)} ${U_HEIGHT}` : '-';
                     document.getElementById('current_wave_period').textContent = current.wave_period != null ? `${current.wave_period.toFixed(1)} s` : '-';
                     const waveDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
                     document.getElementById('current_wave_direction').textContent = current.wave_direction != null ? `${waveDirs[Math.round(current.wave_direction / 22.5) % 16]} ${current.wave_direction.toFixed(0)}°` : '-';
-                    // Wind (km/h → mph)
-                    const KMH_TO_MPH = 0.621371;
-                    document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * KMH_TO_MPH).toFixed(0)} mph` : '-';
+                    document.getElementById('current_wind_speed').textContent = current.wind_speed != null ? `${(current.wind_speed * D_SPEED).toFixed(0)} ${U_SPEED}` : '-';
                     const windDirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
                     document.getElementById('current_wind_direction').textContent = current.wind_direction != null ? `${windDirs[Math.round(current.wind_direction / 22.5) % 16]} ${current.wind_direction.toFixed(0)}°` : '-';
                     // Temperatures (C→F)
                     const airC = current.air_temperature;
                     const waterC = current.water_temperature;
-                    document.getElementById('current_air_temp').textContent = airC != null ? `${(airC * 9/5 + 32).toFixed(0)} °F air` : '-';
-                    document.getElementById('current_water_temp').textContent = waterC != null ? `${(waterC * 9/5 + 32).toFixed(0)} °F water` : '-';
+                    document.getElementById('current_air_temp').textContent = airC != null ? dispTemp(airC) + ' air' : '-';
+                    document.getElementById('current_water_temp').textContent = waterC != null ? dispTemp(waterC) + ' water' : '-';
                     // Wetsuit recommendation from water temp (rough guide)
                     const wetsuitEl = document.getElementById('ctx_wetsuit');
                     if (wetsuitEl) {
@@ -6175,7 +6342,7 @@
                                 }
                             }
                             if (tideHeight != null) {
-                                tideLines.push('Tide: ' + (tideHeight * M_TO_FT).toFixed(1) + ' ft');
+                                tideLines.push('Tide: ' + (tideHeight * D_HEIGHT).toFixed(1) + ' ' + U_HEIGHT);
                             }
                             // Check for nearby high/low event (within ±90 min)
                             if (window._tideHighLow) {
@@ -6192,9 +6359,9 @@
                                 if (nearestHL) {
                                     var hlType = nearestHL.type === 'H' ? 'High' : 'Low';
                                     var hlIcon = nearestHL.type === 'H' ? '\u25B2' : '\u25BC';
-                                    var hlFt = (nearestHL.height * M_TO_FT).toFixed(1);
+                                    var hlFt = (nearestHL.height * D_HEIGHT).toFixed(1);
                                     var hlTimeStr = formatLocationTime(new Date(nearestHL.time), { hour: 'numeric', minute: '2-digit', hour12: true });
-                                    tideLines.push(hlIcon + ' ' + hlType + ' tide ' + hlFt + ' ft at ' + hlTimeStr);
+                                    tideLines.push(hlIcon + ' ' + hlType + ' tide ' + hlFt + ' ' + U_HEIGHT + ' at ' + hlTimeStr);
                                 }
                             }
                             if (tideLines.length) {
@@ -6251,8 +6418,8 @@
                         data: {
                             datasets: [
                                 {
-                                    label: 'Total Wave Height (ft)',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wave_height * M_TO_FT })),
+                                    label: 'Total Wave Height (' + U_HEIGHT + ')',
+                                    data: data.map(item => ({ x: new Date(item.time), y: item.wave_height * D_HEIGHT })),
                                     borderColor: 'rgb(75, 192, 192)',
                                     backgroundColor: 'rgba(75, 192, 192, 0.1)',
                                     tension: 0.1,
@@ -6260,8 +6427,8 @@
                                     pointRadius: 2
                                 },
                                 {
-                                    label: 'Wind Wave Height (ft)',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_wave_height * M_TO_FT })),
+                                    label: 'Wind Wave Height (' + U_HEIGHT + ')',
+                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_wave_height * D_HEIGHT })),
                                     borderColor: 'rgb(255, 99, 132)',
                                     backgroundColor: 'rgba(255, 99, 132, 0.1)',
                                     tension: 0.1,
@@ -6269,8 +6436,8 @@
                                     pointRadius: 2
                                 },
                                 {
-                                    label: 'Wind Speed (mph)',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_speed * KMH_TO_MPH })),
+                                    label: 'Wind Speed (' + U_SPEED + ')',
+                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_speed * D_SPEED })),
                                     borderColor: 'rgb(255, 206, 86)',
                                     backgroundColor: 'rgba(255, 206, 86, 0.1)',
                                     tension: 0.1,
@@ -6324,7 +6491,7 @@
                                     beginAtZero: true,
                                     title: {
                                         display: true,
-                                        text: 'Wave Height (ft)',
+                                        text: 'Wave Height (' + U_HEIGHT + ')',
                                         color: 'rgb(75, 192, 192)'
                                     },
                                     ticks: {
@@ -6340,7 +6507,7 @@
                                     beginAtZero: true,
                                     title: {
                                         display: true,
-                                        text: 'Wind Speed (mph)',
+                                        text: 'Wind Speed (' + U_SPEED + ')',
                                         color: 'rgb(255, 206, 86)'
                                     },
                                     ticks: {
@@ -6513,7 +6680,7 @@
 
             let title, minVal, maxVal;
             if (state.height) {
-                title = 'Height (ft)'; minVal = 0; maxVal = 20;
+                title = 'Height (' + U_HEIGHT + ')'; minVal = 0; maxVal = METRIC_UNITS ? 6 : 20;
             } else if (state.period) {
                 title = 'Period (s)'; minVal = 0; maxVal = 15;
             } else {
@@ -6661,7 +6828,7 @@
                     if (state.height) {
                         const wh = basinGridData.wave_height[bTimeIndex][i][j];
                         color = getColorForValue(wh, 0, 6);
-                        popup = `Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`;
+                        popup = `Wave Height: ${(wh * D_HEIGHT).toFixed(1)} ${U_HEIGHT}`;
                     } else if (state.period) {
                         const wp = basinGridData.wave_period[bTimeIndex][i][j];
                         color = getColorForValue(wp, 0, 15);
@@ -6694,7 +6861,7 @@
 
                     if (state.height) {
                         const wh = basinGridData.wave_height[bTimeIndex][i][j];
-                        if (wh > 0) { color = getColorForValue(wh, 0, 6); popup = `Wave Height: ${(wh * M_TO_FT).toFixed(1)} ft`; hasData = true; }
+                        if (wh > 0) { color = getColorForValue(wh, 0, 6); popup = `Wave Height: ${(wh * D_HEIGHT).toFixed(1)} ${U_HEIGHT}`; hasData = true; }
                     } else if (state.period) {
                         const wp = basinGridData.wave_period[bTimeIndex][i][j];
                         if (wp > 0) { color = getColorForValue(wp, 0, 15); popup = `Wave Period: ${wp.toFixed(1)} s`; hasData = true; }
@@ -6923,17 +7090,18 @@
             }
 
             addLegend(map1, 'Period (s)', 0, 15, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
-            addLegend(map2, 'Height (ft)', 0, 10, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
+            addLegend(map2, 'Height (' + U_HEIGHT + ')', 0, METRIC_UNITS ? 3 : 10, ['#00f', '#0ff', '#0f0', '#ff0', '#f00']);
 
             // Wind legend
             const windLegend = L.control({position: 'bottomright'});
             windLegend.onAdd = function() {
                 const div = L.DomUtil.create('div', 'legend');
-                div.innerHTML = '<strong>Wind (mph)</strong><br>' +
-                    '<span style="color:#33ff88">&rarr;</span> 0-6<br>' +
-                    '<span style="color:#3388ff">&rarr;</span> 6-12<br>' +
-                    '<span style="color:#ffff33">&rarr;</span> 12-19<br>' +
-                    '<span style="color:#ff8833">&rarr;</span> 19+';
+                var windBands = METRIC_UNITS ? ['0-10', '10-20', '20-30', '30+'] : ['0-6', '6-12', '12-19', '19+'];
+                div.innerHTML = '<strong>Wind (' + U_SPEED + ')</strong><br>' +
+                    '<span style="color:#33ff88">&rarr;</span> ' + windBands[0] + '<br>' +
+                    '<span style="color:#3388ff">&rarr;</span> ' + windBands[1] + '<br>' +
+                    '<span style="color:#ffff33">&rarr;</span> ' + windBands[2] + '<br>' +
+                    '<span style="color:#ff8833">&rarr;</span> ' + windBands[3];
                 return div;
             };
             windLegend.addTo(map3);
@@ -7126,7 +7294,7 @@
                         const height = localGridData.wave_height[lTimeIndex][entry.i][entry.j];
                         const color = getColorForValue(height, 0, 3);
                         entry.rect.setStyle({fillColor: color, color: color});
-                        entry.rect.setPopupContent(`Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`);
+                        entry.rect.setPopupContent(`Wave Height: ${(height * D_HEIGHT).toFixed(1)} ${U_HEIGHT}`);
                     }
                     for (const entry of localWindMarkers) {
                         const speed = localGridData.wind_speed[lTimeIndex][entry.i][entry.j];
@@ -7137,7 +7305,7 @@
                             entry.arrowDiv.style.transform = `rotate(${rotation}deg)`;
                             entry.arrowDiv.style.color = color;
                         }
-                        entry.marker.setPopupContent(`Wind: ${(speed * KMH_TO_MPH).toFixed(1)} mph<br>Direction: ${direction.toFixed(0)}°`);
+                        entry.marker.setPopupContent(`Wind: ${(speed * D_SPEED).toFixed(1)} ${U_SPEED}<br>Direction: ${direction.toFixed(0)}°`);
                     }
                     return;
                 }
@@ -7184,7 +7352,7 @@
                             heightDescs.push({
                                 type: 'rect', bounds, i, j,
                                 options: {renderer: localHeightRenderer, color, weight: 0, fillColor: color, fillOpacity: 0.7},
-                                popup: `Wave Height: ${(height * M_TO_FT).toFixed(1)} ft`,
+                                popup: `Wave Height: ${(height * D_HEIGHT).toFixed(1)} ${U_HEIGHT}`,
                                 store: localHeightRects
                             });
                         }
@@ -7212,7 +7380,7 @@
                             windDescs.push({
                                 type: 'marker', latlng: [lLats[i], lLons[j]], i, j,
                                 icon: arrowIcon,
-                                popup: `Wind: ${(speed * KMH_TO_MPH).toFixed(1)} mph<br>Direction: ${direction.toFixed(0)}°`,
+                                popup: `Wind: ${(speed * D_SPEED).toFixed(1)} ${U_SPEED}<br>Direction: ${direction.toFixed(0)}°`,
                                 store: localWindMarkers, arrowDiv: null
                             });
                         }
@@ -7523,7 +7691,7 @@
                 h = h % 12 || 12;
                 var arrow = d.type === 'H' ? '\u25B2' : '\u25BC';
                 var date = formatLocationTime(dt, {month:'short', day:'numeric'});
-                return arrow + ' ' + (d.height * M_TO_FT).toFixed(1) + 'ft ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
+                return arrow + ' ' + (d.height * D_HEIGHT).toFixed(1) + U_HEIGHT + ' ' + h + ':' + (m < 10 ? '0' : '') + m + ampm + ' ' + date;
             }
 
             // Render all chronologically — past dimmed, next future bolded
@@ -7567,7 +7735,7 @@
             // 24-hour window: start from first available data point, end 24h later
             var now = Date.now();
             var allPoints = hourly
-                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * M_TO_FT }; })
+                .map(function(d) { return { t: new Date(d.time).getTime(), h: d.height * D_HEIGHT }; })
                 .sort(function(a, b) { return a.t - b.t; });
 
             // Show first 24h of available data (today midnight through tomorrow)
@@ -7632,7 +7800,7 @@
                 ctx.lineWidth = 0.5;
                 ctx.stroke();
                 // Label
-                var label = tick % 1 === 0 ? tick.toFixed(0) + 'ft' : tick.toFixed(1) + 'ft';
+                var label = tick % 1 === 0 ? tick.toFixed(0) + U_HEIGHT : tick.toFixed(1) + U_HEIGHT;
                 ctx.fillStyle = yAxisColor;
                 ctx.fillText(label, chartLeft - tickLen - 1, ty);
             }
@@ -7668,7 +7836,7 @@
                 hlData.forEach(function(d) {
                     var t = new Date(d.time).getTime();
                     if (t < windowStart || t > windowEnd) return;
-                    var h = d.height * M_TO_FT;
+                    var h = d.height * D_HEIGHT;
                     hlEvents.push({ t: t, h: h, type: d.type, date: new Date(d.time) });
                 });
 
@@ -7740,14 +7908,14 @@
         function addTideToWaveChart() {
             if (!waveChart || !window._tideData) return;
             // Avoid duplicate: check if tide dataset already exists
-            var hasIt = waveChart.data.datasets.some(function(ds) { return ds.label === 'Tide Height (ft)'; });
+            var hasIt = waveChart.data.datasets.some(function(ds) { return ds.label === 'Tide Height (' + U_HEIGHT + ')'; });
             if (hasIt) return;
 
             var tideColor = isDarkTheme() ? 'rgba(100, 149, 237, 0.6)' : 'rgba(37, 99, 235, 0.7)';
 
             // Build tide line data from _tideData (array of {time, height} in metric)
             var tideLineData = window._tideData.map(function(item) {
-                return { x: new Date(item.time), y: item.height * M_TO_FT };
+                return { x: new Date(item.time), y: item.height * D_HEIGHT };
             });
 
             // Build high/low marker arrays (sparse — null for non-marker points)
@@ -7784,7 +7952,7 @@
 
             // Add tide line dataset
             waveChart.data.datasets.push({
-                label: 'Tide Height (ft)',
+                label: 'Tide Height (' + U_HEIGHT + ')',
                 data: tideLineData,
                 borderColor: tideColor,
                 backgroundColor: 'transparent',
@@ -7848,7 +8016,7 @@
                     // Update station info display
                     if (tideData.station) {
                         const stationInfo = document.getElementById('tide-station-info');
-                        stationInfo.textContent = `${tideData.station.name} — ${(tideData.station.distance_km * KM_TO_MI).toFixed(1)} mi`;
+                        stationInfo.textContent = `${tideData.station.name} — ${(tideData.station.distance_km * D_DIST).toFixed(1)} ${U_DIST}`;
                     }
 
                     // Prepare hourly data as {x, y} points
@@ -7856,7 +8024,7 @@
                     tideTimeRange = { min: tideTimes[0], max: tideTimes[tideTimes.length - 1] };
 
                     const heightsData = tideData.hourly.map(item => ({
-                        x: new Date(item.time), y: item.height * M_TO_FT
+                        x: new Date(item.time), y: item.height * D_HEIGHT
                     }));
 
                     // Prepare high/low annotations
@@ -7882,10 +8050,10 @@
 
                         if (matchingHighLow) {
                             if (matchingHighLow.type === 'H') {
-                                highTides.push({ x: new Date(item.time), y: item.height * M_TO_FT });
+                                highTides.push({ x: new Date(item.time), y: item.height * D_HEIGHT });
                                 lowTides.push(null);
                             } else {
-                                lowTides.push({ x: new Date(item.time), y: item.height * M_TO_FT });
+                                lowTides.push({ x: new Date(item.time), y: item.height * D_HEIGHT });
                                 highTides.push(null);
                             }
                         } else {
@@ -7906,7 +8074,7 @@
                         data: {
                             datasets: [
                                 {
-                                    label: 'Tide Height (ft)',
+                                    label: 'Tide Height (' + U_HEIGHT + ')',
                                     data: heightsData,
                                     borderColor: 'rgb(54, 162, 235)',
                                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
@@ -7976,7 +8144,7 @@
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Height above MLLW (ft)',
+                                        text: 'Height above MLLW (' + U_HEIGHT + ')',
                                         color: 'rgb(54, 162, 235)'
                                     },
                                     ticks: {
@@ -7992,7 +8160,7 @@
                                     beginAtZero: true,
                                     title: {
                                         display: true,
-                                        text: 'Wind Speed (mph)',
+                                        text: 'Wind Speed (' + U_SPEED + ')',
                                         color: 'transparent'
                                     },
                                     ticks: {
@@ -8066,12 +8234,63 @@
             }
         }
 
+        // The "should I go?" verdict strip in the Next 6 Hours hero — the
+        // 15-second answer most surf checks are really asking for.
+        function updateHeroVerdict(windows) {
+            var el = document.getElementById('hero-verdict');
+            if (!el) return;
+            if (!windows || !windows.length) { el.style.display = 'none'; return; }
+
+            var now = Date.now();
+            var current = null, best = null;
+            windows.forEach(function(w) {
+                var s = w.startTime.getTime(), e = w.endTime.getTime();
+                if (s <= now && now < e) current = w;
+                if (e > now && s < now + 48 * 3600000 && (!best || w.score > best.score)) best = w;
+            });
+
+            function verdictFor(score) {
+                if (score >= 75) return { label: 'Go surf', cls: 'prime' };
+                if (score >= 55) return { label: 'Worth a paddle', cls: 'good' };
+                if (score >= 35) return { label: 'Maybe', cls: 'fair' };
+                return { label: 'Skip it', cls: 'poor' };
+            }
+
+            el.textContent = '';
+            var badge = document.createElement('span');
+            badge.className = 'hero-verdict-badge';
+            var text = document.createElement('span');
+            text.className = 'hero-verdict-text';
+
+            if (current) {
+                var v = verdictFor(current.score);
+                badge.textContent = v.label;
+                badge.classList.add('verdict-' + v.cls);
+                text.textContent = 'Now: ' + current.score + '/100';
+            } else {
+                badge.textContent = 'After dark';
+                badge.classList.add('verdict-night');
+            }
+
+            if (best && best !== current) {
+                var when = formatLocationTime(best.startTime, { weekday: 'short', hour: 'numeric' }) +
+                    '–' + formatLocationTime(best.endTime, { hour: 'numeric' });
+                text.textContent += (text.textContent ? ' · ' : '') +
+                    'Best window: ' + when + ' · ' + best.score + '/100';
+            }
+
+            el.appendChild(badge);
+            el.appendChild(text);
+            el.style.display = '';
+        }
+
         function renderSessionPlanner() {
             const grid = document.getElementById('session-planner-grid');
             const badge = document.getElementById('session-planner-badge');
             if (!grid) return;
 
             const windows = computeSessionWindows();
+            updateHeroVerdict(windows);
             if (!windows.length) {
                 grid.textContent = '';
                 const msg = document.createElement('div');
@@ -8300,13 +8519,13 @@
             var startMs = bestUpcoming.startTime.getTime();
             if (window._lastAlertWindow && window._lastAlertWindow === startMs) return;
 
-            var heightFt = bestUpcoming.avgWH != null ? (bestUpcoming.avgWH * M_TO_FT).toFixed(1) : '?';
+            var heightFt = bestUpcoming.avgWH != null ? (bestUpcoming.avgWH * D_HEIGHT).toFixed(1) : '?';
             var period = bestUpcoming.avgWP != null ? bestUpcoming.avgWP.toFixed(0) : '?';
             var timeStr = formatLocationTime(bestUpcoming.startTime, { hour: '2-digit', minute: '2-digit', hour12: true });
             var rating = bestUpcoming.rating;
 
             if (startMs <= now) {
-                fireSurfNotification('Good conditions right now', heightFt + 'ft @ ' + period + 's — ' + rating);
+                fireSurfNotification('Good conditions right now', heightFt + U_HEIGHT + ' @ ' + period + 's — ' + rating);
                 window._lastAlertWindow = startMs;
             } else {
                 var msUntilStart = startMs - now;
@@ -8316,7 +8535,7 @@
                     _alertTimeout = setTimeout(function() {
                         if (!surfAlertsEnabled()) return;
                         var minAway = Math.round((startMs - Date.now()) / 60000);
-                        var body = heightFt + 'ft @ ' + period + 's — ' + rating;
+                        var body = heightFt + U_HEIGHT + ' @ ' + period + 's — ' + rating;
                         if (minAway > 0) {
                             fireSurfNotification('Best window opens at ' + timeStr, body);
                         } else {
@@ -8688,9 +8907,9 @@
                                (windConds.indexOf('fair') !== -1 ? 'fair' : 'clean');
 
                     cellData.push({
-                        waveHeightFt: avgWH * M_TO_FT,
+                        waveHeightFt: avgWH * D_HEIGHT,
                         wavePeriod: avgWP,
-                        windMph: avgWind * KMH_TO_MPH,
+                        windMph: avgWind * D_SPEED,
                         condition: cond
                     });
                 });
@@ -8720,13 +8939,13 @@
                         }
                         var wavesSpan = document.createElement('span');
                         wavesSpan.className = 'compare-cell-waves';
-                        wavesSpan.textContent = cd.waveHeightFt.toFixed(1) + 'ft';
+                        wavesSpan.textContent = cd.waveHeightFt.toFixed(1) + U_HEIGHT;
 
                         var periodSpan = document.createElement('span');
                         periodSpan.textContent = ' ' + cd.wavePeriod.toFixed(0) + 's';
 
                         var windSpan = document.createElement('span');
-                        windSpan.textContent = ' ' + cd.windMph.toFixed(0) + 'mph ';
+                        windSpan.textContent = ' ' + cd.windMph.toFixed(0) + U_SPEED + ' ';
 
                         var condSpan = document.createElement('span');
                         condSpan.className = 'compare-cell-cond';
@@ -8996,9 +9215,9 @@
                     sel.innerHTML = '';
                     data.buoys.forEach(function(b, i) {
                         var opt = document.createElement('option');
-                        var distMi = Math.round(b.distance_km * 0.621371);
+                        var distMi = Math.round(b.distance_km * D_DIST);
                         opt.value = i;
-                        opt.textContent = b.source.toUpperCase() + ' ' + b.id + ' — ' + distMi + ' mi';
+                        opt.textContent = b.source.toUpperCase() + ' ' + b.id + ' — ' + distMi + ' ' + U_DIST;
                         sel.appendChild(opt);
                     });
                     sel.onchange = function() { selectBuoy(data.buoys[parseInt(sel.value)]); };
@@ -9139,16 +9358,18 @@
             var distEl = document.getElementById('buoy_distance');
             var warnEl = document.getElementById('far-buoy-warning');
             if (buoy.distance_km != null) {
-                var distMi = (buoy.distance_km * 0.621371);
-                distEl.textContent = distMi.toFixed(1) + ' mi (' + buoy.distance_km.toFixed(0) + ' km)';
+                var distMi = (buoy.distance_km * D_DIST);
+                distEl.textContent = METRIC_UNITS
+                    ? buoy.distance_km.toFixed(0) + ' km'
+                    : distMi.toFixed(1) + ' mi (' + buoy.distance_km.toFixed(0) + ' km)';
                 if (buoy.distance_km > 100) {
                     warnEl.textContent = '';
                     var strong = document.createElement('strong');
                     strong.textContent = 'Deep-water buoy';
                     warnEl.appendChild(strong);
                     warnEl.appendChild(document.createTextNode(
-                        ' — this station is ' + Math.round(distMi) +
-                        ' mi offshore. Face heights at the beach may be 30–50% lower than reported here due to nearshore transformation.'
+                        ' — this station is ' + Math.round(distMi) + ' ' + U_DIST +
+                        ' offshore. Face heights at the beach may be 30–50% lower than reported here due to nearshore transformation.'
                     ));
                     warnEl.style.display = '';
                 } else {
@@ -9163,23 +9384,23 @@
             if (buoy.wave_direction != null) {
                 dirArrow = ' ' + degToArrow(buoy.wave_direction);
             }
-            document.getElementById('buoy_wave_height').textContent = fmt(buoy.wave_height, 'ft', function(v) { return v * M_TO_FT; });
+            document.getElementById('buoy_wave_height').textContent = fmt(buoy.wave_height, U_HEIGHT, function(v) { return v * D_HEIGHT; });
             document.getElementById('buoy_wave_period').textContent = fmt(buoy.dominant_period, 's');
             document.getElementById('buoy_wave_dir').innerHTML = buoy.wave_direction != null ? Math.round(buoy.wave_direction) + '&deg;' + dirArrow : '-';
 
             if (buoy.wind_speed != null) {
-                var windMph = (buoy.wind_speed * 2.23694).toFixed(0);
+                var windMph = (buoy.wind_speed * (METRIC_UNITS ? 3.6 : 2.23694)).toFixed(0);
                 var windDir = buoy.wind_direction != null ? degToCompass(buoy.wind_direction) + ' ' : '';
-                document.getElementById('buoy_wind').textContent = windDir + windMph + ' mph';
+                document.getElementById('buoy_wind').textContent = windDir + windMph + ' ' + U_SPEED;
                 if (buoy.wind_gust != null) {
-                    document.getElementById('buoy_wind').textContent += ' (G' + (buoy.wind_gust * 2.23694).toFixed(0) + ')';
+                    document.getElementById('buoy_wind').textContent += ' (G' + (buoy.wind_gust * (METRIC_UNITS ? 3.6 : 2.23694)).toFixed(0) + ')';
                 }
             } else {
                 document.getElementById('buoy_wind').textContent = '-';
             }
 
-            document.getElementById('buoy_water_temp').textContent = fmt(buoy.water_temp, '\u00B0F', function(v) { return v * 9/5 + 32; });
-            document.getElementById('buoy_air_temp').textContent = fmt(buoy.air_temp, '\u00B0F', function(v) { return v * 9/5 + 32; });
+            document.getElementById('buoy_water_temp').textContent = buoy.water_temp != null ? dispTemp(buoy.water_temp) : '-';
+            document.getElementById('buoy_air_temp').textContent = buoy.air_temp != null ? dispTemp(buoy.air_temp) : '-';
             document.getElementById('buoy_pressure').textContent = fmt(buoy.pressure, 'mb');
         }
 
