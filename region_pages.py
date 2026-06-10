@@ -72,8 +72,9 @@ REGIONS = [
         'title': 'Long Island Surf Forecast',
         'short_title': 'Long Island, NY',
         'description': 'Surf forecast for Long Island, New York — south-shore beaches from Long Beach east through Montauk.',
-        'state_filter': 'NY',
-        'slug_list': None,
+        'state_filter': None,  # NY now also has Great Lakes spots
+        'slug_list': ['montauk-ny', 'east-hampton-beach-ny', 'fire-island-ny',
+                      'lido-beach-ny', 'long-beach-ny', 'rockaway-beach-ny'],
         'intro_html': '''
 <p>Long Island's south shore faces nearly due south, which makes it dramatically different from the rest of the East Coast. The dominant swell sources still come from the north and east — hurricanes and nor'easters — but they have to wrap onto a south-facing beach, with significant refraction loss along the way. Long Island consequently sees smaller surf than the same systems produce on the Jersey Shore or Outer Banks.</p>
 <p>The trade-off: when something does wrap onto Long Island, it's typically very clean. Long-period ground swells refract into the south-facing geometry and produce lined-up, organized waves. Short-period wind swells barely make it.</p>
@@ -211,6 +212,38 @@ REGIONS = [
 <p>The two engines are <strong>winter cold fronts</strong> and <strong>tropical systems</strong>. From October through March, fronts pushing off the coast generate days of onshore slop followed by a short, clean window as the wind swings offshore behind the front — the classic Gulf pattern. In hurricane season, a storm anywhere in the Gulf can light up the entire coast with the year's best surf, often while the weather at the beach is still sunny.</p>
 <p><strong>South Padre Island</strong> is the most consistent Texas spot — deeper water close to shore lets swell arrive with less bottom drag. <strong>Port Aransas</strong> and <strong>Galveston</strong> work the same patterns with a bit less size; Galveston's piers organize the sandbars and host the longest-running scene. <strong>Gulf Shores</strong>, Alabama picks up slightly better exposure to southeast fetch and shares the Florida panhandle's sugar-sand bars.</p>
 <p>Water temps run warm: low 60s °F in winter on the upper Texas coast (a 3/2 season) to bathwater mid-80s in summer. Hazards are modest — rip currents near piers and jetties, and stingrays in the shallows (shuffle your feet). It's one of the friendliest learning coastlines in the country when a clean window lines up.</p>
+''',
+    },
+    {
+        'slug': 'great-lakes',
+        'title': 'Great Lakes Surf Forecast',
+        'short_title': 'Great Lakes',
+        'description': 'Surf forecast for the Great Lakes — Sheboygan, Grand Haven, Marquette, Two Harbors, Presque Isle, Rochester, and more freshwater surf spots on Lakes Michigan, Superior, Erie, and Ontario.',
+        'state_filter': None,
+        'slug_list': ['sheboygan-wi', 'milwaukee-bradford-beach-wi', 'chicago-montrose-beach-il',
+                      'new-buffalo-mi', 'st-joseph-mi', 'grand-haven-mi', 'frankfort-mi',
+                      'marquette-mi', 'two-harbors-mn', 'stoney-point-mn',
+                      'cleveland-edgewater-oh', 'presque-isle-pa', 'buffalo-ny',
+                      'rochester-ontario-beach-ny', 'oswego-ny'],
+        'intro_html': '''
+<p><strong>Great Lakes surfing</strong> is real surfing — the lakes are inland seas large enough to build rideable, occasionally overhead waves. Like the Gulf of Mexico, they are fetch-limited: every wave is wind swell generated inside the basin, with short periods (4-8 seconds) and a strong dependence on timing. The forecast matters more here than on any ocean coast: windows open and close within hours.</p>
+<p>The engine is <strong>wind, and lots of it</strong>. Fall through early winter (October-December) is prime season: strong low-pressure systems track across the lakes, building waves over hundreds of miles of fetch, and the air is colder than the water, which keeps the surface workable. The legendary days — the ones that fill Sheboygan's lineup — come when a gale blows for a day and then swings or eases, leaving organized swell with manageable wind.</p>
+<p><strong>Lake Michigan</strong> has the deepest bench of spots: Sheboygan, Wisconsin (the self-styled "Malibu of the Midwest") works on both north and south winds thanks to its harbor geometry; Grand Haven, St. Joseph, and New Buffalo on the Michigan shore light up on west-northwest blows. <strong>Lake Superior</strong> is the big-wave lake — Two Harbors and Stoney Point on the North Shore take on serious size in fall gales, with the coldest water on Earth that people willingly surf in. <strong>Lake Erie</strong> (Cleveland, Presque Isle, Buffalo) is the shallowest and quickest to build, and <strong>Lake Ontario</strong> (Rochester, Oswego) catches long west-fetch wind swells.</p>
+<p>Hazards are unique: hypothermia is the real one. Prime season water runs 35-50 °F with air temperatures lower still — a 5/4 or 6/5 hooded suit, gloves, and 7mm boots are mandatory, and many locals surf through snow squalls. There are no tides (we mark these spots non-tidal), no sharks, and no salt to rinse — but lake currents near piers and river mouths are powerful and drownings happen every season. Never surf piers in storm conditions.</p>
+''',
+    },
+    {
+        'slug': 'puerto-rico',
+        'title': 'Puerto Rico Surf Forecast',
+        'short_title': 'Puerto Rico',
+        'description': 'Surf forecast for Puerto Rico — Rincon, Aguadilla, and Isabela on the island\'s northwest corner. Caribbean water, North Atlantic winter swell.',
+        'state_filter': 'PR',
+        'slug_list': None,
+        'intro_html': '''
+<p><strong>Puerto Rico's northwest corner</strong> — Rincon, Aguadilla, and Isabela — is the Caribbean's premier surf zone, and the only US territory with genuinely world-class waves. The geography is the secret: the island's northwest corner faces directly into long-period North Atlantic groundswell, and the deep Puerto Rico Trench just offshore lets that swell arrive at nearly full strength before it focuses onto reefs and points.</p>
+<p><strong>Winter (November-March) is the season.</strong> The same North Atlantic storms that bury New England in snow send clean 14-18 second groundswell south to Puerto Rico, where it breaks in 80 °F water under trade-wind skies. Rincon's points (Domes, Maria's, Tres Palmas) handle everything from chest-high fun to the island's biggest paddle days; Tres Palmas is the Caribbean's premier big-wave venue when XL swells arrive.</p>
+<p><strong>Aguadilla and Isabela</strong> pick up slightly more north in the swell window — Crash Boat offers one of the most photogenic beach setups anywhere, while Jobos and the Isabela reefs spread crowds across a long stretch of coast. Summer flips the script: the North Atlantic goes quiet and the northwest corner goes mostly flat, with occasional hurricane swell (August-October) providing the exceptions.</p>
+<p>Hazards: shallow reef and urchins at most of the better breaks, strong localism at a handful of spots, and serious current on bigger days. Trade winds blow from the east, making mornings (before the wind wraps) the cleanest window at most northwest-facing breaks. No wetsuit needed, ever — water runs 78-84 °F year-round.</p>
 ''',
     },
 ]

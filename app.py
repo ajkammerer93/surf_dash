@@ -473,7 +473,12 @@ _STATE_TIMEZONES = {
     'ME': 'America/New_York', 'NH': 'America/New_York', 'RI': 'America/New_York',
     'TX': 'America/Chicago', 'AL': 'America/Chicago',
     'OR': 'America/Los_Angeles', 'CA': 'America/Los_Angeles',
+    'WA': 'America/Los_Angeles',
     'HI': 'Pacific/Honolulu',
+    # Great Lakes states
+    'WI': 'America/Chicago', 'IL': 'America/Chicago', 'MN': 'America/Chicago',
+    'MI': 'America/Detroit', 'OH': 'America/New_York', 'PA': 'America/New_York',
+    'PR': 'America/Puerto_Rico',
 }
 
 
@@ -1964,11 +1969,13 @@ def locations_index():
     state_map = {
         'AL': 'Alabama', 'CA': 'California', 'CT': 'Connecticut',
         'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
-        'HI': 'Hawaii', 'MA': 'Massachusetts', 'MD': 'Maryland',
-        'ME': 'Maine', 'NC': 'North Carolina', 'NH': 'New Hampshire',
-        'NJ': 'New Jersey', 'NY': 'New York', 'OR': 'Oregon',
-        'PR': 'Puerto Rico', 'RI': 'Rhode Island', 'SC': 'South Carolina',
-        'TX': 'Texas', 'VA': 'Virginia', 'WA': 'Washington',
+        'HI': 'Hawaii', 'IL': 'Illinois', 'MA': 'Massachusetts',
+        'MD': 'Maryland', 'ME': 'Maine', 'MI': 'Michigan',
+        'MN': 'Minnesota', 'NC': 'North Carolina', 'NH': 'New Hampshire',
+        'NJ': 'New Jersey', 'NY': 'New York', 'OH': 'Ohio',
+        'OR': 'Oregon', 'PA': 'Pennsylvania', 'PR': 'Puerto Rico',
+        'RI': 'Rhode Island', 'SC': 'South Carolina', 'TX': 'Texas',
+        'VA': 'Virginia', 'WA': 'Washington', 'WI': 'Wisconsin',
     }
 
     grouped = {}
@@ -2544,6 +2551,9 @@ def find_nearest_cameras(lat, lon, count=2):
     for cam in SURFCHEX_CAMERAS:
         if cam.get('disabled'):
             continue
+        # Forecast-only spots (no camera) live in the same catalog
+        if not cam.get('stream_url') and cam.get('type') != 'link':
+            continue
         dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
         if dist <= SURFCHEX_MAX_DISTANCE_KM:
             cam_type = cam.get('type', 'hls')
@@ -2894,6 +2904,12 @@ def tides():
         station = find_nearest_tide_station(target_lat, target_lon)
         if not station:
             return None
+        # The Great Lakes (and other non-tidal waters) have no NOAA harmonic
+        # stations — the nearest match can be an ocean station hundreds of km
+        # away whose predictions are meaningless here.
+        if station.get("distance_km", 0) > 300:
+            logger.info(f"Nearest tide station {station['id']} is {station['distance_km']} km away — treating as non-tidal")
+            return {"non_tidal": True, "hourly": [], "high_low": [], "station": station}
         data = get_tide_data(station["id"])
         if data:
             data["station"] = station

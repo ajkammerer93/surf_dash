@@ -2673,7 +2673,7 @@
 
     <nav class="browse-cta" aria-label="Browse spots">
         <span class="browse-cta-label">Explore:</span>
-        <a href="/locations">All 126 spots &raquo;</a>
+        <a href="/locations">All {{ locations|length }} spots &raquo;</a>
         <a href="/regions">Browse by region &raquo;</a>
         <a href="/learn">Surf forecast guides &raquo;</a>
     </nav>
@@ -8027,10 +8027,28 @@
             fetch(`/api/tides?${params}`)
                 .then(response => response.json())
                 .then(staleGuard(tideData => {
+                    if (tideData.non_tidal) {
+                        // Great Lakes and other non-tidal waters: no tide data
+                        // exists, but the session planner should still run
+                        showChartUnavailable('tideChart', 'Non-tidal waters — no tide forecast here');
+                        document.getElementById('tide-station-info').textContent = 'Non-tidal';
+                        window._tideData = [];
+                        window._tideHighLow = [];
+                        updateConditionsTide();
+                        _tidesLoaded = true;
+                        checkSessionPlannerReady();
+                        return;
+                    }
                     if (tideData.error) {
                         console.error('API Error (Tide Data):', tideData.error);
                         showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
                         document.getElementById('tide-station-info').textContent = 'Unavailable';
+                        // Let the session planner score tideless rather than
+                        // never rendering at all
+                        window._tideData = [];
+                        window._tideHighLow = [];
+                        _tidesLoaded = true;
+                        checkSessionPlannerReady();
                         return;
                     }
                     clearChartUnavailable('tideChart');
@@ -8233,6 +8251,10 @@
                     console.error('Error fetching tide data:', error);
                     showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
                     document.getElementById('tide-station-info').textContent = 'Unavailable';
+                    window._tideData = [];
+                    window._tideHighLow = [];
+                    _tidesLoaded = true;
+                    checkSessionPlannerReady();
                 }));
         }
 
