@@ -2818,6 +2818,8 @@ def find_nearest_cameras(lat, lon, count=2):
             entry = {
                 'name': cam['name'],
                 'type': cam_type,
+                'lat': cam['lat'],
+                'lon': cam['lon'],
                 'distance_km': round(dist, 1),
                 'page_url': cam.get('page_url', '')
             }
