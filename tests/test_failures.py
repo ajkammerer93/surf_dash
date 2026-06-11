@@ -343,17 +343,28 @@ class TestFallbackTimezone:
         assert not missing, f"States without timezone mapping: {missing}"
 
 
-class TestSurfchexStillOnly:
-    """SurfChex streams must be flagged still_only (owner agreement, June
-    2026): the frontend shows a load-time frame + link, never live playback."""
+class TestSurfchexLinkOnly:
+    """SurfChex cams must be pure link-outs (owner agreement, June 2026):
+    no embedded playback and no frame grabs - their stream URLs must never
+    reach the client at all."""
 
-    def test_surfchex_cams_flagged(self):
+    def test_surfchex_cams_are_links(self):
         cams = surf_app.find_nearest_cameras(40.117, -74.036, count=10)
         sx = [c for c in cams if 'surfchex' in (c.get('page_url') or '').lower()]
         assert sx, 'expected SurfChex cams near Manasquan'
-        assert all(c.get('still_only') for c in sx)
+        for c in sx:
+            assert c['type'] == 'link'
+            assert c['url'] == c['page_url']
+            assert 'stream' not in (c.get('url') or '')
 
-    def test_non_surfchex_cams_not_flagged(self):
+    def test_surfchex_stream_urls_never_in_payload(self):
         cams = surf_app.find_nearest_cameras(40.117, -74.036, count=10)
-        other = [c for c in cams if 'surfchex' not in (c.get('page_url') or '').lower()]
-        assert all(not c.get('still_only') for c in other)
+        for c in cams:
+            for v in c.values():
+                assert 'streams.surfchex' not in str(v)
+
+    def test_non_surfchex_hls_cams_unchanged(self):
+        cams = surf_app.find_nearest_cameras(34.43, -77.55, count=10)
+        hls = [c for c in cams if c['type'] == 'hls']
+        for c in hls:
+            assert 'surfchex' not in (c.get('page_url') or '').lower()

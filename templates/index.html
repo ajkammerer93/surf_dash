@@ -1109,6 +1109,34 @@
         }
         .spot-popup-btn:hover { border-color: #16a34a; color: #16a34a; }
 
+        .cam-link-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            height: 100%;
+            min-height: 150px;
+            background: linear-gradient(160deg, #10222e 0%, #0a0a0a 70%);
+        }
+        .cam-link-card-icon { color: #5ad1ff; opacity: 0.85; }
+        .cam-link-card-name {
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 700;
+            color: #e8e8e8;
+            text-align: center;
+            padding: 0 12px;
+        }
+        .cam-link-card-cta {
+            font-family: var(--font-body);
+            font-size: 11px;
+            color: #44ff88;
+            letter-spacing: 0.5px;
+        }
+        a:hover .cam-link-card-cta { text-decoration: underline; }
+
         .cam-marker {
             color: #5ad1ff;
             filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.9));
@@ -7581,7 +7609,7 @@
                 a.href = cam.page_url || cam.url;
                 a.target = '_blank';
                 a.rel = 'noopener';
-                a.textContent = cam.still_only ? 'View at SurfChex \u2197' : 'Watch live \u2197';
+                a.textContent = 'Watch live \u2197';
                 pop.appendChild(a);
                 m.bindPopup(pop);
                 m.addTo(localCamLayer);
@@ -9500,12 +9528,11 @@
                 return;
             }
 
-            titleEl.textContent = camData.still_only ? 'Cam Snapshot' : 'Live Cam';
-            PANEL_NAMES[panelId] = camData.name + (camData.still_only ? ' \u2014 Cam' : ' \u2014 Live Cam');
+            titleEl.textContent = 'Live Cam';
+            PANEL_NAMES[panelId] = camData.name + ' \u2014 Live Cam';
             buildCamSelect(slotIndex, camIndex != null ? camIndex : 0);
 
             if (camData.type === 'hls') {
-                var stillOnly = !!camData.still_only;
                 var video = document.createElement('video');
                 video.style.cssText = 'width:100%;display:block;background:#000;';
                 video.muted = true;
@@ -9513,41 +9540,11 @@
                 video.playsInline = true;
                 contentEl.appendChild(video);
 
-                // Still-only providers (SurfChex, by agreement with the owner):
-                // capture a single frame at page load, halt all stream loading,
-                // and link out to the provider's page for live viewing.
-                function freezeToStill(hlsInstance) {
-                    var frozen = false;
-                    video.addEventListener('loadeddata', function onFrame() {
-                        if (frozen) return;
-                        frozen = true;
-                        video.removeEventListener('loadeddata', onFrame);
-                        video.pause();
-                        try { if (hlsInstance) hlsInstance.stopLoad(); } catch (e) {}
-                        badgeEl.textContent = 'Snapshot';
-                        badgeEl.style.color = '';
-                        // Click-through overlay to the provider's live page
-                        var overlay = document.createElement('a');
-                        overlay.href = camData.page_url || camData.url;
-                        overlay.target = '_blank';
-                        overlay.rel = 'noopener';
-                        overlay.style.cssText = 'position:absolute;inset:0;display:block;text-decoration:none;';
-                        var pill = document.createElement('span');
-                        var grabbedAt = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                        pill.textContent = 'Snapshot ' + grabbedAt + ' — Watch live at SurfChex ↗';
-                        pill.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.78);color:#fff;padding:5px 12px;border-radius:4px;font-size:11px;';
-                        overlay.appendChild(pill);
-                        contentEl.style.position = 'relative';
-                        contentEl.appendChild(overlay);
-                    });
-                }
-
                 if (Hls.isSupported()) {
                     var hls = new Hls();
                     activeCamInstances[slotIndex] = hls;
                     hls.loadSource(camData.url);
                     hls.attachMedia(video);
-                    if (stillOnly) freezeToStill(hls);
                     hls.on(Hls.Events.ERROR, function(event, data) {
                         if (data.fatal) {
                             video.style.display = 'none';
@@ -9556,15 +9553,11 @@
                             contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';
                         }
                     });
-                    badgeEl.textContent = stillOnly ? 'Loading' : 'Live';
+                    badgeEl.textContent = 'Live';
                     badgeEl.style.color = '';
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = camData.url;
-                    if (stillOnly) {
-                        video.preload = 'metadata';
-                        freezeToStill(null);
-                    }
-                    badgeEl.textContent = stillOnly ? 'Loading' : 'Live';
+                    badgeEl.textContent = 'Live';
                     badgeEl.style.color = '';
                 } else {
                     contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';
@@ -9591,11 +9584,30 @@
                     img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
                     img.onerror = function() { this.style.display = 'none'; };
                     wrapper.appendChild(img);
+                    var badge = document.createElement('span');
+                    badge.textContent = 'Open Live Cam \u2197';
+                    badge.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.75);color:#fff;padding:4px 10px;border-radius:4px;font-size:11px;';
+                    wrapper.appendChild(badge);
+                } else {
+                    // No imagery we're allowed to show — render a designed
+                    // link card instead of a black void
+                    var card = document.createElement('div');
+                    card.className = 'cam-link-card';
+                    var icon = document.createElement('div');
+                    icon.className = 'cam-link-card-icon';
+                    icon.innerHTML = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>';
+                    card.appendChild(icon);
+                    var nameDiv = document.createElement('div');
+                    nameDiv.className = 'cam-link-card-name';
+                    nameDiv.textContent = camData.name;
+                    card.appendChild(nameDiv);
+                    var ctaDiv = document.createElement('div');
+                    ctaDiv.className = 'cam-link-card-cta';
+                    var domain = (camData.page_url || camData.url || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+                    ctaDiv.textContent = 'Watch live at ' + (domain || 'provider site') + ' \u2197';
+                    card.appendChild(ctaDiv);
+                    wrapper.appendChild(card);
                 }
-                var badge = document.createElement('span');
-                badge.textContent = 'Open Live Cam \u2197';
-                badge.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.75);color:#fff;padding:4px 10px;border-radius:4px;font-size:11px;';
-                wrapper.appendChild(badge);
                 contentEl.appendChild(wrapper);
                 badgeEl.textContent = 'Link';
                 badgeEl.style.color = '';

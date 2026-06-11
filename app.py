@@ -2815,6 +2815,12 @@ def find_nearest_cameras(lat, lon, count=2):
         dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
         if dist <= SURFCHEX_MAX_DISTANCE_KM:
             cam_type = cam.get('type', 'hls')
+            # Per the SurfChex owner's request (June 2026): no embedded
+            # playback and no frame grabs — their streams must never be
+            # touched. SurfChex cams are link-outs to their site only.
+            urls = (cam.get('stream_url') or '') + (cam.get('page_url') or '')
+            if 'surfchex' in urls.lower():
+                cam_type = 'link'
             entry = {
                 'name': cam['name'],
                 'type': cam_type,
@@ -2824,16 +2830,11 @@ def find_nearest_cameras(lat, lon, count=2):
                 'page_url': cam.get('page_url', '')
             }
             if cam_type == 'link':
-                entry['url'] = cam['page_url']
-                entry['thumbnail_url'] = cam.get('thumbnail_url', '')
+                entry['url'] = cam.get('page_url', '')
+                if cam.get('thumbnail_url'):
+                    entry['thumbnail_url'] = cam['thumbnail_url']
             else:
                 entry['url'] = cam['stream_url']
-            # Per agreement with the SurfChex owner (June 2026): no embedded
-            # playback of their streams. The frontend grabs a single frame at
-            # page load and links out to the SurfChex cam page instead.
-            urls = (cam.get('stream_url') or '') + (cam.get('page_url') or '')
-            if 'surfchex' in urls.lower():
-                entry['still_only'] = True
             nearby.append(entry)
     nearby.sort(key=lambda c: c['distance_km'])
     results = nearby[:count]
