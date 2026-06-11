@@ -2826,6 +2826,12 @@ def find_nearest_cameras(lat, lon, count=2):
                 entry['thumbnail_url'] = cam.get('thumbnail_url', '')
             else:
                 entry['url'] = cam['stream_url']
+            # Per agreement with the SurfChex owner (June 2026): no embedded
+            # playback of their streams. The frontend grabs a single frame at
+            # page load and links out to the SurfChex cam page instead.
+            urls = (cam.get('stream_url') or '') + (cam.get('page_url') or '')
+            if 'surfchex' in urls.lower():
+                entry['still_only'] = True
             nearby.append(entry)
     nearby.sort(key=lambda c: c['distance_km'])
     results = nearby[:count]

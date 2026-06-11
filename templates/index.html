@@ -9140,11 +9140,12 @@
                 return;
             }
 
-            titleEl.textContent = 'Live Cam';
-            PANEL_NAMES[panelId] = camData.name + ' \u2014 Live Cam';
+            titleEl.textContent = camData.still_only ? 'Cam Snapshot' : 'Live Cam';
+            PANEL_NAMES[panelId] = camData.name + (camData.still_only ? ' \u2014 Cam' : ' \u2014 Live Cam');
             buildCamSelect(slotIndex, camIndex != null ? camIndex : 0);
 
             if (camData.type === 'hls') {
+                var stillOnly = !!camData.still_only;
                 var video = document.createElement('video');
                 video.style.cssText = 'width:100%;display:block;background:#000;';
                 video.muted = true;
@@ -9152,11 +9153,41 @@
                 video.playsInline = true;
                 contentEl.appendChild(video);
 
+                // Still-only providers (SurfChex, by agreement with the owner):
+                // capture a single frame at page load, halt all stream loading,
+                // and link out to the provider's page for live viewing.
+                function freezeToStill(hlsInstance) {
+                    var frozen = false;
+                    video.addEventListener('loadeddata', function onFrame() {
+                        if (frozen) return;
+                        frozen = true;
+                        video.removeEventListener('loadeddata', onFrame);
+                        video.pause();
+                        try { if (hlsInstance) hlsInstance.stopLoad(); } catch (e) {}
+                        badgeEl.textContent = 'Snapshot';
+                        badgeEl.style.color = '';
+                        // Click-through overlay to the provider's live page
+                        var overlay = document.createElement('a');
+                        overlay.href = camData.page_url || camData.url;
+                        overlay.target = '_blank';
+                        overlay.rel = 'noopener';
+                        overlay.style.cssText = 'position:absolute;inset:0;display:block;text-decoration:none;';
+                        var pill = document.createElement('span');
+                        var grabbedAt = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                        pill.textContent = 'Snapshot ' + grabbedAt + ' — Watch live at SurfChex ↗';
+                        pill.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.78);color:#fff;padding:5px 12px;border-radius:4px;font-size:11px;';
+                        overlay.appendChild(pill);
+                        contentEl.style.position = 'relative';
+                        contentEl.appendChild(overlay);
+                    });
+                }
+
                 if (Hls.isSupported()) {
                     var hls = new Hls();
                     activeCamInstances[slotIndex] = hls;
                     hls.loadSource(camData.url);
                     hls.attachMedia(video);
+                    if (stillOnly) freezeToStill(hls);
                     hls.on(Hls.Events.ERROR, function(event, data) {
                         if (data.fatal) {
                             video.style.display = 'none';
@@ -9165,11 +9196,15 @@
                             contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';
                         }
                     });
-                    badgeEl.textContent = 'Live';
+                    badgeEl.textContent = stillOnly ? 'Loading' : 'Live';
                     badgeEl.style.color = '';
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = camData.url;
-                    badgeEl.textContent = 'Live';
+                    if (stillOnly) {
+                        video.preload = 'metadata';
+                        freezeToStill(null);
+                    }
+                    badgeEl.textContent = stillOnly ? 'Loading' : 'Live';
                     badgeEl.style.color = '';
                 } else {
                     contentEl.innerHTML = '<div style="padding: 8px; font-size: 11px; color: var(--status-error);">Stream unavailable</div>';

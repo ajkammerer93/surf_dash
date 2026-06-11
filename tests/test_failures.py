@@ -341,3 +341,19 @@ class TestFallbackTimezone:
         states = {loc.get('state') for loc in surf_app.LOCATION_BY_SLUG.values()}
         missing = states - set(surf_app._STATE_TIMEZONES)
         assert not missing, f"States without timezone mapping: {missing}"
+
+
+class TestSurfchexStillOnly:
+    """SurfChex streams must be flagged still_only (owner agreement, June
+    2026): the frontend shows a load-time frame + link, never live playback."""
+
+    def test_surfchex_cams_flagged(self):
+        cams = surf_app.find_nearest_cameras(40.117, -74.036, count=10)
+        sx = [c for c in cams if 'surfchex' in (c.get('page_url') or '').lower()]
+        assert sx, 'expected SurfChex cams near Manasquan'
+        assert all(c.get('still_only') for c in sx)
+
+    def test_non_surfchex_cams_not_flagged(self):
+        cams = surf_app.find_nearest_cameras(40.117, -74.036, count=10)
+        other = [c for c in cams if 'surfchex' not in (c.get('page_url') or '').lower()]
+        assert all(not c.get('still_only') for c in other)
