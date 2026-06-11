@@ -4945,11 +4945,18 @@
             opts = opts || {};
             var ny = lats.length, nx = lons.length;
             var upscale = opts.upscale || 8;
-            var W = Math.min(1200, Math.max(200, (nx - 1) * upscale));
+            var W = Math.min(1200, Math.max(200, nx * upscale));
             var latMin = lats[0], latMax = lats[ny - 1];
             var lonMin = lons[0], lonMax = lons[nx - 1];
-            var yTop = mercY(latMax), yBot = mercY(latMin);
-            var lonSpanRad = (lonMax - lonMin) * Math.PI / 180;
+            var dLat = ny > 1 ? (latMax - latMin) / (ny - 1) : 1;
+            var dLon = nx > 1 ? (lonMax - lonMin) / (nx - 1) : 1;
+            // Pixel mapping spans the CELL-EDGE extent — identical to the
+            // L.imageOverlay bounds — so the raster (and its baked-in
+            // shoreline mask) lands exactly where the overlay displays it
+            var latLo = latMin - dLat / 2, latHi = latMax + dLat / 2;
+            var lonLo = lonMin - dLon / 2, lonHi = lonMax + dLon / 2;
+            var yTop = mercY(latHi), yBot = mercY(latLo);
+            var lonSpanRad = (lonHi - lonLo) * Math.PI / 180;
             var H = Math.min(1500, Math.max(120, Math.round(W * (yTop - yBot) / lonSpanRad)));
 
             var canvas = document.createElement('canvas');
@@ -4958,8 +4965,6 @@
             var imgData = ctx.createImageData(W, H);
             var d = imgData.data;
             var alpha = Math.round((opts.opacity != null ? opts.opacity : 0.72) * 255);
-            var dLat = ny > 1 ? (latMax - latMin) / (ny - 1) : 1;
-            var dLon = nx > 1 ? (lonMax - lonMin) / (nx - 1) : 1;
             var range = (vmax - vmin) || 1;
 
             for (var py = 0; py < H; py++) {
@@ -4968,7 +4973,7 @@
                 var fi = (lat - latMin) / dLat;
                 var i0 = Math.floor(fi), fy = fi - i0;
                 for (var px = 0; px < W; px++) {
-                    var fj = ((px + 0.5) / W * (lonMax - lonMin)) / dLon;
+                    var fj = (lonLo + (px + 0.5) / W * (lonHi - lonLo) - lonMin) / dLon;
                     var j0 = Math.floor(fj), fx = fj - j0;
                     var sum = 0, wsum = 0;
                     for (var c = 0; c < 4; c++) {
@@ -4992,7 +4997,7 @@
             }
             ctx.putImageData(imgData, 0, 0);
             if (_landRings) {
-                eraseLandPixels(ctx, W, H, latMin, latMax, lonMin, lonMax);
+                eraseLandPixels(ctx, W, H, latLo, latHi, lonLo, lonHi);
             } else {
                 loadLandMask();  // first build renders unmasked; mask bakes in on arrival
             }
@@ -5007,11 +5012,15 @@
             var ny = lats.length, nx = lons.length;
             var step = opts.step || 2;
             var pxPerCell = opts.pxPerCell || 26;
-            var W = Math.min(1400, Math.max(200, (nx - 1) * pxPerCell));
+            var W = Math.min(1400, Math.max(200, nx * pxPerCell));
             var latMin = lats[0], latMax = lats[ny - 1];
             var lonMin = lons[0], lonMax = lons[nx - 1];
-            var yTop = mercY(latMax), yBot = mercY(latMin);
-            var lonSpanRad = (lonMax - lonMin) * Math.PI / 180;
+            var dLatA = ny > 1 ? (latMax - latMin) / (ny - 1) : 1;
+            var dLonA = nx > 1 ? (lonMax - lonMin) / (nx - 1) : 1;
+            var latLo = latMin - dLatA / 2, latHi = latMax + dLatA / 2;
+            var lonLo = lonMin - dLonA / 2, lonHi = lonMax + dLonA / 2;
+            var yTop = mercY(latHi), yBot = mercY(latLo);
+            var lonSpanRad = (lonHi - lonLo) * Math.PI / 180;
             var H = Math.min(1700, Math.max(120, Math.round(W * (yTop - yBot) / lonSpanRad)));
 
             var canvas = document.createElement('canvas');
@@ -5025,7 +5034,7 @@
                     var mag = magGrid ? magGrid[i][j] : 1;
                     if (dir == null || dir !== dir || mag == null || mag !== mag) continue;
                     if (opts.minMag != null && mag < opts.minMag) continue;
-                    var x = (lons[j] - lonMin) / (lonMax - lonMin) * W;
+                    var x = (lons[j] - lonLo) / (lonHi - lonLo) * W;
                     var y = (yTop - mercY(lats[i])) / (yTop - yBot) * H;
                     var len = opts.scaleLen
                         ? Math.max(7, Math.min(pxPerCell * step * 0.65, 6 + mag * opts.scaleLen))
