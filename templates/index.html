@@ -3219,6 +3219,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15" integrity="sha384-iZBI1/lW9u8FcBjxuQ8nPTsU7TXhZNtzkV8H3gQHSTgz+VYQoKWqGlBHqhO84alJ" crossorigin="anonymous"></script>
     <!-- GridStack JS -->
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js" integrity="sha384-nK6N0YlXqSXYT4GJKLD6y4mPJ9w1v9DtgfsQHqltu+OHCjpKMRZ2koek3LRIcbCK" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0" integrity="sha384-Ukv1p/xTma6P4/2bY5KzWBw+ydSpXmhCMtyciIQVDJ1RmOxtCYNMF1uXT9T63H67" crossorigin="anonymous"></script>
 
     <script>
         // === Theme Toggle ===
@@ -4962,6 +4963,11 @@
                 }
             }
             ctx.putImageData(imgData, 0, 0);
+            if (_landRings) {
+                eraseLandPixels(ctx, W, H, latMin, latMax, lonMin, lonMax);
+            } else {
+                loadLandMask();  // first build renders unmasked; mask bakes in on arrival
+            }
             return canvas.toDataURL('image/png');
         }
 
@@ -5018,6 +5024,65 @@
                 }
             }
             return canvas.toDataURL('image/png');
+        }
+
+        // Land polygons for shoreline masking, fetched lazily ONCE and only
+        // projected at raster build time (never per frame). Without this the
+        // NaN-feathered field bleeds up to half a grid cell inland — ~165 km
+        // at the basin's 3-degree resolution.
+        var _landRings = null;
+        var _landMaskPromise = null;
+        function loadLandMask() {
+            if (_landMaskPromise) return _landMaskPromise;
+            _landMaskPromise = fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-10m.json')
+                .then(function(r) { return r.json(); })
+                .then(function(topo) {
+                    var geo = topojson.feature(topo, topo.objects.land);
+                    var rings = [];
+                    geo.features.forEach(function(f) {
+                        var cs = f.geometry.coordinates;
+                        if (f.geometry.type === 'Polygon') rings.push(cs[0]);
+                        else cs.forEach(function(poly) { rings.push(poly[0]); });
+                    });
+                    _landRings = rings.map(function(ring) {
+                        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                        for (var k = 0; k < ring.length; k++) {
+                            var x = ring[k][0], y = ring[k][1];
+                            if (x < minX) minX = x; if (x > maxX) maxX = x;
+                            if (y < minY) minY = y; if (y > maxY) maxY = y;
+                        }
+                        return { ring: ring, bbox: [minX, minY, maxX, maxY] };
+                    });
+                    // Re-render current frames with the shoreline baked in
+                    clearRasterCache();
+                    var slider = document.getElementById('time-slider');
+                    updateAllMaps(parseInt(slider.value) || 0);
+                })
+                .catch(function(err) { console.warn('Land mask fetch failed:', err); });
+            return _landMaskPromise;
+        }
+
+        // Erase land pixels from a built raster (destination-out fill)
+        function eraseLandPixels(ctx, W, H, latMin, latMax, lonMin, lonMax) {
+            if (!_landRings) return;
+            var yTop = mercY(latMax), yBot = mercY(latMin);
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = '#000';
+            for (var r = 0; r < _landRings.length; r++) {
+                var bbox = _landRings[r].bbox;
+                if (bbox[2] < lonMin || bbox[0] > lonMax || bbox[3] < latMin || bbox[1] > latMax) continue;
+                var ring = _landRings[r].ring;
+                ctx.beginPath();
+                for (var k = 0; k < ring.length; k++) {
+                    var x = (ring[k][0] - lonMin) / (lonMax - lonMin) * W;
+                    var y = (yTop - mercY(ring[k][1])) / (yTop - yBot) * H;
+                    if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.restore();
         }
 
         // Memoized rasters keyed by map:layer:timestep — sliding the time
