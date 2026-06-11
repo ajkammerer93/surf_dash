@@ -6997,7 +6997,6 @@
         let basinFieldOverlay = null;     // global wave height/period raster
         let localFieldOverlay = null;     // high-res local patch
         let basinArrowOverlay = null;     // swell direction arrows raster
-        let localWindOverlay = null;      // local wind arrows raster
         let basinVelocityLayer = null;    // animated wind particles
         let basinDecorLayer = null;       // swell window cone + arrival rings + origin
         let localSpotLayer = null;
@@ -7072,11 +7071,11 @@
             }
         }
 
-        function buildVelocityData(timeIndex) {
-            if (!basinGridData || !basinGridData.wind_speed) return null;
-            const lats = basinGridData.lats;
-            const lons = basinGridData.lons;
-            const bTimeIndex = Math.min(timeIndex, basinGridData.times.length - 1);
+        function buildVelocityData(timeIndex, gridData) {
+            if (!gridData || !gridData.wind_speed) return null;
+            const lats = gridData.lats;
+            const lons = gridData.lons;
+            const bTimeIndex = Math.min(timeIndex, gridData.times.length - 1);
             const nx = lons.length;
             const ny = lats.length;
             const lo1 = lons[0];
@@ -7091,8 +7090,8 @@
             // leaflet-velocity expects north-to-south row order; our lats are south-to-north
             for (let i = lats.length - 1; i >= 0; i--) {
                 for (let j = 0; j < lons.length; j++) {
-                    const speedKmh = basinGridData.wind_speed[bTimeIndex][i][j];
-                    const dir = basinGridData.wind_direction[bTimeIndex][i][j];
+                    const speedKmh = gridData.wind_speed[bTimeIndex][i][j];
+                    const dir = gridData.wind_direction[bTimeIndex][i][j];
                     const speedMs = speedKmh / 3.6;
                     const dirRad = dir * Math.PI / 180;
                     uData.push(-speedMs * Math.sin(dirRad));
@@ -7122,8 +7121,17 @@
                 }
                 return;
             }
-            const velocityData = buildVelocityData(timeIndex);
+            // High-res local wind drives the particles at local zoom; the
+            // global grid takes over when zoomed out
+            const localMode = mapSwell.getZoom() >= SWELL_LOCAL_ZOOM;
+            const source = (localMode && localGridData) ? localGridData : basinGridData;
+            const sourceName = source === localGridData ? 'local' : 'basin';
+            const velocityData = buildVelocityData(timeIndex, source);
             if (!velocityData) return;
+            if (basinVelocityLayer && basinVelocityLayer._fsfSource !== sourceName) {
+                mapSwell.removeLayer(basinVelocityLayer);
+                basinVelocityLayer = null;
+            }
             if (basinVelocityLayer) {
                 basinVelocityLayer.setData(velocityData);
             } else {
@@ -7149,6 +7157,7 @@
                         'rgba(100,180,255,0.8)'
                     ]
                 });
+                basinVelocityLayer._fsfSource = sourceName;
                 basinVelocityLayer.addTo(mapSwell);
             }
         }
@@ -7277,16 +7286,6 @@
 
         function escDisplay(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        // Wind arrows colored by what surfers care about: offshore (clean),
-        // cross-shore, or onshore (choppy), relative to this beach's facing.
-        function windRelativeColor(dirFrom) {
-            const offshoreFrom = (BEACH_FACING_DIRECTION + 180) % 360;
-            const diff = Math.abs(((dirFrom - offshoreFrom) % 360 + 540) % 360 - 180);
-            if (diff <= 45) return 'rgba(68,255,136,0.95)';
-            if (diff >= 135) return 'rgba(255,107,107,0.95)';
-            return 'rgba(255,206,86,0.95)';
         }
 
         function updateLocalSpotMarkers(t, visible) {
@@ -7497,8 +7496,7 @@
                     basinDecorLayer.addTo(mapSwell);
                 }
 
-                // Wind particle animation: basin-scale only, pause off-screen
-                updateSwellVelocity(timeIndex, state.wind && !localMode && paneVisible);
+
             }
 
             // --- Local (high-res) layers ---
@@ -7531,29 +7529,11 @@
                     }
                 }
 
-                // Local wind arrows: local-scale only
-                if (!state.wind || !localMode) {
-                    if (localWindOverlay) { mapSwell.removeLayer(localWindOverlay); localWindOverlay = null; }
-                } else {
-                    const wkey = 'local:wind:' + t + ':' + Math.round(BEACH_FACING_DIRECTION);
-                    if (!_rasterCache[wkey]) {
-                        _rasterCache[wkey] = buildArrowRasterURL(lats, lons,
-                            localGridData.wind_direction[t], localGridData.wind_speed[t], {
-                                step: 2, pxPerCell: 30, scaleLen: 0.85, lineWidth: 2.2,
-                                colorFor: function(mag, dir) { return windRelativeColor(dir); }
-                            });
-                    }
-                    if (localWindOverlay) localWindOverlay.setUrl(_rasterCache[wkey]);
-                    else {
-                        localWindOverlay = L.imageOverlay(_rasterCache[wkey], bounds, { interactive: false, pane: 'fieldArrows' });
-                        localWindOverlay.addTo(mapSwell);
-                    }
-                }
-
                 updateLocalSpotMarkers(t, state.spots && localMode);
                 updateLocalCamMarkers(state.cams && localMode);
             }
             updateSwellBuoyMarkers(getSwellLayerState().buoys && localMode);
+            updateSwellVelocity(timeIndex, state.wind && paneVisible);
             updateSwellLegend();
         }
 
@@ -7688,7 +7668,6 @@
             basinFieldOverlay = null;
             localFieldOverlay = null;
             basinArrowOverlay = null;
-            localWindOverlay = null;
             basinVelocityLayer = null;
             basinDecorLayer = null;
             localSpotLayer = null;
