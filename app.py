@@ -2714,6 +2714,9 @@ def _compute_confidence(data, cache_key):
     elif source == "Open-Meteo":
         base = 0.65
         source_label = "Open-Meteo Marine"
+    elif source == "WW3-ERDDAP":
+        base = 0.6
+        source_label = "NOAA WaveWatch III"
     else:
         base = 0.55
         source_label = source
