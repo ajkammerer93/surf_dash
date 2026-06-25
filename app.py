@@ -511,7 +511,8 @@ def _fallback_timezone(latitude, longitude):
 def get_point_weather_data(latitude, longitude):
     """
     Fetches wave and wind forecast for a single point.
-    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to Open-Meteo Marine.
+    Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to
+    Open-Meteo Marine, then to WW3 waves + GFS wind via ERDDAP.
     Enriches result with air and water temperature from Open-Meteo.
     Returns dict with 'forecast', 'location_timezone', and 'source' keys.
     """
@@ -533,6 +534,26 @@ def get_point_weather_data(latitude, longitude):
         if location_tz == 'UTC':
             location_tz = _fallback_timezone(latitude, longitude)
         return {"forecast": result, "location_timezone": location_tz, "source": "Open-Meteo"}
+
+    # Open-Meteo Marine returned nothing — typically Render's shared egress IP
+    # is over Open-Meteo's per-IP rate limit (a fast 4xx, not a timeout). Fall
+    # back to WW3 waves + GFS wind via ERDDAP, an independent provider that
+    # keeps serving when Open-Meteo is throttling us. Without this the point
+    # forecast 500s and Current Conditions / charts / planner all go dark.
+    logger.warning("Open-Meteo Marine point forecast failed, falling back to ERDDAP WW3")
+    try:
+        result = _get_point_from_erddap(latitude, longitude)
+        if result:
+            # ERDDAP already supplies wind; enrichment adds temperatures and
+            # only backfills wind hours that are still missing (it won't
+            # clobber the values ERDDAP set).
+            location_tz = _enrich_in_parallel(result, latitude, longitude)
+            if location_tz == 'UTC':
+                location_tz = _fallback_timezone(latitude, longitude)
+            return {"forecast": result, "location_timezone": location_tz, "source": "WW3-ERDDAP"}
+    except Exception as e:
+        logger.warning(f"ERDDAP point forecast fallback failed: {e}")
+        traceback.print_exc()
     return None
 
 
@@ -819,9 +840,8 @@ def _get_point_from_erddap(latitude, longitude):
     Fetches wave and wind forecast for a single point using ERDDAP.
     WW3 for waves, GFS for wind, local computation for sunrise/sunset.
 
-    NOTE: No longer called from the main forecast path (replaced by
-    _get_point_from_open_meteo). Kept for potential future use as an
-    alternative data source.
+    Used as the fallback wave source when Open-Meteo Marine returns nothing
+    (e.g. Render's shared egress IP is rate-limited). See get_point_weather_data.
     """
     try:
         # Convert longitude to 0-360 for ERDDAP
