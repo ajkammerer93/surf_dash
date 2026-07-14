@@ -89,3 +89,22 @@ class TestServing:
             urls = (cam.get('url') or '') + (cam.get('page_url') or '')
             if 'surfchex' in urls.lower():
                 assert cam['type'] == 'link'
+
+    def test_playable_cams_outrank_closer_link_outs(self, monkeypatch):
+        """Cam panes prefer embeddable streams over nearer link-only cams."""
+        monkeypatch.setattr(app_module, 'SURFCHEX_CAMERAS', [
+            {'name': 'Close Link Cam', 'lat': 33.20, 'lon': -117.38,
+             'type': 'link', 'page_url': 'https://example.com/cam'},
+            {'name': 'Far Iframe Cam', 'lat': 33.90, 'lon': -117.38,
+             'type': 'iframe', 'stream_url': 'https://example.com/embed'},
+        ])
+        monkeypatch.setattr(app_module, 'YOUTUBE_CAMERAS', [
+            {'video_id': 'abcdefghijk', 'name': 'Mid YouTube Cam',
+             'lat': 33.60, 'lon': -117.38},
+        ])
+        cams = app_module.find_nearest_cameras(33.1959, -117.3795, count=10)
+        types = [c['type'] for c in cams]
+        # Playable first (nearest playable leading), link-outs last
+        assert types == ['youtube', 'iframe', 'link']
+        # Distance ordering preserved within the playable group
+        assert cams[0]['distance_km'] < cams[1]['distance_km']

@@ -2900,7 +2900,13 @@ def find_nearest_cameras(lat, lon, count=2):
                 'channel': cam.get('channel', '')
             })
 
-    nearby.sort(key=lambda c: c['distance_km'])
+    # Playable cams (embedded players) outrank link-outs, even when a
+    # link-out is closer — the cam panes should show live video whenever any
+    # embeddable stream is in range. Within each group, nearest first. The
+    # full ordered list still feeds the panel dropdowns and map markers, so
+    # closer link-outs remain one click away.
+    PLAYABLE_TYPES = ('hls', 'iframe', 'youtube')
+    nearby.sort(key=lambda c: (c['type'] not in PLAYABLE_TYPES, c['distance_km']))
     results = nearby[:count]
 
     # Windy Webcams API fallback if we don't have enough Surfchex cams
