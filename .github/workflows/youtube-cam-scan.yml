@@ -5,15 +5,11 @@ name: YouTube surf cam scan
 # commits — approve/reject candidates locally with scripts/youtube_cam_scan.py).
 # Requires one repository secret (Settings -> Secrets and variables -> Actions):
 #   YOUTUBE_API_KEY   YouTube Data API v3 key (free tier is plenty)
-#
-# The schedule is commented out until the secret is configured — uncomment it
-# to enable the weekly scan. Until then the workflow can be run manually from
-# the Actions tab.
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '0 14 * * 1'  # Mondays 14:00 UTC
+  schedule:
+    - cron: '0 14 * * 1'  # Mondays 14:00 UTC
 
 permissions:
   issues: write
