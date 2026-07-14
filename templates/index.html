@@ -2017,9 +2017,14 @@
             border-radius: 2px;
         }
 
-        .cond-swatch.clean { background: var(--status-live); }
-        .cond-swatch.fair { background: var(--status-warning); }
-        .cond-swatch.choppy { background: var(--status-error); }
+        /* Surf-condition scale — one set of hexes validated for colorblind
+           separation and contrast on both light and dark surfaces.
+           Keep in sync with CONDITION_COLORS in the JS. */
+        .cond-swatch.clean { background: #16a34a; }
+        .cond-swatch.cross-light { background: #0284c7; }
+        .cond-swatch.cross-shore { background: #d97706; }
+        .cond-swatch.fair { background: #dc2626; }
+        .cond-swatch.choppy { background: #c9245e; }
 
         @media (max-width: 600px) {
             .conditions-legend .cond-label { display: none; }
@@ -2910,7 +2915,7 @@
         </div>
 
         <!-- Wave & Wind Chart -->
-        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="4" gs-w="12" gs-h="5">
+        <div class="grid-stack-item" data-panel-id="wave-wind-chart" gs-x="0" gs-y="4" gs-w="12" gs-h="6">
             <div class="grid-stack-item-content">
                 <div class="panel">
                     <div class="panel-header">
@@ -2919,7 +2924,9 @@
                         <span class="panel-location"></span>
                         <div class="conditions-legend">
                             <span class="cond-key" id="legend-clean" title="Offshore wind or calm. Glassy or lightly textured surface."><span class="cond-swatch clean"></span><span class="cond-label">Clean</span></span>
-                            <span class="cond-key" id="legend-fair" title="Cross-shore wind or light onshore. Moderate texture, still surfable."><span class="cond-swatch fair"></span><span class="cond-label">Fair</span></span>
+                            <span class="cond-key" id="legend-cross-light" title="Light cross-shore wind. Minor texture, very surfable."><span class="cond-swatch cross-light"></span><span class="cond-label">Light cross</span></span>
+                            <span class="cond-key" id="legend-cross-shore" title="Strong cross-shore wind. Moderate texture, still surfable."><span class="cond-swatch cross-shore"></span><span class="cond-label">Cross</span></span>
+                            <span class="cond-key" id="legend-fair" title="Light onshore wind. Some bump, workable."><span class="cond-swatch fair"></span><span class="cond-label">Lt onshore</span></span>
                             <span class="cond-key" id="legend-choppy" title="Onshore wind. Bumpy, disorganized surface conditions."><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
                         </div>
                     </div>
@@ -2932,7 +2939,10 @@
             </div>
         </div>
 
-        <!-- Tidal Predictions -->
+        <!-- Tidal Predictions — panel retired in v0.11.9: tide now renders as a
+             lane inside the Wave & Wind Forecast chart. To restore, uncomment
+             this block, re-enable the 'tides' entry in PANEL_NAMES, and set
+             TIDE_PANEL_ENABLED = true in loadTideData.
         <div class="grid-stack-item" data-panel-id="tides" gs-x="0" gs-y="9" gs-w="12" gs-h="5">
             <div class="grid-stack-item-content">
                 <div class="panel">
@@ -2948,6 +2958,8 @@
                 </div>
             </div>
         </div>
+        -->
+
 
         <!-- Buoy Observations -->
         <div class="grid-stack-item" data-panel-id="buoys" gs-x="0" gs-y="14" gs-w="12" gs-h="5">
@@ -3485,8 +3497,8 @@
             var windSpd = fc && fc.wind_speed != null ? (fc.wind_speed * D_SPEED).toFixed(0) : '--';
             var windDir = fc && fc.wind_direction != null ? fc.wind_direction.toFixed(0) : '--';
             var cond = fc ? classifySurfConditionGlobal(fc.wind_direction, fc.wind_speed) : 'unknown';
-            var condLabel = {clean: 'Clean', fair: 'Fair', choppy: 'Choppy', unknown: 'N/A'}[cond];
-            var condColor = {clean: _tc.statusLive, fair: _tc.statusWarning, choppy: _tc.statusError, unknown: _tc.textMuted}[cond];
+            var condLabel = {clean: 'Clean', 'cross-light': 'Light Cross', 'cross-shore': 'Cross-shore', fair: 'Fair', choppy: 'Choppy', unknown: 'N/A'}[cond] || 'N/A';
+            var condColor = CONDITION_COLORS[cond] || _tc.textMuted;
 
             var dirs16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
             var waveDirLabel = fc && fc.wave_direction != null ? dirs16[Math.round(fc.wave_direction / 22.5) % 16] : '';
@@ -3956,7 +3968,9 @@
             'swell-map': 'Swell Map',
             'buoys': 'Buoy Observations',
             'wave-wind-chart': 'Wave & Wind Forecast',
-            'tides': 'Tidal Predictions',
+            // 'tides' panel retired in v0.11.9 — tide renders as a lane on the
+            // wave chart. Restore this entry along with the panel HTML.
+            // 'tides': 'Tidal Predictions',
             'daylight': 'Daylight Forecast',
             'session-planner': 'Session Planner',
             'compare': 'Compare Breaks'
@@ -4465,6 +4479,27 @@
             choppy: 'Onshore / Choppy',
             unknown: 'Unknown'
         };
+
+        // Surf-condition color scale. Single set of hexes that passes
+        // colorblind-separation and contrast checks on both light and dark
+        // surfaces (green = go, blue = fine, warm = degrading). Keep in sync
+        // with the .cond-swatch CSS classes.
+        const CONDITION_COLORS = {
+            clean: '#16a34a',
+            'cross-light': '#0284c7',
+            'cross-shore': '#d97706',
+            fair: '#dc2626',
+            choppy: '#c9245e',
+            unknown: '#9ca3af'
+        };
+
+        function conditionColorAlpha(cond, alpha) {
+            var hex = CONDITION_COLORS[cond] || CONDITION_COLORS.unknown;
+            var r = parseInt(hex.slice(1, 3), 16);
+            var g = parseInt(hex.slice(3, 5), 16);
+            var b = parseInt(hex.slice(5, 7), 16);
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        }
 
         // Global classifier — delegates to the inner one after first load, or runs standalone
         function classifySurfConditionGlobal(windDirection, windSpeed) {
@@ -5214,6 +5249,7 @@
 
         function showChartUnavailable(canvasId, message, retryFn) {
             const canvas = document.getElementById(canvasId);
+            if (!canvas) return;  // panel not present (e.g. retired tides panel)
             const wrap = canvas.parentElement;
             canvas.style.display = 'none';
             let overlay = wrap.querySelector('.chart-unavailable');
@@ -5240,6 +5276,7 @@
 
         function clearChartUnavailable(canvasId) {
             const canvas = document.getElementById(canvasId);
+            if (!canvas) return;  // panel not present (e.g. retired tides panel)
             const wrap = canvas.parentElement;
             canvas.style.display = '';
             const overlay = wrap.querySelector('.chart-unavailable');
@@ -5502,10 +5539,14 @@
             var offshoreLabel = dirs16[Math.round(offshore / 22.5) % 16];
             var onshoreLabel = dirs16[Math.round(onshore / 22.5) % 16];
             var cleanEl = document.getElementById('legend-clean');
+            var crossLightEl = document.getElementById('legend-cross-light');
+            var crossShoreEl = document.getElementById('legend-cross-shore');
             var fairEl = document.getElementById('legend-fair');
             var choppyEl = document.getElementById('legend-choppy');
             if (cleanEl) cleanEl.title = 'Offshore wind (' + offshoreLabel + ' \u00B145\u00B0) or calm (<3 mph). Glassy or lightly textured surface.';
-            if (fairEl) fairEl.title = 'Cross-shore wind or light onshore (<6 mph). Moderate texture, still surfable.';
+            if (crossLightEl) crossLightEl.title = 'Light cross-shore wind (<6 mph). Minor texture, very surfable.';
+            if (crossShoreEl) crossShoreEl.title = 'Cross-shore wind \u22656 mph. Moderate texture, still surfable.';
+            if (fairEl) fairEl.title = 'Light onshore wind (' + onshoreLabel + ' \u00B145\u00B0, <6 mph). Some bump, workable.';
             if (choppyEl) choppyEl.title = 'Onshore wind (' + onshoreLabel + ' \u00B145\u00B0) \u22656 mph. Bumpy, disorganized surface conditions.';
         }
 
@@ -5543,13 +5584,7 @@
                 return;
             }
             container.textContent = '';
-            var condColors = {
-                clean: '#44ff88',
-                'cross-light': '#b4e650',
-                'cross-shore': '#ffce56',
-                fair: '#ffa550',
-                choppy: '#ff4444'
-            };
+            var condColors = CONDITION_COLORS;
             future.forEach(function(item, idx) {
                 var row = document.createElement('div');
                 row.className = 'forecast-hero-row';
@@ -6099,6 +6134,7 @@
             window._forecastData = null;
             window._tideData = null;
             window._tideHighLow = null;
+            window._tideNonTidal = false;
             // Reset compare panel for new location
             resetCompareForLocationChange();
             // Show loading state on maps (skip buoy map — managed separately)
@@ -6160,7 +6196,7 @@
         }
 
         // Day/night shading plugin — draws alternating bands behind chart data.
-        // Skips the top 10px so the surf condition color strip stays unobscured.
+        // On the wave chart the bands extend through the tide lane below the plot.
         const dayNightPlugin = {
             id: 'dayNight',
             beforeDraw(chart) {
@@ -6168,11 +6204,9 @@
                 const { ctx, chartArea, scales: { x } } = chart;
                 if (!chartArea) return;
                 const { left, right, top, bottom } = chartArea;
-                // Only the wave chart has the surf condition strip; leave room for it there.
-                const hasSurfStrip = chart.canvas && chart.canvas.id === 'waveChart';
-                const SURF_STRIP_HEIGHT = hasSurfStrip ? 10 : 0;
-                const bandTop = top + SURF_STRIP_HEIGHT;
-                const bandHeight = bottom - bandTop;
+                const isWaveChart = chart.canvas && chart.canvas.id === 'waveChart';
+                const bandTop = top;
+                const bandHeight = (bottom + (isWaveChart ? TIDE_LANE_H : 0)) - bandTop;
                 if (bandHeight <= 0) return;
 
                 ctx.save();
@@ -6217,52 +6251,233 @@
             }
         };
 
-        // Surf condition strip plugin — thin colored bar at chart top
-        const surfConditionPlugin = {
-            id: 'surfConditions',
-            beforeDraw(chart) {
-                if (!window._surfConditions || !window._surfConditions.length) return;
+        // === Wave-chart lanes (v0.11.9 chart redesign) ===
+        // The wave chart reserves bands around the plot area, each drawn by a
+        // plugin: wind arrows above the bars, tide curve below them, swell
+        // period along the canvas bottom. Bar color carries the surf condition
+        // (the old 10px condition strip and second y-axis are gone).
+        const WIND_LANE_H = 44;
+        const TIDE_LANE_H = 48;
+        const PERIOD_ROW_H = 20;
+
+        // Arrow pointing where the flow is going (dir is meteorological "from")
+        function drawMetArrow(ctx, x, y, dirFrom, len, lw, color) {
+            var rad = ((dirFrom + 180) % 360) * Math.PI / 180;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rad);
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = lw;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, len / 2);
+            ctx.lineTo(0, -len / 2 + 4);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, -len / 2);
+            ctx.lineTo(-3.5, -len / 2 + 6.5);
+            ctx.lineTo(3.5, -len / 2 + 6.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Wind lane — aligned direction arrows + speed numbers above the plot
+        const windLanePlugin = {
+            id: 'windLane',
+            afterDraw(chart) {
+                const data = window._forecastData;
                 const { ctx, chartArea, scales: { x } } = chart;
-                if (!chartArea) return;
+                if (!chartArea || !data || !data.length) return;
+                const tc = themeColors();
                 const { left, right, top } = chartArea;
-                const stripHeight = 10;
-                const conditions = window._surfConditions;
-                const dataset = chart.data.datasets[0];
-                if (!dataset || !dataset.data || !dataset.data.length) return;
+                const laneTop = top - WIND_LANE_H;
+                const arrowY = laneTop + 15;
+                const speedY = laneTop + 31;
 
                 ctx.save();
+                ctx.font = '10px sans-serif';
+                ctx.fillStyle = tc.chartTextDim;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Wind', 4, arrowY - 4);
+                ctx.font = '9px sans-serif';
+                ctx.fillText(U_SPEED, 4, arrowY + 9);
+
                 ctx.beginPath();
-                ctx.rect(left, top, right - left, stripHeight);
+                ctx.rect(left, laneTop, right - left, WIND_LANE_H);
                 ctx.clip();
 
-                var _dk2 = isDarkTheme();
-                const colors = {
-                    clean:         _dk2 ? 'rgba(68, 255, 136, 0.7)'  : 'rgba(22, 163, 74, 0.6)',
-                    'cross-light': _dk2 ? 'rgba(180, 230, 80, 0.7)'  : 'rgba(132, 163, 32, 0.6)',
-                    'cross-shore': _dk2 ? 'rgba(255, 206, 86, 0.7)'  : 'rgba(217, 119, 6, 0.6)',
-                    fair:          _dk2 ? 'rgba(255, 165, 80, 0.7)'  : 'rgba(217, 100, 6, 0.6)',
-                    choppy:        _dk2 ? 'rgba(255, 68, 68, 0.7)'   : 'rgba(220, 38, 38, 0.6)'
-                };
+                // Hairline separating the lane from the plot
+                ctx.strokeStyle = tc.chartGrid;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(left, top - 3);
+                ctx.lineTo(right, top - 3);
+                ctx.stroke();
 
-                // Group consecutive same-condition hours into bands
-                let bandStart = 0;
-                for (let i = 0; i <= conditions.length; i++) {
-                    if (i < conditions.length && conditions[i] === conditions[bandStart]) continue;
-                    const cond = conditions[bandStart];
-                    const color = colors[cond];
-                    if (color) {
-                        const startTime = dataset.data[bandStart].x;
-                        const endTime = dataset.data[Math.min(i, conditions.length - 1)].x;
-                        const x1 = Math.max(x.getPixelForValue(startTime), left);
-                        const x2 = Math.min(x.getPixelForValue(endTime), right);
-                        if (x2 > x1) {
-                            ctx.fillStyle = color;
-                            ctx.fillRect(x1, top, x2 - x1, stripHeight);
-                        }
+                // Pixel-gated spacing: arrows thin out automatically on narrow screens
+                const t0 = new Date(data[0].time).getTime();
+                const stepPx = x.getPixelForValue(t0 + 3600000) - x.getPixelForValue(t0);
+                if (!(stepPx > 0)) { ctx.restore(); return; }
+                const every = Math.max(3, Math.ceil(24 / stepPx));
+                const showSpeed = stepPx * every >= 24;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let i = 1; i < data.length; i += every) {
+                    const item = data[i];
+                    if (item.wind_direction == null) continue;
+                    const px = x.getPixelForValue(new Date(item.time));
+                    if (px < left - 10 || px > right + 10) continue;
+                    const spd = item.wind_speed != null ? item.wind_speed * D_SPEED : null;
+                    const strong = spd != null && spd >= 12;
+                    const len = spd != null ? Math.min(20, 10 + spd * 0.45) : 12;
+                    drawMetArrow(ctx, px, arrowY, item.wind_direction, len,
+                                 strong ? 2.2 : 1.6,
+                                 strong ? tc.chartText : tc.chartTextDim);
+                    if (showSpeed && spd != null) {
+                        ctx.font = (strong ? '600 ' : '') + '10px sans-serif';
+                        ctx.fillStyle = strong ? tc.chartText : tc.chartTextDim;
+                        ctx.fillText(String(Math.round(spd)), px, speedY);
                     }
-                    bandStart = i;
+                }
+                ctx.restore();
+            }
+        };
+
+        // Tide lane — the tide curve in its own band below the bars, with
+        // high/low markers and their local times. Replaces both the old y2
+        // overlay on this chart and the standalone Tidal Predictions panel.
+        const tideLanePlugin = {
+            id: 'tideLane',
+            afterDraw(chart) {
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!chartArea) return;
+                const tc = themeColors();
+                const { left, right, bottom } = chartArea;
+                const laneTop = bottom + 4;
+                const laneBot = bottom + TIDE_LANE_H - 2;
+
+                ctx.save();
+                ctx.font = '10px sans-serif';
+                ctx.fillStyle = tc.chartTextDim;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Tide', 4, (laneTop + laneBot) / 2);
+
+                const tideData = window._tideData;
+                if (!tideData || !tideData.length) {
+                    if (window._tideNonTidal) {
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Non-tidal waters', (left + right) / 2, (laneTop + laneBot) / 2);
+                    }
+                    ctx.restore();
+                    return;
                 }
 
+                let minH = Infinity, maxH = -Infinity;
+                tideData.forEach(function(p) {
+                    if (p.height < minH) minH = p.height;
+                    if (p.height > maxH) maxH = p.height;
+                });
+                if (!(maxH > minH)) { ctx.restore(); return; }
+                // Curve band leaves headroom for the high/low time labels
+                const yTop = laneTop + 10, yBot = laneBot - 11;
+                function tideY(h) { return yBot - (h - minH) / (maxH - minH) * (yBot - yTop); }
+
+                ctx.beginPath();
+                ctx.rect(left, laneTop, right - left, laneBot - laneTop);
+                ctx.clip();
+
+                const lineColor = isDarkTheme() ? 'rgba(100, 149, 237, 0.75)' : 'rgba(37, 99, 235, 0.75)';
+                const fillColor = isDarkTheme() ? 'rgba(100, 149, 237, 0.14)' : 'rgba(37, 99, 235, 0.10)';
+
+                ctx.beginPath();
+                tideData.forEach(function(p, i) {
+                    const px = x.getPixelForValue(new Date(p.time));
+                    if (i === 0) ctx.moveTo(px, tideY(p.height));
+                    else ctx.lineTo(px, tideY(p.height));
+                });
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.lineTo(x.getPixelForValue(new Date(tideData[tideData.length - 1].time)), laneBot);
+                ctx.lineTo(x.getPixelForValue(new Date(tideData[0].time)), laneBot);
+                ctx.closePath();
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+
+                // High/low markers with local times, pixel-gated so labels
+                // don't collide at narrow widths (highs and lows gate
+                // independently since they sit on different rows)
+                const hl = window._tideHighLow || [];
+                ctx.textAlign = 'center';
+                ctx.font = '9px sans-serif';
+                let lastHighX = -Infinity, lastLowX = -Infinity;
+                hl.forEach(function(ev) {
+                    const d = new Date(ev.time);
+                    const px = x.getPixelForValue(d);
+                    if (px < left || px > right) return;
+                    const py = tideY(ev.height);
+                    const label = formatLocationTime(d, { hour: 'numeric' })
+                        .replace(/\s?([AP])M/i, function(m, p1) { return p1.toLowerCase(); });
+                    ctx.fillStyle = tc.chartText;
+                    if (ev.type === 'H') {
+                        if (px - lastHighX < 32) return;
+                        lastHighX = px;
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText('▲ ' + label, px, py - 2);
+                    } else {
+                        if (px - lastLowX < 32) return;
+                        lastLowX = px;
+                        ctx.textBaseline = 'top';
+                        ctx.fillText('▼ ' + label, px, py + 3);
+                    }
+                });
+                ctx.restore();
+            }
+        };
+
+        // Period row — swell period + direction arrow along the canvas bottom,
+        // bold when it reaches groundswell (>= 11 s)
+        const periodRowPlugin = {
+            id: 'periodRow',
+            afterDraw(chart) {
+                const data = window._forecastData;
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!chartArea || !data || !data.length) return;
+                const tc = themeColors();
+                const { left, right } = chartArea;
+                const rowY = chart.height - 9;
+
+                ctx.save();
+                ctx.font = '10px sans-serif';
+                ctx.fillStyle = tc.chartTextDim;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Swell', 4, rowY);
+
+                const t0 = new Date(data[0].time).getTime();
+                const stepPx = x.getPixelForValue(t0 + 3600000) - x.getPixelForValue(t0);
+                if (!(stepPx > 0)) { ctx.restore(); return; }
+                let every = 6;
+                while (stepPx * every < 40 && every < data.length) every += 6;
+
+                ctx.textAlign = 'center';
+                for (let i = 3; i < data.length; i += every) {
+                    const item = data[i];
+                    if (item.wave_period == null) continue;
+                    const px = x.getPixelForValue(new Date(item.time));
+                    if (px < left + 12 || px > right - 6) continue;
+                    const ground = item.wave_period >= 11;
+                    ctx.font = (ground ? '600 ' : '') + '10px sans-serif';
+                    ctx.fillStyle = ground ? tc.chartText : tc.chartTextDim;
+                    ctx.fillText(Math.round(item.wave_period) + 's', px - 5, rowY);
+                    if (item.wave_direction != null) {
+                        drawMetArrow(ctx, px + 10, rowY, item.wave_direction, 10, 1.3, tc.chartTextDim);
+                    }
+                }
                 ctx.restore();
             }
         };
@@ -6475,52 +6690,31 @@
                     renderForecastHero(data);
                     const ctx = document.getElementById('waveChart').getContext('2d');
 
-                    // Store wind/wave directions and surf conditions for custom plugins
+                    // Store wind/wave directions and surf conditions for the
+                    // lane plugins and tooltip
                     const windDirections = data.map(item => item.wind_direction);
                     const waveDirections = data.map(item => item.wave_direction);
                     window._surfConditions = data.map(item =>
                         classifySurfConditionGlobal(item.wind_direction, item.wind_speed)
                     );
 
-                    // Custom plugin to draw wind direction arrows
-                    const windArrowPlugin = {
-                        id: 'windArrows',
-                        afterDatasetsDraw(chart) {
-                            const meta = chart.getDatasetMeta(2);
-                            if (!meta.visible) return;
+                    // Bar color = surf condition; the chop cap is the same hue faded
+                    const barColors = window._surfConditions.map(c => CONDITION_COLORS[c] || CONDITION_COLORS.unknown);
+                    const capColors = window._surfConditions.map(c => conditionColorAlpha(c, 0.35));
 
-                            const ctx = chart.ctx;
-                            meta.data.forEach((point, index) => {
-                                const direction = windDirections[index];
-                                if (direction === null || direction === undefined) return;
-
-                                const x = point.x;
-                                const y = point.y;
-                                const size = 8;
-
-                                const radians = ((direction + 180) % 360) * Math.PI / 180;
-
-                                ctx.save();
-                                ctx.translate(x, y);
-                                ctx.rotate(radians);
-
-                                ctx.beginPath();
-                                ctx.moveTo(0, -size);
-                                ctx.lineTo(-size * 0.5, size * 0.5);
-                                ctx.lineTo(0, size * 0.2);
-                                ctx.lineTo(size * 0.5, size * 0.5);
-                                ctx.closePath();
-
-                                ctx.fillStyle = 'rgba(255, 206, 86, 0.9)';
-                                ctx.fill();
-                                ctx.strokeStyle = 'rgba(200, 160, 60, 1)';
-                                ctx.lineWidth = 1;
-                                ctx.stroke();
-
-                                ctx.restore();
-                            });
-                        }
-                    };
+                    // Split each hour into swell + wind-chop segments so the
+                    // stacked bar totals the combined wave height
+                    const swellData = data.map(item => {
+                        const t = new Date(item.time);
+                        if (item.wave_height == null) return { x: t, y: null };
+                        const chop = item.wind_wave_height != null ? Math.min(item.wind_wave_height, item.wave_height) : 0;
+                        return { x: t, y: (item.wave_height - chop) * D_HEIGHT };
+                    });
+                    const chopData = data.map(item => {
+                        const t = new Date(item.time);
+                        if (item.wave_height == null || item.wind_wave_height == null) return { x: t, y: null };
+                        return { x: t, y: Math.min(item.wind_wave_height, item.wave_height) * D_HEIGHT };
+                    });
 
                     // --- Tooltip direction diagram ---
                     function drawTooltipDiagram(canvas, windDir, waveDir) {
@@ -6680,10 +6874,20 @@
                             textDiv.appendChild(titleEl);
                         }
 
+                        // Lead with the combined surf height (bars are split
+                        // into swell + chop segments below)
+                        if (window._forecastData && window._forecastData[index] && window._forecastData[index].wave_height != null) {
+                            const totalEl = document.createElement('div');
+                            totalEl.className = 'tt-line';
+                            totalEl.style.fontWeight = '600';
+                            totalEl.textContent = 'Surf: ' + (window._forecastData[index].wave_height * D_HEIGHT).toFixed(1) + ' ' + U_HEIGHT;
+                            textDiv.appendChild(totalEl);
+                        }
+
                         // Body lines (dataset values)
                         (tooltip.body || []).forEach((bodyItem, i) => {
                             const colors = tooltip.labelColors[i];
-                            const bg = colors ? colors.borderColor : '#888';
+                            const bg = colors ? (colors.backgroundColor || colors.borderColor) : '#888';
                             const lineEl = document.createElement('div');
                             lineEl.className = 'tt-line';
                             const swatch = document.createElement('span');
@@ -6701,7 +6905,10 @@
                         const waveD = waveDirections[index];
                         const extraLines = [];
                         if (windD !== null && windD !== undefined) {
-                            extraLines.push('Wind Dir: ' + windD.toFixed(0) + '\u00B0 (' + degToCompass(windD) + ')');
+                            var _wspd = (window._forecastData && window._forecastData[index] && window._forecastData[index].wind_speed != null)
+                                ? Math.round(window._forecastData[index].wind_speed * D_SPEED) + ' ' + U_SPEED + ' '
+                                : '';
+                            extraLines.push('Wind: ' + _wspd + degToCompass(windD) + ' (' + windD.toFixed(0) + '\u00B0)');
                         }
                         if (waveD !== null && waveD !== undefined) {
                             extraLines.push('Swell Dir: ' + waveD.toFixed(0) + '\u00B0 (' + degToCompass(waveD) + ')');
@@ -6715,7 +6922,7 @@
                             const fi = window._forecastData[index];
                             const skillTag = currentSkillLevel !== 'all' ? ' (' + SKILL_LABELS[currentSkillLevel] + ')' : '';
                             if (fi.wave_height != null) extraLines.push(describeWaveHeight(fi.wave_height) + skillTag);
-                            if (fi.wave_period != null) extraLines.push(describeWavePeriod(fi.wave_period));
+                            if (fi.wave_period != null) extraLines.push('Period: ' + fi.wave_period.toFixed(0) + ' s — ' + describeWavePeriod(fi.wave_period));
                             if (fi.wind_speed != null) extraLines.push(describeWindCondition(fi.wind_speed, fi.wind_direction));
                         }
                         extraLines.forEach((line, i) => {
@@ -6809,43 +7016,41 @@
                     }
 
                     waveChart = new Chart(ctx, {
-                        type: 'line',
-                        plugins: [surfConditionPlugin, dayNightPlugin, windArrowPlugin],
+                        type: 'bar',
+                        plugins: [dayNightPlugin, windLanePlugin, tideLanePlugin, periodRowPlugin],
                         data: {
                             datasets: [
                                 {
-                                    label: 'Total Wave Height (' + U_HEIGHT + ')',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wave_height * D_HEIGHT })),
-                                    borderColor: 'rgb(75, 192, 192)',
-                                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                                    tension: 0.1,
+                                    label: 'Swell (' + U_HEIGHT + ')',
+                                    data: swellData,
+                                    backgroundColor: barColors,
+                                    hoverBackgroundColor: barColors,
+                                    stack: 'surf',
                                     yAxisID: 'y',
-                                    pointRadius: 2
+                                    barPercentage: 0.8,
+                                    categoryPercentage: 1.0
                                 },
                                 {
-                                    label: 'Wind Wave Height (' + U_HEIGHT + ')',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_wave_height * D_HEIGHT })),
-                                    borderColor: 'rgb(255, 99, 132)',
-                                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                                    tension: 0.1,
+                                    label: 'Wind chop (' + U_HEIGHT + ')',
+                                    data: chopData,
+                                    backgroundColor: capColors,
+                                    hoverBackgroundColor: capColors,
+                                    stack: 'surf',
                                     yAxisID: 'y',
-                                    pointRadius: 2
-                                },
-                                {
-                                    label: 'Wind Speed (' + U_SPEED + ')',
-                                    data: data.map(item => ({ x: new Date(item.time), y: item.wind_speed * D_SPEED })),
-                                    borderColor: 'rgb(255, 206, 86)',
-                                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                                    tension: 0.1,
-                                    yAxisID: 'y1',
-                                    pointRadius: 0,
-                                    borderWidth: 2
+                                    barPercentage: 0.8,
+                                    categoryPercentage: 1.0
                                 }
                             ]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            // Reserved bands for the wind lane (top) and period
+                            // row (bottom); the tide lane lives in the x-tick
+                            // padding between the plot and its labels.
+                            layout: {
+                                padding: { top: WIND_LANE_H, bottom: PERIOD_ROW_H }
+                            },
                             interaction: {
                                 mode: 'index',
                                 intersect: false
@@ -6857,11 +7062,13 @@
                             scales: {
                                 x: {
                                     type: 'time',
+                                    stacked: true,
                                     afterBuildTicks: buildLocalTimeTicks,
                                     ticks: {
                                         maxRotation: 45,
                                         minRotation: 45,
                                         autoSkip: false,
+                                        padding: TIDE_LANE_H,
                                         callback: formatLocalTimeTick,
                                         color: function(context) {
                                             var tc = themeColors();
@@ -6884,46 +7091,25 @@
                                 y: {
                                     type: 'linear',
                                     position: 'left',
+                                    stacked: true,
                                     beginAtZero: true,
                                     title: {
                                         display: true,
-                                        text: 'Wave Height (' + U_HEIGHT + ')',
-                                        color: 'rgb(75, 192, 192)'
+                                        text: 'Surf Height (' + U_HEIGHT + ')',
+                                        color: function() { return themeColors().chartText; }
                                     },
                                     ticks: {
-                                        color: 'rgb(75, 192, 192)'
+                                        color: function() { return themeColors().chartTextDim; }
                                     },
                                     grid: {
-                                        color: 'rgba(75, 192, 192, 0.15)'
-                                    }
-                                },
-                                y1: {
-                                    type: 'linear',
-                                    position: 'right',
-                                    beginAtZero: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Wind Speed (' + U_SPEED + ')',
-                                        color: 'rgb(255, 206, 86)'
-                                    },
-                                    ticks: {
-                                        color: 'rgb(255, 206, 86)'
-                                    },
-                                    grid: {
-                                        drawOnChartArea: false
+                                        color: function() { return themeColors().chartGrid; }
                                     }
                                 }
                             },
                             plugins: {
-                                legend: {
-                                    labels: {
-                                        color: function() { return themeColors().chartText; },
-                                        filter: function(item, chartData) {
-                                            var lbl = item.text || '';
-                                            return lbl !== 'High Tide' && lbl !== 'Low Tide';
-                                        }
-                                    }
-                                },
+                                // Condition colors are keyed in the panel-header
+                                // legend; the dataset legend adds nothing here.
+                                legend: { display: false },
                                 tooltip: {
                                     enabled: false,
                                     external: waveChartExternalTooltip,
@@ -6931,7 +7117,11 @@
                                         return tooltipItem.dataset.yAxisID !== 'y2';
                                     },
                                     callbacks: {
-                                        title: formatLocalTooltipTitle
+                                        title: formatLocalTooltipTitle,
+                                        label: function(item) {
+                                            var v = item.parsed && item.parsed.y != null ? item.parsed.y.toFixed(1) : '-';
+                                            return item.dataset.label + ': ' + v;
+                                        }
                                     }
                                 },
                             }
@@ -6947,8 +7137,9 @@
 
                     syncChartTimeAxes();
 
-                    // Overlay tide data on wave chart if already loaded
-                    addTideToWaveChart();
+                    // Tide now renders via tideLanePlugin (reads window._tideData
+                    // directly on every draw). The old y2 overlay stays available
+                    // for the retired tide panel: addTideToWaveChart();
 
                     // Remove SSR summary now that real data is displayed
                     const ssrEl = document.getElementById('ssr-summary');
@@ -8370,6 +8561,16 @@
             waveChart.update('none');
         }
 
+        // Tidal Predictions panel retired in v0.11.9 — tide renders as a lane
+        // on the wave chart instead. Flip to true (and restore the panel HTML
+        // plus its PANEL_NAMES entry) to bring the standalone chart back.
+        const TIDE_PANEL_ENABLED = false;
+
+        function setTideStationInfo(text) {
+            var el = document.getElementById('tide-station-info');
+            if (el) el.textContent = text;
+        }
+
         function loadTideData() {
             const params = new URLSearchParams({
                 lat: currentLocation.lat,
@@ -8383,10 +8584,12 @@
                         // Great Lakes and other non-tidal waters: no tide data
                         // exists, but the session planner should still run
                         showChartUnavailable('tideChart', 'Non-tidal waters — no tide forecast here');
-                        document.getElementById('tide-station-info').textContent = 'Non-tidal';
+                        setTideStationInfo('Non-tidal');
                         window._tideData = [];
                         window._tideHighLow = [];
+                        window._tideNonTidal = true;
                         updateConditionsTide();
+                        if (waveChart) waveChart.update('none');
                         _tidesLoaded = true;
                         checkSessionPlannerReady();
                         return;
@@ -8394,7 +8597,7 @@
                     if (tideData.error) {
                         console.error('API Error (Tide Data):', tideData.error);
                         showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
-                        document.getElementById('tide-station-info').textContent = 'Unavailable';
+                        setTideStationInfo('Unavailable');
                         // Let the session planner score tideless rather than
                         // never rendering at all
                         window._tideData = [];
@@ -8403,14 +8606,31 @@
                         checkSessionPlannerReady();
                         return;
                     }
+
+                    if (!TIDE_PANEL_ENABLED) {
+                        // Store data for the wave chart's tide lane, tooltip,
+                        // Current Conditions, and planner, then skip the
+                        // standalone chart below.
+                        const laneTimes = tideData.hourly.map(item => new Date(item.time));
+                        tideTimeRange = { min: laneTimes[0], max: laneTimes[laneTimes.length - 1] };
+                        window._tideData = tideData.hourly;
+                        window._tideHighLow = tideData.high_low;
+                        window._tideNonTidal = false;
+                        syncChartTimeAxes();
+                        updateConditionsTide();
+                        if (waveChart) waveChart.update('none');
+                        _tidesLoaded = true;
+                        checkSessionPlannerReady();
+                        return;
+                    }
+
                     clearChartUnavailable('tideChart');
 
                     const ctx = document.getElementById('tideChart').getContext('2d');
 
                     // Update station info display
                     if (tideData.station) {
-                        const stationInfo = document.getElementById('tide-station-info');
-                        stationInfo.textContent = `${tideData.station.name} — ${(tideData.station.distance_km * D_DIST).toFixed(1)} ${U_DIST}`;
+                        setTideStationInfo(`${tideData.station.name} — ${(tideData.station.distance_km * D_DIST).toFixed(1)} ${U_DIST}`);
                     }
 
                     // Prepare hourly data as {x, y} points
@@ -8602,7 +8822,7 @@
                 .catch(staleGuard(error => {
                     console.error('Error fetching tide data:', error);
                     showChartUnavailable('tideChart', 'Tide data unavailable', loadTideData);
-                    document.getElementById('tide-station-info').textContent = 'Unavailable';
+                    setTideStationInfo('Unavailable');
                     window._tideData = [];
                     window._tideHighLow = [];
                     _tidesLoaded = true;
