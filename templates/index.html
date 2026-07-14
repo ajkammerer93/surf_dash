@@ -9756,6 +9756,20 @@
                 contentEl.appendChild(iframe);
                 badgeEl.textContent = 'Live';
                 badgeEl.style.color = '';
+            } else if (camData.type === 'youtube') {
+                // Official YouTube embed (privacy-enhanced domain). The owner
+                // has embedding enabled; player branding, ads, and channel
+                // link stay intact.
+                var yt = document.createElement('iframe');
+                yt.src = camData.url;
+                yt.style.cssText = 'width:100%;height:100%;border:none;background:#000;';
+                yt.allow = 'autoplay; encrypted-media; picture-in-picture';
+                yt.allowFullscreen = true;
+                yt.referrerPolicy = 'strict-origin-when-cross-origin';
+                yt.title = camData.name + ' live cam';
+                contentEl.appendChild(yt);
+                badgeEl.textContent = 'Live';
+                badgeEl.style.color = '';
             } else if (camData.type === 'link') {
                 var wrapper = document.createElement('a');
                 wrapper.href = camData.url;
@@ -9797,8 +9811,14 @@
                 badgeEl.style.color = '';
             }
 
-            // Attribution bar
+            // Attribution bar — YouTube cams credit the channel directly
             var source = getCamSource(camData.page_url);
+            if (camData.type === 'youtube') {
+                source = {
+                    name: camData.channel ? camData.channel + ' on YouTube' : 'Watch on YouTube',
+                    url: camData.page_url
+                };
+            }
             if (source) {
                 contentEl.style.position = 'relative';
                 var attr = document.createElement('div');

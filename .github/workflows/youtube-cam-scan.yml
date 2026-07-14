@@ -1,0 +1,51 @@
+name: YouTube surf cam scan
+
+# Searches YouTube for live, embeddable surf cams and files an issue listing
+# new candidates for review (master is protected, so the workflow never
+# commits — approve/reject candidates locally with scripts/youtube_cam_scan.py).
+# Requires one repository secret (Settings -> Secrets and variables -> Actions):
+#   YOUTUBE_API_KEY   YouTube Data API v3 key (free tier is plenty)
+#
+# The schedule is commented out until the secret is configured — uncomment it
+# to enable the weekly scan. Until then the workflow can be run manually from
+# the Actions tab.
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 14 * * 1'  # Mondays 14:00 UTC
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Scan for candidates
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "YOUTUBE_API_KEY secret not configured; skipping scan."
+            exit 0
+          fi
+          python scripts/youtube_cam_scan.py scan --markdown candidates.md
+      - name: File review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -s candidates.md ] && grep -q '\- \[ \]' candidates.md; then
+            gh issue create \
+              --title "YouTube cam candidates — $(date -u +%Y-%m-%d)" \
+              --body-file candidates.md \
+              --label "cam-review"
+          else
+            echo "No new candidates this run."
+          fi

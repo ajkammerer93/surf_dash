@@ -96,6 +96,27 @@ def _load_cameras():
 
 SURFCHEX_CAMERAS = _load_cameras()
 
+def _load_youtube_cams():
+    """Load approved YouTube live surf cams from youtube_cams.json.
+
+    Only streams whose owners allow embedding are approved into this file
+    (enforced by scripts/youtube_cam_scan.py). They render through the
+    official youtube-nocookie iframe player, so the video is always served
+    by YouTube with the owner's branding, ads, and channel link intact.
+    """
+    path = os.path.join(os.path.dirname(__file__), 'youtube_cams.json')
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        cams = data.get('cams', [])
+        logger.info(f"Loaded {len(cams)} YouTube cams")
+        return cams
+    except Exception as e:
+        logger.warning(f"Warning: could not load youtube_cams.json: {e}")
+        return []
+
+YOUTUBE_CAMERAS = _load_youtube_cams()
+
 def slugify(name):
     """Convert location name to URL slug: lowercase, strip non-alphanumeric, hyphenate."""
     s = name.lower().strip()
@@ -2859,6 +2880,26 @@ def find_nearest_cameras(lat, lon, count=2):
             else:
                 entry['url'] = cam['stream_url']
             nearby.append(entry)
+
+    # Approved YouTube live cams — official embed player only
+    # (privacy-enhanced domain, muted autoplay like the other live streams)
+    for cam in YOUTUBE_CAMERAS:
+        if cam.get('disabled'):
+            continue
+        dist = haversine_distance(lat, lon, cam['lat'], cam['lon'])
+        if dist <= SURFCHEX_MAX_DISTANCE_KM:
+            vid = cam['video_id']
+            nearby.append({
+                'name': cam['name'],
+                'type': 'youtube',
+                'lat': cam['lat'],
+                'lon': cam['lon'],
+                'distance_km': round(dist, 1),
+                'url': f'https://www.youtube-nocookie.com/embed/{vid}?autoplay=1&mute=1&playsinline=1&rel=0',
+                'page_url': f'https://www.youtube.com/watch?v={vid}',
+                'channel': cam.get('channel', '')
+            })
+
     nearby.sort(key=lambda c: c['distance_km'])
     results = nearby[:count]
 
