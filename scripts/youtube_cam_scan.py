@@ -338,6 +338,23 @@ def cmd_approve(args):
     return 0
 
 
+def cmd_remove(args):
+    """Un-approve a cam (e.g. approved with the wrong id or coords).
+
+    Unlike reject, the id is NOT blacklisted — it can be re-approved or
+    will resurface as a candidate on a future scan.
+    """
+    cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
+    before = len(cams_data['cams'])
+    cams_data['cams'] = [c for c in cams_data['cams'] if c['video_id'] != args.video_id]
+    if len(cams_data['cams']) == before:
+        sys.exit(f'{args.video_id} is not in the approved catalog.')
+    _save_json(CAMS_FILE, cams_data)
+    print(f'Removed {args.video_id} from the approved catalog. '
+          'It can be re-approved at any time.')
+    return 0
+
+
 def cmd_reject(args):
     cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
     rejected = cams_data.setdefault('rejected_video_ids', [])
@@ -351,6 +368,43 @@ def cmd_reject(args):
     if len(candidates['candidates']) != before:
         _save_json(CANDIDATES_FILE, candidates)
     print(f'Rejected {args.video_id}; it will not be suggested again.')
+    return 0
+
+
+def cmd_sync_issue(args):
+    """Check off handled candidates in a cam-review issue.
+
+    Marks the checklist line of every approved or rejected video id as done,
+    so the issue always shows what is left to review. Uses the gh CLI (must
+    be authenticated as the repo account). Run after an approve/reject
+    session.
+    """
+    import subprocess
+    cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
+    handled = {c['video_id'] for c in cams_data['cams']}
+    handled.update(cams_data.get('rejected_video_ids', []))
+
+    body = subprocess.run(
+        ['gh', 'issue', 'view', str(args.issue), '--json', 'body', '-q', '.body'],
+        capture_output=True, text=True, check=True, cwd=ROOT).stdout
+    out, checked, remaining = [], 0, 0
+    for line in body.splitlines():
+        if line.lstrip().startswith('- [ ]'):
+            m = re.search(r'`([A-Za-z0-9_-]{11})`\s*$', line)
+            if m and m.group(1) in handled:
+                line = line.replace('- [ ]', '- [x]', 1)
+                checked += 1
+            else:
+                remaining += 1
+        out.append(line)
+
+    if checked:
+        subprocess.run(['gh', 'issue', 'edit', str(args.issue), '--body-file', '-'],
+                       input='\n'.join(out) + '\n', text=True, check=True, cwd=ROOT)
+    print(f'Checked off {checked} handled cam(s) in issue #{args.issue}; '
+          f'{remaining} left to review.')
+    if checked and not remaining:
+        print('All candidates handled — the issue can be closed.')
     return 0
 
 
@@ -379,9 +433,17 @@ def main():
     p.add_argument('--channel')
     p.set_defaults(func=cmd_approve)
 
+    p = sub.add_parser('remove', help='un-approve a cam without blacklisting it (fix a mistaken approve)')
+    p.add_argument('video_id')
+    p.set_defaults(func=cmd_remove)
+
     p = sub.add_parser('reject', help='dismiss a candidate permanently')
     p.add_argument('video_id')
     p.set_defaults(func=cmd_reject)
+
+    p = sub.add_parser('sync-issue', help='check off approved/rejected cams in a review issue')
+    p.add_argument('issue', type=int, help='issue number (e.g. 20)')
+    p.set_defaults(func=cmd_sync_issue)
 
     args = parser.parse_args()
     sys.exit(args.func(args))
