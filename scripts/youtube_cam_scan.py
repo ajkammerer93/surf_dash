@@ -126,18 +126,23 @@ def cmd_scan(args):
     queries = args.query or DEFAULT_QUERIES
     found_ids = []
     for q in queries:
+        # Embeddability is deliberately NOT a search filter — combining
+        # videoEmbeddable with eventType=live makes search.list return few
+        # or zero results. The videos.list status check below enforces it.
         data = _api_get('search', {
             'key': key, 'part': 'snippet', 'q': q, 'type': 'video',
-            'eventType': 'live', 'videoEmbeddable': 'true',
-            'safeSearch': 'strict', 'maxResults': args.limit,
+            'eventType': 'live', 'maxResults': args.limit,
             'relevanceLanguage': 'en',
         })
-        for item in data.get('items', []):
+        items = data.get('items', [])
+        print(f'query "{q}": {len(items)} live result(s)')
+        for item in items:
             vid = item['id']['videoId']
             if vid not in found_ids:
                 found_ids.append(vid)
 
     new_candidates = []
+    skipped = {'known': 0, 'not_embeddable': 0, 'not_live': 0, 'no_keyword': 0}
     # videos.list accepts up to 50 ids per call
     for i in range(0, len(found_ids), 50):
         batch = found_ids[i:i + 50]
@@ -148,16 +153,20 @@ def cmd_scan(args):
         for item in data.get('items', []):
             vid = item['id']
             if vid in known or vid in existing:
+                skipped['known'] += 1
                 continue
             snippet = item.get('snippet', {})
             status = item.get('status', {})
             live = item.get('liveStreamingDetails', {})
             title = snippet.get('title', '')
             if not status.get('embeddable'):
+                skipped['not_embeddable'] += 1
                 continue
             if snippet.get('liveBroadcastContent') != 'live':
+                skipped['not_live'] += 1
                 continue
             if not TITLE_KEYWORDS.search(title):
+                skipped['no_keyword'] += 1
                 continue
             match = _match_spot(title + ' ' + snippet.get('description', ''), spots)
             cand = {
@@ -177,6 +186,7 @@ def cmd_scan(args):
     candidates['candidates'].extend(new_candidates)
     _save_json(CANDIDATES_FILE, candidates)
 
+    print(f'filtered out: {skipped}')
     print(f'{len(new_candidates)} new candidate(s), '
           f'{len(candidates["candidates"])} pending review in {os.path.basename(CANDIDATES_FILE)}')
     for c in new_candidates:
