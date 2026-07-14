@@ -119,6 +119,12 @@ def cmd_scan(args):
     cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
     known = {c['video_id'] for c in cams_data['cams']}
     known.update(cams_data.get('rejected_video_ids', []))
+    # The legacy hand-curated YouTube iframes in surf_cameras.json count as
+    # known too — don't re-suggest streams the site already embeds
+    for spot in _load_json(SPOTS_FILE, []):
+        m = re.search(r'youtube\.com/embed/([A-Za-z0-9_-]{11})', spot.get('stream_url') or '')
+        if m:
+            known.add(m.group(1))
     candidates = _load_json(CANDIDATES_FILE, {'candidates': []})
     existing = {c['video_id'] for c in candidates['candidates']}
     spots = _load_spots()
