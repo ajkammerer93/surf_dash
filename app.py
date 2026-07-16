@@ -893,35 +893,97 @@ def _get_point_from_erddap(latitude, longitude):
         lat_range = f"({latitude - 1}):({latitude + 1})"
         lon_range = f"({lon_360 - 1}):({lon_360 + 1})"
 
-        # Retry with progressively older start times to handle ERDDAP model update gaps
+        # WW3 wave data, tried across two independent ERDDAP servers hosting
+        # the same model. pae-paha (PacIOOS) is normally fast; upwell (the
+        # CoastWatch mirror) is slower but answered when PacIOOS was pinned
+        # at ~100s (2026-07-16 outage). This is the FINAL wave source in the
+        # chain, so the mirror gets a generous timeout — with gunicorn's
+        # request budget raised to match, a slow success still lands in the
+        # cache even after Cloudflare cuts the client off at 100s, so the
+        # user's retry is served instantly.
+        # Wind fetch runs concurrently with the wave fetch below — the two
+        # hit different datasets/servers and only meet at the interpolation
+        # step. Sequentially this chain measured 198s during the 2026-07-16
+        # outage; in parallel the slower leg dominates (~110s worst case).
+        def _fetch_wind_json():
+            wind_servers = [
+                ("coastwatch.pfeg.noaa.gov", 30),
+                ("upwell.pfeg.noaa.gov", 45),
+            ]
+            for server, server_timeout in wind_servers:
+                for hours_back in [6, 12, 24]:
+                    w_now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
+                    w_start = w_now.isoformat() + "Z"
+                    w_range = f"({w_start}):(last)"
+                    try:
+                        logger.info(f"Point forecast: fetching GFS wind from {server}, start={w_start}...")
+                        return _fetch_erddap_grid(
+                            server=server,
+                            dataset="NCEP_Global_Best",
+                            variables=["ugrd10m", "vgrd10m"],
+                            time_range=w_range,
+                            lat_range=lat_range,
+                            lon_range=lon_range,
+                            depth=None,
+                            timeout=server_timeout
+                        )
+                    except requests.exceptions.HTTPError as e:
+                        if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                            logger.info(f"  ERDDAP 404 for wind with start {w_start}, retrying with older start...")
+                            continue
+                        code = e.response.status_code if e.response is not None else '?'
+                        logger.warning(f"  GFS wind fetch from {server} failed: HTTP {code}")
+                        break
+                    except (requests.Timeout, requests.ConnectionError) as e:
+                        logger.warning(f"  GFS wind fetch from {server} failed: {type(e).__name__}")
+                        break
+            return None
+
+        from concurrent.futures import ThreadPoolExecutor
+        wind_executor = ThreadPoolExecutor(max_workers=1)
+        wind_future = wind_executor.submit(_fetch_wind_json)
+        wind_executor.shutdown(wait=False)
+
+        wave_servers = [
+            ("pae-paha.pacioos.hawaii.edu", "ww3_global", 45),
+            ("upwell.pfeg.noaa.gov", "NWW3_Global_Best", 70),
+        ]
         wave_json = None
-        for hours_back in [6, 12, 24]:
-            try:
+        for server, dataset, server_timeout in wave_servers:
+            # Retry with progressively older start times to handle ERDDAP
+            # model update gaps
+            for hours_back in [6, 12, 24]:
                 now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
-
-                # Fetch WW3 wave data. 45s timeout: this is the final wave
-                # source in the chain (nothing left to fall back to), and a
-                # degraded PacIOOS answers in 25-35s — at the default 30s it
-                # coin-flips into a 500 (2026-07-16 outage).
-                logger.info(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude}), start={t_start}...")
-                wave_json = _fetch_erddap_grid(
-                    server="pae-paha.pacioos.hawaii.edu",
-                    dataset="ww3_global",
-                    variables=["Thgt", "Tper", "Tdir", "whgt", "wper"],
-                    time_range=time_range,
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=0,
-                    timeout=45
-                )
+                try:
+                    logger.info(f"Point forecast: fetching WW3 waves from {server} for ({latitude}, {longitude}), start={t_start}...")
+                    wave_json = _fetch_erddap_grid(
+                        server=server,
+                        dataset=dataset,
+                        variables=["Thgt", "Tper", "Tdir", "whgt", "wper"],
+                        time_range=time_range,
+                        lat_range=lat_range,
+                        lon_range=lon_range,
+                        depth=0,
+                        timeout=server_timeout
+                    )
+                    break
+                except requests.exceptions.HTTPError as e:
+                    if e.response is not None and e.response.status_code == 404 and hours_back < 24:
+                        logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
+                        continue
+                    code = e.response.status_code if e.response is not None else '?'
+                    logger.warning(f"  WW3 fetch from {server} failed: HTTP {code}")
+                    break
+                except (requests.Timeout, requests.ConnectionError) as e:
+                    logger.warning(f"  WW3 fetch from {server} failed: {type(e).__name__}")
+                    break
+            if wave_json is not None:
                 break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
-                    continue
-                raise
+        if wave_json is None:
+            logger.warning("All WW3 ERDDAP servers failed for point forecast")
+            return None
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir", "whgt", "wper"])
 
         # Find nearest non-NaN ocean grid point
@@ -948,62 +1010,49 @@ def _get_point_from_erddap(latitude, longitude):
         whgt = wave['grids']['whgt'][:, best_lat_i, best_lon_i]
         wper = wave['grids']['wper'][:, best_lat_i, best_lon_i]
 
-        # Fetch GFS wind data (also retry on 404)
-        wind_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                t_start = now.isoformat() + "Z"
-                time_range = f"({t_start}):(last)"
+        # Collect the concurrently-fetched GFS wind (see _fetch_wind_json
+        # above). Unlike waves, wind failure is survivable: the entries go
+        # out with wind None and _enrich_in_parallel's wind backfill gets a
+        # chance to fill them from Open-Meteo Weather.
+        wind_json = wind_future.result()
 
-                logger.info(f"Point forecast: fetching GFS wind, start={t_start}...")
-                wind_json = _fetch_erddap_grid(
-                    server="coastwatch.pfeg.noaa.gov",
-                    dataset="NCEP_Global_Best",
-                    variables=["ugrd10m", "vgrd10m"],
-                    time_range=time_range,
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=None
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
-                    continue
-                raise
-        wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
+        if wind_json is not None:
+            wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
 
-        # Find nearest wind grid point
-        wind_lats = np.array(wind['lats'])
-        wind_lons = np.array(wind['lons'])
-        wlat_i = int(np.argmin(np.abs(wind_lats - latitude)))
-        wlon_i = int(np.argmin(np.abs(wind_lons - lon_360)))
+            # Find nearest wind grid point
+            wind_lats = np.array(wind['lats'])
+            wind_lons = np.array(wind['lons'])
+            wlat_i = int(np.argmin(np.abs(wind_lats - latitude)))
+            wlon_i = int(np.argmin(np.abs(wind_lons - lon_360)))
 
-        # Interpolate 3-hourly wind to hourly wave time steps
-        wind_dts = [_parse_erddap_time(t) for t in wind['times']]
-        wind_u = wind['grids']['ugrd10m'][:, wlat_i, wlon_i]
-        wind_v = wind['grids']['vgrd10m'][:, wlat_i, wlon_i]
+            # Interpolate 3-hourly wind to hourly wave time steps
+            wind_dts = [_parse_erddap_time(t) for t in wind['times']]
+            wind_u = wind['grids']['ugrd10m'][:, wlat_i, wlon_i]
+            wind_v = wind['grids']['vgrd10m'][:, wlat_i, wlon_i]
 
-        wind_secs = np.array([(wdt - wind_dts[0]).total_seconds() for wdt in wind_dts])
-        wind_speed_hourly = []
-        wind_dir_hourly = []
-        for wdt in wave_dts:
-            t_sec = (wdt - wind_dts[0]).total_seconds()
-            if t_sec <= wind_secs[0]:
-                u, v = float(wind_u[0]), float(wind_v[0])
-            elif t_sec >= wind_secs[-1]:
-                u, v = float(wind_u[-1]), float(wind_v[-1])
-            else:
-                idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
-                dt = wind_secs[idx + 1] - wind_secs[idx]
-                w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
-                u = float(wind_u[idx] * (1 - w) + wind_u[idx + 1] * w)
-                v = float(wind_v[idx] * (1 - w) + wind_v[idx + 1] * w)
-            speed = math.sqrt(u**2 + v**2) * 3.6  # m/s to km/h
-            direction = (270 - math.degrees(math.atan2(v, u))) % 360
-            wind_speed_hourly.append(round(speed, 1))
-            wind_dir_hourly.append(round(direction, 1))
+            wind_secs = np.array([(wdt - wind_dts[0]).total_seconds() for wdt in wind_dts])
+            wind_speed_hourly = []
+            wind_dir_hourly = []
+            for wdt in wave_dts:
+                t_sec = (wdt - wind_dts[0]).total_seconds()
+                if t_sec <= wind_secs[0]:
+                    u, v = float(wind_u[0]), float(wind_v[0])
+                elif t_sec >= wind_secs[-1]:
+                    u, v = float(wind_u[-1]), float(wind_v[-1])
+                else:
+                    idx = max(0, min(int(np.searchsorted(wind_secs, t_sec)) - 1, len(wind_secs) - 2))
+                    dt = wind_secs[idx + 1] - wind_secs[idx]
+                    w = (t_sec - wind_secs[idx]) / dt if dt > 0 else 0.0
+                    u = float(wind_u[idx] * (1 - w) + wind_u[idx + 1] * w)
+                    v = float(wind_v[idx] * (1 - w) + wind_v[idx + 1] * w)
+                speed = math.sqrt(u**2 + v**2) * 3.6  # m/s to km/h
+                direction = (270 - math.degrees(math.atan2(v, u))) % 360
+                wind_speed_hourly.append(round(speed, 1))
+                wind_dir_hourly.append(round(direction, 1))
+        else:
+            logger.warning("All GFS wind ERDDAP servers failed — leaving wind for enrichment backfill")
+            wind_speed_hourly = [None] * len(wave_dts)
+            wind_dir_hourly = [None] * len(wave_dts)
 
         # Compute sunrise/sunset for each day in forecast
         sunrise_map = {}
@@ -1245,6 +1294,13 @@ def _find_latest_nomads_cycle():
     Tries today's cycles (newest first), then yesterday's.
     Result is cached for 30 minutes.
     """
+    # NOMADS retired its OpenDAP/DODS service entirely (NWS Service Change
+    # Notice 25-81; observed 2026-07-16 — every dods URL now redirects to an
+    # "OpenDAP format has been retired" page). Short-circuit until the
+    # fetchers are ported to the grib-filter or NODD S3 interfaces; the rest
+    # of the NOMADS machinery below is kept for that port.
+    return None
+
     cache_key = "nomads_cycle"
     now_ts = time.time()
     if cache_key in _cache and now_ts - _cache[cache_key]['time'] < NOMADS_CYCLE_CACHE_TTL:

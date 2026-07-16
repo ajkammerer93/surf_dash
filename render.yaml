@@ -3,7 +3,11 @@ services:
     name: surf-dash
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 4 --preload
+    # timeout 180: during multi-source outages the wave-fetch chain can
+    # legitimately need ~150s (marine timeout + both ERDDAP WW3 servers).
+    # Cloudflare cuts clients at 100s, but the worker finishing anyway is
+    # the point — the result lands in the cache and the retry is instant.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 4 --preload
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
