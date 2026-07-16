@@ -7,7 +7,11 @@ services:
     # legitimately need ~150s (marine timeout + both ERDDAP WW3 servers).
     # Cloudflare cuts clients at 100s, but the worker finishing anyway is
     # the point — the result lands in the cache and the retry is instant.
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 4 --preload
+    # threads 8: request threads mostly sit in I/O waits on upstream APIs.
+    # With 100-180s worst-case fetch chains, 4 threads let a handful of
+    # cold-cache requests pin the worker so even cache hits queued behind
+    # them (observed 2026-07-16).
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 8 --preload
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
