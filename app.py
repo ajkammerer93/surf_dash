@@ -3772,6 +3772,52 @@ def buoys_endpoint():
         return jsonify({"error": "Could not retrieve buoy data."}), 500
 
 
+@app.route('/api/health-upstreams')
+def health_upstreams():
+    """Probe each upstream weather source from this server's vantage point.
+
+    Diagnostic endpoint for incidents: rate limits and egress problems are
+    per-IP, so what fails from Render often works from a dev machine and
+    vice versa. Cheap probes (~1KB responses, 8s timeouts), cached 60s.
+    """
+    def _probe_all():
+        probes = {
+            'open-meteo-marine': lambda: requests.get(
+                'https://marine-api.open-meteo.com/v1/marine',
+                params={'latitude': 34.43, 'longitude': -77.55,
+                        'hourly': 'wave_height', 'forecast_days': 1},
+                timeout=8),
+            'open-meteo-weather': lambda: requests.get(
+                'https://api.open-meteo.com/v1/forecast',
+                params={'latitude': 34.43, 'longitude': -77.55,
+                        'hourly': 'wind_speed_10m', 'forecast_days': 1},
+                timeout=8),
+            'erddap-pacioos-ww3': lambda: requests.get(
+                'https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ww3_global.json?time[(last)]',
+                timeout=8),
+            'erddap-upwell-ww3': lambda: requests.get(
+                'https://upwell.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json?time[(last)]',
+                timeout=8),
+            'erddap-coastwatch-gfs': lambda: requests.get(
+                'https://coastwatch.pfeg.noaa.gov/erddap/griddap/NCEP_Global_Best.json?time[(last)]',
+                timeout=8),
+        }
+        results = {}
+        for name, fn in probes.items():
+            started = time.time()
+            try:
+                resp = fn()
+                results[name] = {'status': resp.status_code,
+                                 'seconds': round(time.time() - started, 2)}
+            except Exception as e:
+                results[name] = {'status': type(e).__name__,
+                                 'seconds': round(time.time() - started, 2)}
+        results['checked_at'] = datetime.now(timezone.utc).isoformat()
+        return results
+
+    return jsonify(cached('health-upstreams', _probe_all, ttl=60))
+
+
 ORIENTATION_CACHE_TTL = 86400  # 24 hours (coastline doesn't change)
 
 @app.route('/api/beach-orientation')
