@@ -908,7 +908,7 @@ def _get_point_from_erddap(latitude, longitude):
         def _fetch_wind_json():
             wind_servers = [
                 ("coastwatch.pfeg.noaa.gov", 30),
-                ("upwell.pfeg.noaa.gov", 45),
+                ("upwell.pfeg.noaa.gov", 75),
             ]
             for server, server_timeout in wind_servers:
                 for hours_back in [6, 12, 24]:
@@ -944,9 +944,13 @@ def _get_point_from_erddap(latitude, longitude):
         wind_future = wind_executor.submit(_fetch_wind_json)
         wind_executor.shutdown(wait=False)
 
+        # upwell first: its data slices measured 32-69s during the 2026-07-16
+        # incident (needs the 100s budget) while pae-paha's granule store was
+        # pinned at ~100s or 503ing outright. On healthy days both answer in
+        # a few seconds, so the ordering costs nothing.
         wave_servers = [
+            ("upwell.pfeg.noaa.gov", "NWW3_Global_Best", 100),
             ("pae-paha.pacioos.hawaii.edu", "ww3_global", 45),
-            ("upwell.pfeg.noaa.gov", "NWW3_Global_Best", 70),
         ]
         wave_json = None
         for server, dataset, server_timeout in wave_servers:
