@@ -408,6 +408,10 @@ _cache_key_locks = {}
 CACHE_TTL = 900  # 15 minutes
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
 CACHE_MAX_ENTRIES = 1000
+# How old a forecast we will still serve when every upstream wave source is
+# down (observed 2026-07-16: Open-Meteo rate limit + NOMADS gap + degraded
+# ERDDAP simultaneously). A day-old 7-day forecast beats a blank dashboard.
+STALE_FORECAST_MAX_AGE = 24 * 3600
 
 def _cache_get_fresh(key, ttl):
     with _cache_lock:
@@ -415,6 +419,19 @@ def _cache_get_fresh(key, ttl):
         if entry and time.time() - entry['time'] < ttl:
             _cache.move_to_end(key)
             return entry['data']
+    return None
+
+def _cache_get_stale(key, max_age):
+    """Expired-but-retained cache entry, or None.
+
+    cached() never deletes entries on expiry — they stay in the LRU until
+    evicted — so the last successful response is usually still here when
+    every upstream fails. Returns the raw entry ({'data', 'time'}).
+    """
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.time() - entry['time'] < max_age:
+            return entry
     return None
 
 def cached(key, fn, ttl=CACHE_TTL):
@@ -773,6 +790,10 @@ def _get_point_from_open_meteo(latitude, longitude):
     """
     try:
         logger.info(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
+        # Fail fast: when Open-Meteo throttles Render's IP it answers with a
+        # quick 4xx, but during upstream incidents it can also hang — and an
+        # independent ERDDAP fallback is waiting, so don't burn 90s of the
+        # request budget on timeouts here (12s x 2 attempts max).
         resp = _retry_request(lambda: requests.get(
             "https://marine-api.open-meteo.com/v1/marine",
             params={
@@ -782,8 +803,8 @@ def _get_point_from_open_meteo(latitude, longitude):
                 "forecast_days": 7,
                 "timezone": "UTC",
             },
-            timeout=30,
-        ))
+            timeout=12,
+        ), max_retries=1)
         if not resp.ok:
             logger.info(f"  Open-Meteo Marine HTTP {resp.status_code}")
             return None
@@ -880,7 +901,10 @@ def _get_point_from_erddap(latitude, longitude):
                 t_start = now.isoformat() + "Z"
                 time_range = f"({t_start}):(last)"
 
-                # Fetch WW3 wave data
+                # Fetch WW3 wave data. 45s timeout: this is the final wave
+                # source in the chain (nothing left to fall back to), and a
+                # degraded PacIOOS answers in 25-35s — at the default 30s it
+                # coin-flips into a 500 (2026-07-16 outage).
                 logger.info(f"Point forecast: fetching WW3 waves for ({latitude}, {longitude}), start={t_start}...")
                 wave_json = _fetch_erddap_grid(
                     server="pae-paha.pacioos.hawaii.edu",
@@ -889,7 +913,8 @@ def _get_point_from_erddap(latitude, longitude):
                     time_range=time_range,
                     lat_range=lat_range,
                     lon_range=lon_range,
-                    depth=0
+                    depth=0,
+                    timeout=45
                 )
                 break
             except requests.exceptions.HTTPError as e:
@@ -1014,7 +1039,7 @@ def _get_point_from_erddap(latitude, longitude):
         traceback.print_exc()
         return None
 
-def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_range, depth=None):
+def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_range, depth=None, timeout=30):
     """
     Fetch gridded data from an ERDDAP griddap server in JSON format.
     Returns the parsed JSON response containing a table of rows.
@@ -1032,9 +1057,11 @@ def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_ra
     url = f"https://{server}/erddap/griddap/{dataset}.json?{query}"
     logger.info(f"  ERDDAP request: {url[:150]}...")
 
-    # 30s, not longer: with 1 gunicorn worker x 4 threads, a hung upstream
-    # pins a thread and starves other requests; callers fall back anyway.
-    response = requests.get(url, timeout=30)
+    # Default 30s, not longer: with 1 gunicorn worker x 4 threads, a hung
+    # upstream pins a thread and starves other requests; most callers fall
+    # back anyway. The point-forecast WW3 fetch overrides this — it is the
+    # LAST fallback, and a degraded PacIOOS routinely answers in 25-35s.
+    response = requests.get(url, timeout=timeout)
     response.raise_for_status()
     return response.json()
 
@@ -1234,8 +1261,11 @@ def _find_latest_nomads_cycle():
                 continue
             url = f"{NOMADS_BASE}/{date_str}/gfswave.atlocn.0p16_{cycle}z"
             try:
+                # 4s probe: when NOMADS is down-but-slow, every cycle probe
+                # times out — at 10s that's up to 80s before the failure is
+                # cached. Healthy NOMADS answers these in well under a second.
                 test_url = f"{url}.ascii?time[0:0]"
-                resp = requests.get(test_url, timeout=10)
+                resp = requests.get(test_url, timeout=4)
                 if resp.status_code == 200 and resp.headers.get('content-type', '').startswith('text/plain'):
                     logger.info(f"NOMADS cycle found: {date_str}/{cycle}z")
                     _cache[cache_key] = {'data': url, 'time': now_ts}
@@ -2794,6 +2824,19 @@ def forecast():
 
     cache_key = f"forecast:{lat:.4f},{lon:.4f}"
     data = cached(cache_key, lambda: get_point_weather_data(lat, lon))
+
+    if not data:
+        # Every wave source failed (Open-Meteo rate limit, NOMADS gap, and a
+        # degraded ERDDAP have all overlapped before). Serve the last good
+        # response instead of blacking out the dashboard — a stale forecast
+        # of tomorrow still beats an error banner.
+        stale = _cache_get_stale(cache_key, STALE_FORECAST_MAX_AGE)
+        if stale:
+            age_h = (time.time() - stale['time']) / 3600
+            logger.warning(f"All wave sources down — serving stale forecast for {cache_key} (age {age_h:.1f}h)")
+            data = dict(stale['data'])
+            data['stale'] = True
+            data['fetched_at'] = datetime.fromtimestamp(stale['time'], timezone.utc).isoformat()
 
     if data:
         confidence = _compute_confidence(data, cache_key)

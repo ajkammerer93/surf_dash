@@ -368,3 +368,51 @@ class TestSurfchexLinkOnly:
         hls = [c for c in cams if c['type'] == 'hls']
         for c in hls:
             assert 'surfchex' not in (c.get('page_url') or '').lower()
+
+
+class TestStaleForecastFallback:
+    """When every wave source fails, /api/forecast serves the last good
+    response (up to STALE_FORECAST_MAX_AGE) instead of a 500."""
+
+    def _seed(self, key, age_seconds):
+        surf_app._cache[key] = {
+            'data': {
+                'forecast': [{'time': '2026-07-15T00:00:00Z',
+                              'wave_height': 1.0, 'wave_period': 8.0,
+                              'wind_speed': 10.0}],
+                'location_timezone': 'America/New_York',
+                'source': 'Open-Meteo',
+            },
+            'time': time.time() - age_seconds,
+        }
+
+    def test_stale_served_when_sources_down(self, monkeypatch):
+        key = 'forecast:41.5000,-70.5000'
+        self._seed(key, 2 * 3600)  # 2h old — past the 15 min TTL
+        monkeypatch.setattr(surf_app, 'get_point_weather_data',
+                            lambda lat, lon: None)
+        client = surf_app.app.test_client()
+        resp = client.get('/api/forecast?lat=41.5&lon=-70.5')
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['stale'] is True
+        assert body['fetched_at'].startswith('2026-')
+        assert body['forecast'][0]['wave_height'] == 1.0
+        surf_app._cache.pop(key, None)
+
+    def test_500_when_no_stale_entry_exists(self, monkeypatch):
+        monkeypatch.setattr(surf_app, 'get_point_weather_data',
+                            lambda lat, lon: None)
+        client = surf_app.app.test_client()
+        resp = client.get('/api/forecast?lat=42.5000&lon=-69.5000')
+        assert resp.status_code == 500
+
+    def test_too_old_stale_entry_not_served(self, monkeypatch):
+        key = 'forecast:43.5000,-68.5000'
+        self._seed(key, surf_app.STALE_FORECAST_MAX_AGE + 3600)
+        monkeypatch.setattr(surf_app, 'get_point_weather_data',
+                            lambda lat, lon: None)
+        client = surf_app.app.test_client()
+        resp = client.get('/api/forecast?lat=43.5&lon=-68.5')
+        assert resp.status_code == 500
+        surf_app._cache.pop(key, None)
