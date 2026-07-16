@@ -4,16 +4,16 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.6
+**Current version:** v0.11.21
 
 ## Dashboard
 
 - **Next 6 Hours Hero** — Always-visible decision window with a **go/no-go verdict** (Go surf / Worth a paddle / Maybe / Skip it) for the current session plus the best upcoming window in the next 48 hours, above hour-by-hour wave height, period, wind, and condition color bars.
 - **Swell Map** — One zoom-adaptive map replaces separate basin/local panes. The global swell field renders as a smooth raster (perceptual color ramp, shoreline-masked, single image overlay per timestep — no per-frame vector work); the high-resolution local grid blends over it in the same scale. Zoomed out: swell-direction arrows, the spot's swell-window cone, groundswell arrival rings (1–4 days), and an estimated storm-origin marker. Zoomed in: nearby-spot labels with live heights (click to switch spots), camera markers, and buoy markers — all with hover tooltips. Animated wind particles at every zoom (high-res local wind when zoomed in), paused off-screen and on hidden tabs. Embedded time slider with play/speed controls and a cursor probe that reads out conditions under the pointer.
 - **Current Conditions** — Wave height/period/direction, wind, air and water temperature, tide stage, hover direction diagrams, tide sparkline, and a wetsuit recommendation.
-- **Wave & Wind Chart** — 7-day time-series with condition color strip, day/night bands, tide overlay in the tooltip, trend arrows, and a per-hour forecast-confidence sparkline.
+- **Wave & Wind Chart** — 7-day time-series built for at-a-glance reading: hourly stacked bars where height = surf size, the faded cap = wind chop, and the bar color = surf condition (colorblind-validated scale, green offshore → rose blown-out); a wind lane of direction arrows with speeds above the plot; a tide lane with high/low times below it; a swell period + direction row along the bottom; day/night bands; and a rich hover tooltip with a wind/swell direction diagram and per-hour forecast confidence.
 - **Buoy Observations** — NDBC and CDIP real-time data with 1D and 2D spectra and a deep-water-buoy caveat beyond 100 km.
-- **Surf Cameras** — Nearest webcams with safe DOM-rendered attribution. Providers that opt out of embedding (e.g. SurfChex) render as designed link-out cards.
+- **Surf Cameras** — Nearest webcams with safe DOM-rendered attribution, preferring embeddable live streams over link-outs. YouTube live surf cams (owner-enabled embedding only, official privacy-enhanced player) are curated via a scanner + review pipeline; providers that opt out of embedding (e.g. SurfChex) render as designed link-out cards.
 - **Session Planner** — Scored 3-hour windows (0–100) factoring swell direction × beach orientation, period, wind, and tide. The "best window" highlight only appears when a window clears the Good (55+) bar.
 - **Geolocation** — "Use my location" snaps to the nearest of 145 spots; first-time visitors are offered it on the welcome card, never auto-prompted.
 - **Units** — Imperial/metric toggle (ft/mph ↔ m/km·h, °F ↔ °C) across every chart, map, table, and export; scoring is unit-independent.
@@ -35,11 +35,11 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 | Data | Source | Cost |
 |---|---|---|
-| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 (ERDDAP) / NOMADS GFS-Wave | Free |
+| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 via ERDDAP (CoastWatch + PacIOOS mirrors) | Free |
 | Wind speed, direction, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with NOAA CoastWatch ERDDAP (GFS) fallback | Free |
 | Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged) | Free |
 | Buoy observations | [NDBC](https://www.ndbc.noaa.gov/) / [CDIP](https://cdip.ucsd.edu/) | Free |
-| Surf cameras | [Windy Webcams API](https://api.windy.com/) + provider link-outs | Free tier |
+| Surf cameras | Curated YouTube live embeds + [Windy Webcams API](https://api.windy.com/) + provider link-outs | Free tier |
 | Coastline data | [OpenStreetMap Overpass API](https://overpass-api.de/), world-atlas land polygons | Free |
 | Reverse geocoding | [Nominatim (OpenStreetMap)](https://nominatim.openstreetmap.org/) | Free |
 
@@ -66,7 +66,7 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (170 tests)
+pytest tests/                                          # full suite (182 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -94,10 +94,12 @@ LOG_LEVEL=DEBUG python app.py
 | `learn_articles.py` | Article content as Python dicts |
 | `region_pages.py` | Region metadata + spot rosters (16 regions) |
 | `surf_cameras.json` | Camera + forecast-only spot catalog → 145 deduped locations |
+| `youtube_cams.json` | Approved YouTube live surf cams (embed-enabled streams only) |
+| `scripts/youtube_cam_scan.py` | YouTube cam discovery/verify/approve pipeline (weekly Action files a review issue) |
 | `scripts/instagram_publish.py` | Social pipeline publisher (Graph API or dry-run) |
-| `tests/` | 170 tests across SEO, pure functions, and mocked upstream failures |
+| `tests/` | 182 tests across SEO, pure functions, and mocked upstream failures |
 | `static/sw.js` | Service worker (network-first HTML, 24h offline API fallback) |
-| `render.yaml` | Render deploy config (Gunicorn `--workers 1 --threads 4 --preload`) |
+| `render.yaml` | Render deploy config (Gunicorn `--workers 1 --threads 8 --preload`) |
 
 ### Page Routes
 
@@ -131,14 +133,16 @@ Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 | `GET /api/beach-orientation?lat=&lon=` | Coastline facing direction |
 | `GET /api/swell-narrative?lat=&lon=` | Swell type + origin estimate + narrative |
 
-All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully (ERDDAP fallbacks for wind/air-temp, hourly-only tides, state-based timezone fallback).
+| `GET /api/health-upstreams` | Diagnostic: probes each weather source from the server's vantage |
+
+All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully: the wave chain falls from Open-Meteo Marine to WW3 across two independent ERDDAP servers, wind and air-temp have ERDDAP backfills, tides degrade to hourly-only, and if every wave source fails at once the API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
 
 ## Deployment
 
 Deployed on [Render.com](https://render.com/) behind Cloudflare (DNS, CDN, DDoS, free analytics). See `render.yaml`.
 
 ```bash
-gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 4 --preload
+gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 8 --preload
 ```
 
 Security baseline: Content-Security-Policy, X-Frame-Options DENY (except `/embed/*`, which allows framing via `frame-ancestors *`), Referrer-Policy, Permissions-Policy, and SRI hashes on CDN script/style tags.
