@@ -1,0 +1,26 @@
+{
+  "comment": "NDBC wave buoys used for forecast verification. The pipeline snapshots /api/forecast at each buoy's coordinates and later scores those forecasts against the buoy's observed WVHT/DPD. Chosen to span every region the site serves; Great Lakes buoys are seasonal (pulled in winter) and simply produce no pairs while offline.",
+  "stations": [
+    {"id": "44097", "name": "Block Island, RI", "lat": 40.967, "lon": -71.124, "region": "New England"},
+    {"id": "44025", "name": "Long Island (30nm S of Islip), NY", "lat": 40.258, "lon": -73.175, "region": "Mid-Atlantic"},
+    {"id": "44065", "name": "New York Harbor Entrance, NY", "lat": 40.368, "lon": -73.701, "region": "Mid-Atlantic"},
+    {"id": "44091", "name": "Barnegat, NJ", "lat": 39.772, "lon": -73.769, "region": "Mid-Atlantic"},
+    {"id": "44095", "name": "Oregon Inlet, NC", "lat": 35.75, "lon": -75.33, "region": "Southeast"},
+    {"id": "41110", "name": "Masonboro Inlet, NC", "lat": 34.142, "lon": -77.715, "region": "Southeast"},
+    {"id": "41008", "name": "Grays Reef, GA", "lat": 31.4, "lon": -80.866, "region": "Southeast"},
+    {"id": "41117", "name": "St. Augustine, FL", "lat": 29.999, "lon": -81.079, "region": "Southeast"},
+    {"id": "41113", "name": "Cape Canaveral Nearshore, FL", "lat": 28.4, "lon": -80.533, "region": "Southeast"},
+    {"id": "42035", "name": "Galveston, TX", "lat": 29.235, "lon": -94.41, "region": "Gulf"},
+    {"id": "41053", "name": "San Juan, PR", "lat": 18.474, "lon": -66.099, "region": "Puerto Rico"},
+    {"id": "46225", "name": "Torrey Pines Outer, CA", "lat": 32.933, "lon": -117.391, "region": "Southern California"},
+    {"id": "46222", "name": "San Pedro, CA", "lat": 33.614, "lon": -118.314, "region": "Southern California"},
+    {"id": "46042", "name": "Monterey, CA", "lat": 36.787, "lon": -122.408, "region": "Northern California"},
+    {"id": "46026", "name": "San Francisco Bar, CA", "lat": 37.75, "lon": -122.838, "region": "Northern California"},
+    {"id": "46029", "name": "Columbia River Bar, OR/WA", "lat": 46.148, "lon": -124.508, "region": "Pacific Northwest"},
+    {"id": "46211", "name": "Grays Harbor (Westport), WA", "lat": 46.857, "lon": -124.243, "region": "Pacific Northwest"},
+    {"id": "51201", "name": "Waimea Bay, HI", "lat": 21.671, "lon": -158.118, "region": "Hawaii"},
+    {"id": "51202", "name": "Mokapu Point, HI", "lat": 21.414, "lon": -157.681, "region": "Hawaii"},
+    {"id": "45002", "name": "North Lake Michigan", "lat": 45.344, "lon": -86.411, "region": "Great Lakes"},
+    {"id": "45012", "name": "East Lake Ontario", "lat": 43.621, "lon": -77.401, "region": "Great Lakes"}
+  ]
+}

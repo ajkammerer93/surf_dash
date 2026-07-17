@@ -1,0 +1,49 @@
+name: Forecast verification
+
+# Snapshots the live site's forecasts at NDBC buoy locations, scores past
+# snapshots against buoy observations, and publishes rolling accuracy stats.
+# Master is protected, so all data lives on the unprotected verification-data
+# branch; the app reads stats.json from that branch via raw.githubusercontent.
+# Runs ~2h45m after each 00/06/12/18Z wave-model cycle.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '45 2,8,14,20 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: verification-data
+          path: vdata
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Snapshot and score
+        run: python scripts/forecast_verification.py run --data-dir vdata
+      - name: Commit and push data branch
+        if: always()
+        run: |
+          cd vdata
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "Verification data update $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

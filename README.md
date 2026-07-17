@@ -29,6 +29,8 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 - **`/compare/surfline`**, **`/compare/magicseaweed`** — honest comparison pages for surfers looking for a free alternative.
 - **`/embed/<slug>`** — a free iframe-able live forecast card for surf shops and beach-town sites (the only route that permits framing).
 - **`/social/daily/<region>.png`** + **`/api/social-card/<region>`** — Instagram-ready regional report cards with captions; `scripts/instagram_publish.py` posts them via the Graph API on a weekday rotation (or prints them with `--dry-run` for manual scheduling).
+- **`/accuracy`** — public forecast-verification report: a scheduled pipeline snapshots the site's own forecasts at 21 NDBC buoy locations every 6 hours, scores them against observed wave heights, and publishes rolling 30-day bias/MAE/RMSE stats (raw JSON at `/api/accuracy`). Where a buoy shows a persistent, well-sampled bias, `/api/forecast` automatically applies a capped correction for nearby spots — and always verifies against raw model output so the correction can't mask true model error.
+- **`/faq`** — surf-forecasting FAQ with `FAQPage` JSON-LD targeting question queries.
 - **Sitemap** with tiered priorities; per-location `TouristAttraction` JSON-LD.
 
 ## Data Sources

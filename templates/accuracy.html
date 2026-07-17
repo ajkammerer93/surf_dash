@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forecast Accuracy Report | Free Surf Forecast</title>
+    <meta name="description" content="How accurate is our surf forecast? Every forecast is scored against NOAA buoy observations. Live rolling 30-day bias and error stats by region and lead time — published openly.">
+    <link rel="canonical" href="https://freesurfforecast.com/accuracy">
+
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Forecast Accuracy Report | Free Surf Forecast">
+    <meta property="og:description" content="The surf forecast that grades itself — live verification against NOAA buoys.">
+    <meta property="og:url" content="https://freesurfforecast.com/accuracy">
+    <meta property="og:site_name" content="Free Surf Forecast">
+    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Forecast Accuracy Report | Free Surf Forecast">
+    <meta name="twitter:description" content="The surf forecast that grades itself — live verification against NOAA buoys.">
+    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = (saved === 'light' || saved === 'dark') ? saved :
+                (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #2a2a2a;
+            --text: #e8e8e8;
+            --text-dim: #888;
+            --text-muted: #666;
+            --accent: #fff;
+            --status-live: #44ff88;
+            --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --border: #d4d4d4;
+            --text: #1a1a1a;
+            --text-dim: #555;
+            --text-muted: #6b6b6b;
+            --accent: #111;
+            --status-live: #16a34a;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header.site-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header.site-header a.brand {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        header.site-header a.brand:hover { color: var(--status-live); }
+        nav.site-nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 12px;
+            margin-left: 16px;
+        }
+        nav.site-nav a:hover { color: var(--text); }
+
+        main.accuracy {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 48px 20px 80px;
+        }
+        main.accuracy h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+        main.accuracy .tagline {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+        }
+        main.accuracy .tagline a { color: var(--text); }
+        main.accuracy .updated {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .summary-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px 16px;
+        }
+        .summary-card .label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .summary-card .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .summary-card .sub {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        section.region { margin-top: 32px; }
+        section.region h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text);
+            margin-bottom: 14px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table-wrap { overflow-x: auto; }
+        table.stats {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        table.stats th, table.stats td {
+            padding: 8px 12px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        table.stats th {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+        }
+        table.stats th:first-child, table.stats td:first-child { text-align: left; }
+        table.stats tr:last-child td { border-bottom: none; }
+        table.stats td { color: var(--text-dim); }
+        table.stats td.station { color: var(--accent); font-weight: 700; }
+        td.bias-over { color: #d97706 !important; }
+        td.bias-under { color: #0284c7 !important; }
+
+        .empty-state, .methodology {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px 18px;
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 24px;
+        }
+        .methodology h2 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        .methodology p { margin-bottom: 10px; }
+        .methodology p:last-child { margin-bottom: 0; }
+        .methodology a { color: var(--text); }
+
+        footer.site-footer {
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 10px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+        footer.site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        footer.site-footer a:hover { color: var(--text); text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            main.accuracy { padding: 28px 16px 60px; }
+            main.accuracy h1 { font-size: 22px; }
+        }
+    </style>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://freesurfforecast.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Forecast Accuracy", "item": "https://freesurfforecast.com/accuracy" }
+        ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": "Free Surf Forecast verification statistics",
+        "description": "Rolling 30-day verification of Free Surf Forecast wave-height forecasts against NOAA NDBC buoy observations: bias, MAE, and RMSE by station and forecast lead time.",
+        "url": "https://freesurfforecast.com/accuracy",
+        "license": "https://creativecommons.org/licenses/by/4.0/",
+        "creator": { "@type": "Organization", "name": "Free Surf Forecast", "url": "https://freesurfforecast.com/" },
+        "distribution": { "@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://freesurfforecast.com/api/accuracy" }
+    }
+    </script>
+</head>
+<body>
+    <header class="site-header">
+        <a href="/" class="brand">Free Surf Forecast</a>
+        <nav class="site-nav">
+            <a href="/">Dashboard</a>
+            <a href="/locations">Locations</a>
+            <a href="/faq">FAQ</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+
+    <main class="accuracy">
+        <h1>Forecast Accuracy Report</h1>
+        <p class="tagline">
+            The surf forecast that grades itself. Every 6 hours we snapshot our own
+            forecasts at NOAA buoy locations, then score them against what the buoys
+            actually measured. No cherry-picking — every scored forecast is counted,
+            and the raw numbers are in the <a href="/api/accuracy">open JSON dataset</a>.
+        </p>
+
+        {% if stats and stats.n_pairs and stats.overall.all %}
+        {% set ov = stats.overall.all %}
+        <p class="updated">Rolling {{ stats.window_days }}-day window &middot; updated {{ stats.generated[:16].replace('T', ' ') }} UTC</p>
+
+        <div class="summary-cards">
+            <div class="summary-card">
+                <div class="label">Forecasts scored</div>
+                <div class="value">{{ "{:,}".format(stats.n_pairs) }}</div>
+                <div class="sub">last {{ stats.window_days }} days</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Wave height error (MAE)</div>
+                <div class="value">{{ ov.mae_m }} m</div>
+                <div class="sub">{{ (ov.mae_m * 3.281) | round(1) }} ft average miss</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Bias</div>
+                <div class="value">{{ "%+.2f" | format(ov.bias_m) }} m</div>
+                <div class="sub">{{ "over-forecasts" if ov.bias_m > 0 else "under-forecasts" }} on average</div>
+            </div>
+            {% if ov.period_bias_s is defined %}
+            <div class="summary-card">
+                <div class="label">Period bias</div>
+                <div class="value">{{ "%+.1f" | format(ov.period_bias_s) }} s</div>
+                <div class="sub">dominant period vs buoy</div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% for region, stations in regions %}
+        <section class="region">
+            <h2>{{ region }}</h2>
+            <div class="table-wrap">
+                <table class="stats">
+                    <thead>
+                        <tr>
+                            <th>Buoy</th>
+                            <th>Pairs</th>
+                            <th>Bias</th>
+                            <th>MAE 0&ndash;24h</th>
+                            <th>MAE 24&ndash;48h</th>
+                            <th>MAE 48&ndash;72h</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sid, st in stations %}
+                        <tr>
+                            <td class="station">{{ st.name }} <span style="color: var(--text-muted); font-weight: 400;">#{{ sid }}</span></td>
+                            <td>{{ st.all.n if st.all else 0 }}</td>
+                            {% if st.all %}
+                            <td class="{{ 'bias-over' if st.all.bias_m > 0.05 else ('bias-under' if st.all.bias_m < -0.05 else '') }}">{{ "%+.2f" | format(st.all.bias_m) }} m</td>
+                            {% else %}<td>&mdash;</td>{% endif %}
+                            {% for bin_label in ('0-24', '24-48', '48-72') %}
+                            {% set b = st.bins.get(bin_label) %}
+                            <td>{{ (b.mae_m ~ " m") if b else "—" }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state">
+            Verification is live and collecting data — the first scored pairs appear
+            within a day of a forecast being issued, and stable statistics need a few
+            weeks of accumulation. Check back soon, or watch the raw data grow in the
+            <a href="/api/accuracy" style="color: var(--text);">JSON dataset</a>.
+        </div>
+        {% endif %}
+
+        <div class="methodology">
+            <h2>Methodology</h2>
+            <p>
+                Every 6 hours (about 2h45m after each NOAA wave-model cycle) we request our own
+                public forecast at the exact coordinates of {{ (stats.stations | length) if stats and stats.stations else 21 }}
+                NDBC wave buoys spanning every region we serve. Each snapshot stores the predicted
+                significant wave height and peak period out to 72 hours ahead.
+            </p>
+            <p>
+                Once a forecast's valid time passes, it is paired with the buoy observation nearest
+                in time (within 45 minutes) and the error is recorded. <strong>Bias</strong> is the mean of
+                forecast&nbsp;&minus;&nbsp;observed (positive = we over-forecast), <strong>MAE</strong> is the mean absolute
+                error, both over a rolling 30-day window. Wave heights are significant wave height
+                in meters, compared like-for-like in open water — this measures the wave model, not
+                breaking-wave face height at the beach.
+            </p>
+            <p>
+                We use these numbers, not just publish them: where a buoy shows a persistent,
+                well-sampled bias, the forecast served for nearby spots is automatically nudged by
+                the measured amount (capped, and only with 30+ scored pairs behind it). The
+                verification always scores the raw model output, so the correction can't hide the
+                model's true error. Pipeline code is
+                <a href="https://github.com/ajkammerer93/surf_dash" rel="noopener">open source</a>.
+            </p>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div>&copy; 2026 Free Surf Forecast &middot;
+            <a href="/about">About</a> &middot;
+            <a href="/faq">FAQ</a> &middot;
+            <a href="/locations">Locations</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash" target="_blank" rel="noopener">GitHub</a> &middot;
+            <a href="https://buymeacoffee.com/freesurfforecast" target="_blank" rel="noopener">Buy me a coffee</a>
+        </div>
+    </footer>
+</body>
+</html>

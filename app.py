@@ -2170,6 +2170,27 @@ def glossary():
     return render_template('glossary.html')
 
 
+@app.route('/faq')
+def faq():
+    """FAQ page with schema.org FAQPage markup (targets question queries)."""
+    return render_template('faq.html')
+
+
+@app.route('/accuracy')
+def accuracy_page():
+    """Public forecast-verification report: our forecasts vs NDBC buoys."""
+    stats = _get_verification_stats()
+    regions = []
+    if stats and stats.get('stations'):
+        by_region = {}
+        for sid, st in stats['stations'].items():
+            by_region.setdefault(st.get('region') or 'Other', []).append((sid, st))
+        for region in sorted(by_region):
+            regions.append((region, sorted(by_region[region],
+                                           key=lambda x: x[1].get('name', ''))))
+    return render_template('accuracy.html', stats=stats, regions=regions)
+
+
 @app.route('/learn')
 def learn_index():
     """Index of /learn topic-cluster articles."""
@@ -2739,6 +2760,22 @@ def sitemap_xml():
     urls.append('    <priority>0.6</priority>')
     urls.append('  </url>')
 
+    # FAQ — question-query landing page with FAQPage structured data
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/faq</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>monthly</changefreq>')
+    urls.append('    <priority>0.6</priority>')
+    urls.append('  </url>')
+
+    # Accuracy report — regenerated every 6h by the verification pipeline
+    urls.append('  <url>')
+    urls.append('    <loc>https://freesurfforecast.com/accuracy</loc>')
+    urls.append(f'    <lastmod>{today}</lastmod>')
+    urls.append('    <changefreq>daily</changefreq>')
+    urls.append('    <priority>0.6</priority>')
+    urls.append('  </url>')
+
     # Comparison landing pages
     for _cmp in ('surfline', 'magicseaweed'):
         urls.append('  <url>')
@@ -2870,6 +2907,161 @@ def _compute_confidence(data, cache_key):
     }
 
 
+# --- Forecast verification / bias correction -------------------------------
+# A scheduled workflow (forecast-verification.yml) snapshots the live site's
+# forecasts at NDBC buoy locations and scores them against observed wave
+# heights, publishing rolling stats to the unprotected verification-data
+# branch. The app reads those stats to (a) render /accuracy and (b) nudge
+# /api/forecast wave heights by the measured model bias near the request.
+
+VERIFICATION_STATS_URL = os.environ.get(
+    'VERIFICATION_STATS_URL',
+    'https://raw.githubusercontent.com/ajkammerer93/surf_dash/verification-data/stats.json')
+VERIFICATION_STATS_FILE = os.environ.get('VERIFICATION_STATS_FILE')  # local/test override
+VERIFICATION_STATS_TTL = 6 * 3600
+VERIFICATION_STATS_STALE_MAX = 7 * 24 * 3600
+
+BIAS_CORRECTION_ENABLED = os.environ.get('BIAS_CORRECTION', '1') == '1'
+BIAS_MIN_PAIRS = 30          # per lead bin, inside the stats window
+BIAS_MAX_STATION_KM = 250    # a buoy's measured bias is only regionally valid
+BIAS_MIN_ADJUST_M = 0.05     # don't bother correcting below sensor noise
+BIAS_CAP_FRAC = 0.30         # never move a value more than 30%...
+BIAS_CAP_ABS_M = 0.60        # ...or 0.6 m, whichever is smaller
+BIAS_LEAD_BINS = [(0, 24, '0-24'), (24, 48, '24-48'), (48, 72, '48-72')]
+
+
+def _fetch_verification_stats():
+    try:
+        if VERIFICATION_STATS_FILE:
+            with open(VERIFICATION_STATS_FILE) as f:
+                stats = json.load(f)
+        else:
+            resp = requests.get(VERIFICATION_STATS_URL, timeout=10)
+            if not resp.ok:
+                logger.warning(f"Verification stats HTTP {resp.status_code}")
+                return None
+            stats = resp.json()
+        if not isinstance(stats, dict) or 'stations' not in stats:
+            return None
+        return stats
+    except Exception as e:
+        logger.warning(f"Verification stats fetch failed: {e}")
+        return None
+
+
+def _get_verification_stats():
+    stats = cached('verification:stats', _fetch_verification_stats,
+                   ttl=VERIFICATION_STATS_TTL)
+    if stats is None:
+        stale = _cache_get_stale('verification:stats', VERIFICATION_STATS_STALE_MAX)
+        if stale:
+            return stale['data']
+    return stats
+
+
+def _nearest_verification_station(stats, lat, lon):
+    """(station_id, station_dict, distance_km) of the nearest station with
+    any scored pairs, or None if none is within BIAS_MAX_STATION_KM."""
+    best = None
+    for sid, st in (stats.get('stations') or {}).items():
+        if st.get('lat') is None or st.get('lon') is None or not st.get('all'):
+            continue
+        d = haversine_distance(lat, lon, st['lat'], st['lon'])
+        if d <= BIAS_MAX_STATION_KM and (best is None or d < best[2]):
+            best = (sid, st, d)
+    return best
+
+
+def _bias_lead_bin(lead_hours):
+    if -24 <= lead_hours < 0:
+        # Already-elapsed hours shown on the chart: use the shortest-lead
+        # correction so there is no visible step at "now".
+        return BIAS_LEAD_BINS[0][2]
+    for lo, hi, label in BIAS_LEAD_BINS:
+        if lo <= lead_hours < hi or (lead_hours == hi and hi == BIAS_LEAD_BINS[-1][1]):
+            return label
+    return None
+
+
+def _apply_bias_correction(data, lat, lon):
+    """Subtract the locally-measured wave-height bias from forecast entries.
+
+    Gated hard: needs a verification buoy within BIAS_MAX_STATION_KM whose
+    lead bin has >= BIAS_MIN_PAIRS scored pairs and a bias above noise, and
+    adjustments are capped. Returns a corrected copy (never mutates the
+    cached dict — a second request would double-apply) with original values
+    kept in wave_height_raw; returns data unchanged when nothing qualifies.
+    """
+    if not BIAS_CORRECTION_ENABLED:
+        return data
+    stats = _get_verification_stats()
+    if not stats:
+        return data
+    near = _nearest_verification_station(stats, lat, lon)
+    if not near:
+        return data
+    sid, station, dist_km = near
+
+    adjustments = {}
+    n_pairs = 0
+    for _, _, label in BIAS_LEAD_BINS:
+        agg = (station.get('bins') or {}).get(label)
+        if agg and agg.get('n', 0) >= BIAS_MIN_PAIRS and \
+                abs(agg.get('bias_m', 0)) >= BIAS_MIN_ADJUST_M:
+            adjustments[label] = -agg['bias_m']
+            n_pairs += agg['n']
+    if not adjustments:
+        return data
+
+    now = datetime.now(timezone.utc)
+    corrected = dict(data)
+    entries = []
+    changed = 0
+    for entry in data.get('forecast', []):
+        wh = entry.get('wave_height')
+        label = None
+        if wh is not None:
+            try:
+                t = datetime.fromisoformat(entry['time'].replace('Z', '+00:00'))
+                label = _bias_lead_bin((t - now).total_seconds() / 3600.0)
+            except (KeyError, ValueError, AttributeError):
+                label = None
+        adj = adjustments.get(label)
+        if adj is None:
+            entries.append(entry)
+            continue
+        cap = min(BIAS_CAP_ABS_M, BIAS_CAP_FRAC * wh)
+        adj = max(-cap, min(cap, adj))
+        entry = dict(entry)
+        entry['wave_height_raw'] = wh
+        entry['wave_height'] = round(max(0.0, wh + adj), 2)
+        entries.append(entry)
+        changed += 1
+    if not changed:
+        return data
+
+    corrected['forecast'] = entries
+    corrected['bias_correction'] = {
+        'applied': True,
+        'station': sid,
+        'station_name': station.get('name', sid),
+        'distance_km': round(dist_km, 1),
+        'window_days': stats.get('window_days'),
+        'n_pairs': n_pairs,
+        'adjustments_m': {k: round(v, 3) for k, v in adjustments.items()},
+    }
+    return corrected
+
+
+@app.route('/api/accuracy')
+def accuracy_api():
+    """Rolling forecast-verification stats (bias/MAE/RMSE vs NDBC buoys)."""
+    stats = _get_verification_stats()
+    if not stats:
+        return jsonify({"error": "Verification stats unavailable."}), 503
+    return jsonify(stats)
+
+
 # Route for the API to get point forecast data
 @app.route('/api/forecast')
 def forecast():
@@ -2899,6 +3091,7 @@ def forecast():
             data['fetched_at'] = datetime.fromtimestamp(stale['time'], timezone.utc).isoformat()
 
     if data:
+        data = _apply_bias_correction(data, lat, lon)
         confidence = _compute_confidence(data, cache_key)
         data["confidence"] = confidence
         return jsonify(data)
