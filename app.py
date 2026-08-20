@@ -2540,6 +2540,17 @@ def _social_card_data(region_slug):
             'score': _simple_surf_score(e),
         })
 
+    # The verified 30-day error is the one claim no other free surf site
+    # makes, so it rides along on every card and caption.
+    accuracy_mae_ft = None
+    try:
+        vstats = _get_verification_stats()
+        mae_m = (((vstats or {}).get('overall') or {}).get('all') or {}).get('mae_m')
+        if mae_m:
+            accuracy_mae_ft = round(mae_m * 3.28084, 1)
+    except Exception as e:
+        logger.warning(f"Social card accuracy lookup failed: {e}")
+
     date_str = datetime.now(timezone.utc).strftime('%a %b %-d')
     lines = [f"{region['short_title']} surf check - {date_str}", '']
     for t in top:
@@ -2547,6 +2558,9 @@ def _social_card_data(region_slug):
         lines.append(f"{t['name']}: {t['height_ft']}ft @ {t['period_s']}s, {wind} wind")
     lines.append('')
     lines.append('Full 7-day forecasts, buoys, tides and cams - free, no account.')
+    if accuracy_mae_ft:
+        lines.append(f'We grade every forecast against NOAA buoys: '
+                     f'{accuracy_mae_ft}ft average error over the last 30 days.')
     lines.append('Link in bio or freesurfforecast.com')
     lines.append('')
     lines.append(f"{SOCIAL_BASE_HASHTAGS} {SOCIAL_HASHTAGS.get(region_slug, '')}".strip())
@@ -2556,6 +2570,7 @@ def _social_card_data(region_slug):
         'region_title': region['short_title'],
         'date': date_str,
         'top': top,
+        'accuracy_mae_ft': accuracy_mae_ft,
         'caption': '\n'.join(lines),
     }
 
@@ -2629,8 +2644,10 @@ def _render_social_card(data, fmt='PNG'):
     draw.text((pad, sub_y), "TODAY'S TOP SPOTS", fill=ACCENT, font=f_brand)
 
     # Center the row block between the header and footer
+    accuracy_ft = data.get('accuracy_mae_ft')
+    foot_h = 118 if accuracy_ft else 90
     row_h = 300
-    block_top, block_bottom = sub_y + 70, H - 90
+    block_top, block_bottom = sub_y + 70, H - foot_h
     total = len(data['top']) * row_h - 30
     y = block_top + max(0, (block_bottom - block_top - total) // 2)
     for i, t in enumerate(data['top']):
@@ -2655,11 +2672,16 @@ def _render_social_card(data, fmt='PNG'):
         y += row_h
 
     # Footer
-    draw.rectangle([(0, H - 90), (W, H)], fill=SURFACE)
-    draw.line([(0, H - 90), (W, H - 90)], fill=BORDER)
+    draw.rectangle([(0, H - foot_h), (W, H)], fill=SURFACE)
+    draw.line([(0, H - foot_h), (W, H - foot_h)], fill=BORDER)
     foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
     foot_w = draw.textlength(foot, font=f_foot)
-    draw.text(((W - foot_w) / 2, H - 64), foot, fill=TEXT_DIM, font=f_foot)
+    draw.text(((W - foot_w) / 2, H - foot_h + 22), foot, fill=TEXT, font=f_foot)
+    if accuracy_ft:
+        f_acc = _load_og_font('sans', 26)
+        acc = f'Graded against NOAA buoys - {accuracy_ft}ft average error, 30 days'
+        acc_w = draw.textlength(acc, font=f_acc)
+        draw.text(((W - acc_w) / 2, H - foot_h + 68), acc, fill=TEXT_DIM, font=f_acc)
 
     buf = io.BytesIO()
     if fmt == 'JPEG':
@@ -2717,6 +2739,7 @@ def social_card_meta(region_slug):
         'caption': data['caption'],
         'image_url': f"https://freesurfforecast.com/social/daily/{region_slug}.jpg",
         'image_url_png': f"https://freesurfforecast.com/social/daily/{region_slug}.png",
+        'accuracy_mae_ft': data.get('accuracy_mae_ft'),
         'spots': data['top'],
     })
 

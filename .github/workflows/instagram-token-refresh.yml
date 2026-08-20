@@ -1,0 +1,63 @@
+name: Instagram token refresh
+
+# Long-lived Instagram tokens expire 60 days after they are issued, and a
+# token that lapses cannot be refreshed -- it has to be re-authorized by hand.
+# This rolls the token forward monthly, well inside the window.
+#
+# Needs a GH_PAT repository secret: a fine-grained personal access token scoped
+# to this repository with "Secrets: read and write". The built-in GITHUB_TOKEN
+# cannot write secrets, so without GH_PAT the rotation cannot be stored and
+# this workflow deliberately fails rather than discarding a fresh token.
+
+on:
+  schedule:
+    - cron: '0 4 1 * *'  # 04:00 UTC on the 1st, ~30 days into a 60-day token
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+
+      - name: Check rotation is storable
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$IG_ACCESS_TOKEN" ]; then
+            echo "::notice::Instagram is not configured yet (no IG_ACCESS_TOKEN)."
+            echo "::notice::Nothing to refresh. See marketing/manual-steps.md step 6."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT is not set, so a refreshed token could not be"
+            echo "::error::saved. Refreshing anyway would return a new token"
+            echo "::error::that we would then throw away. Add a fine-grained PAT"
+            echo "::error::with Secrets write access as GH_PAT, or refresh by"
+            echo "::error::hand: python scripts/instagram_auth.py refresh"
+            exit 1
+          fi
+
+      - name: Refresh token
+        if: env.SKIP != '1'
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          NEW_TOKEN=$(python scripts/instagram_auth.py refresh --quiet)
+          # Mask before the value can reach any later log line.
+          echo "::add-mask::$NEW_TOKEN"
+          echo "NEW_TOKEN=$NEW_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Store rotated token
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh secret set IG_ACCESS_TOKEN --body "$NEW_TOKEN"
+          echo "IG_ACCESS_TOKEN rotated, good for another 60 days."

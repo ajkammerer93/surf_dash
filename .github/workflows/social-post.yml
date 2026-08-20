@@ -1,13 +1,17 @@
 name: Daily social post
 
-# Posts the day's regional surf card to Instagram via the Graph API.
-# Requires two repository secrets (Settings -> Secrets and variables -> Actions):
-#   IG_USER_ID       Instagram Business account id
-#   IG_ACCESS_TOKEN  long-lived token with instagram_content_publish scope
+# Posts the day's regional surf card to Instagram.
 #
-# The schedule is commented out until the secrets are configured — uncomment
-# it to enable automatic daily posting. Until then the workflow can be run
-# manually from the Actions tab (use dry_run to test without posting).
+# Requires two repository secrets (Settings -> Secrets and variables -> Actions),
+# both produced by scripts/instagram_auth.py:
+#   IG_USER_ID       Instagram user id
+#   IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
+#
+# The schedule is commented out until those secrets exist — uncomment it to
+# enable automatic daily posting. Until then the workflow runs manually from
+# the Actions tab (use dry_run to print the card without posting).
+#
+# Tokens expire after 60 days; instagram-token-refresh.yml rotates them.
 
 on:
   workflow_dispatch:

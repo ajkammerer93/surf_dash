@@ -15,13 +15,14 @@ Actions, but also works as a manual weekly routine:
     python scripts/instagram_publish.py
 
 Credentials (env vars):
-    IG_USER_ID       Instagram Business account id
-    IG_ACCESS_TOKEN  long-lived Graph API token with instagram_content_publish
+    IG_USER_ID       Instagram user id (from scripts/instagram_auth.py)
+    IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
 
-Setup requires a one-time Meta app configuration (Professional IG account
-linked to a Facebook Page, app with the Instagram Graph API product, and a
-long-lived token). Tokens last ~60 days; the script reports the Graph API
-error clearly when one expires.
+Setup is handled by scripts/instagram_auth.py, which uses "Instagram API with
+Instagram Login" -- no linked Facebook Page required, just a Professional
+Instagram account. Tokens last 60 days and must be refreshed before then; the
+token-refresh workflow watches the clock and this script reports the API error
+clearly when one has expired.
 """
 import argparse
 import os
@@ -32,7 +33,9 @@ from datetime import datetime, timedelta
 import requests
 
 BASE_URL = 'https://freesurfforecast.com'
-GRAPH_URL = 'https://graph.facebook.com/v21.0'
+# Instagram Login path. The Facebook Login path (graph.facebook.com) needs a
+# linked Page and a Page access token; this one needs neither.
+GRAPH_URL = 'https://graph.instagram.com/v25.0'
 
 # One region per weekday (Mon..Sun). Rotating regions keeps the feed varied
 # without any per-day decisions.
@@ -66,6 +69,11 @@ def fetch_card(base_url, region, retries=3, wait_s=25):
 
 def publish(ig_user_id, token, image_url, caption):
     """Two-step Graph API publish: create a media container, then publish it."""
+    # The API fetches this URL itself and accepts JPEG only -- a PNG here comes
+    # back as an opaque media-download error, so fail with a readable one.
+    if not image_url.lower().split('?')[0].endswith(('.jpg', '.jpeg')):
+        sys.exit(f'Instagram accepts JPEG only, refusing to post {image_url}. '
+                 'Use the .jpg card variant.')
     create = requests.post(
         f'{GRAPH_URL}/{ig_user_id}/media',
         data={'image_url': image_url, 'caption': caption, 'access_token': token},
@@ -75,8 +83,10 @@ def publish(ig_user_id, token, image_url, caption):
     if 'id' not in body:
         err = body.get('error', {})
         if err.get('code') == 190:
-            sys.exit('Access token expired or invalid - generate a new long-lived '
-                     'token and update the IG_ACCESS_TOKEN secret.')
+            sys.exit('Access token expired or invalid - run '
+                     '"python scripts/instagram_auth.py refresh" if it is still '
+                     'within 60 days, otherwise re-authorize with the "url" and '
+                     '"exchange" commands, then update the IG_ACCESS_TOKEN secret.')
         sys.exit(f'Media container creation failed: {body}')
     creation_id = body['id']
 

@@ -596,11 +596,18 @@ class TestSocialCards:
         'location_timezone': 'America/New_York', 'source': 'Open-Meteo',
     }
 
-    def _with_fake_upstream(self, client, path):
+    # 0.152 m is the real 30-day MAE at the time of writing -> 0.5 ft.
+    FAKE_VERIFICATION = {'stations': {}, 'overall': {'all': {'mae_m': 0.152}}}
+
+    def _with_fake_upstream(self, client, path, verification=True):
         from unittest.mock import patch
         import app as a
         a._cache.pop('social:virginia-coast', None)
-        with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST):
+        stats = self.FAKE_VERIFICATION if verification else None
+        # Patched, not merely faked: the real lookup would reach out to
+        # raw.githubusercontent on a 10s timeout during the test run.
+        with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST), \
+                patch('app._get_verification_stats', return_value=stats):
             return client.get(path)
 
     def test_png_route(self, client):
@@ -633,6 +640,28 @@ class TestSocialCards:
         assert client.get('/social/daily/atlantis.png').status_code == 404
         assert client.get('/social/daily/atlantis.jpg').status_code == 404
         assert client.get('/api/social-card/atlantis').status_code == 404
+
+    def test_caption_carries_verified_accuracy(self, client):
+        resp = self._with_fake_upstream(client, '/api/social-card/virginia-coast')
+        d = resp.get_json()
+        assert d['accuracy_mae_ft'] == 0.5
+        assert '0.5ft average error' in d['caption']
+        assert 'NOAA buoys' in d['caption']
+
+    def test_card_renders_without_verification_stats(self, client):
+        """The accuracy line is a bonus, never a hard dependency -- if the
+        stats fetch is down the card must still render."""
+        resp = self._with_fake_upstream(
+            client, '/api/social-card/virginia-coast', verification=False)
+        assert resp.status_code == 200
+        d = resp.get_json()
+        assert d['accuracy_mae_ft'] is None
+        assert 'average error' not in d['caption']
+
+        png = self._with_fake_upstream(
+            client, '/social/daily/virginia-coast.png', verification=False)
+        assert png.status_code == 200
+        assert png.data[:8] == b'\x89PNG\r\n\x1a\n'
 
     def test_card_title_fits_canvas_for_every_region(self):
         """Long region names used to run off the 1080px canvas at a fixed
