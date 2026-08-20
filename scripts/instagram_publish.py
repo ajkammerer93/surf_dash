@@ -39,6 +39,19 @@ GRAPH_URL = 'https://graph.instagram.com/v25.0'
 
 # One region per weekday (Mon..Sun). Rotating regions keeps the feed varied
 # without any per-day decisions.
+# Which schedule each region belongs to. Posting a Southern California card at
+# 4am Pacific or a Hawaii card at 1am local means reporting overnight
+# conditions to a sleeping audience, so the Pacific regions run on a later cron.
+REGION_GROUPS = {
+    'outer-banks': 'east',
+    'southern-california': 'west',
+    'great-lakes': 'east',
+    'jersey-shore': 'east',
+    'florida-space-coast': 'east',
+    'hawaii-north-shore': 'west',
+    'new-england': 'east',
+}
+
 REGION_ROTATION = [
     'outer-banks',          # Monday
     'southern-california',  # Tuesday
@@ -67,16 +80,26 @@ def fetch_card(base_url, region, retries=3, wait_s=25):
     return None
 
 
-def publish(ig_user_id, token, image_url, caption):
-    """Two-step Graph API publish: create a media container, then publish it."""
+def publish(ig_user_id, token, image_url, caption, story=False):
+    """Two-step Graph API publish: create a media container, then publish it.
+
+    A story uses media_type=STORIES, carries no caption at all, and expires
+    after 24 hours -- which is why the story image has to repeat the call to
+    action the feed caption would otherwise provide.
+    """
     # The API fetches this URL itself and accepts JPEG only -- a PNG here comes
     # back as an opaque media-download error, so fail with a readable one.
     if not image_url.lower().split('?')[0].endswith(('.jpg', '.jpeg')):
         sys.exit(f'Instagram accepts JPEG only, refusing to post {image_url}. '
                  'Use the .jpg card variant.')
+    fields = {'image_url': image_url, 'access_token': token}
+    if story:
+        fields['media_type'] = 'STORIES'
+    else:
+        fields['caption'] = caption
     create = requests.post(
         f'{GRAPH_URL}/{ig_user_id}/media',
-        data={'image_url': image_url, 'caption': caption, 'access_token': token},
+        data=fields,
         timeout=60,
     )
     body = create.json()
@@ -113,6 +136,12 @@ def main():
                         help='Print image URL + caption without posting')
     parser.add_argument('--week', action='store_true',
                         help="With --dry-run: print the next 7 days' rotation")
+    parser.add_argument('--no-story', action='store_true',
+                        help='Post only the feed card, skip the story')
+    parser.add_argument('--group', choices=['east', 'west'],
+                        help='Only post if the day\'s region is in this group; '
+                             'lets one schedule serve East Coast mornings and '
+                             'another serve Pacific mornings')
     args = parser.parse_args()
 
     if args.week and not args.dry_run:
@@ -124,6 +153,12 @@ def main():
         regions = [(d.strftime('%A %b %d'), REGION_ROTATION[d.weekday()]) for d in days]
     else:
         region = args.region or REGION_ROTATION[today.weekday()]
+        # An explicitly requested region is a deliberate manual post, so the
+        # schedule's group filter should not veto it.
+        if not args.region and args.group and REGION_GROUPS.get(region) != args.group:
+            print(f"Today's region ({region}) is not in the {args.group} group "
+                  f"- nothing to do on this schedule.")
+            sys.exit(0)
         regions = [(today.strftime('%A %b %d'), region)]
 
     failures = 0
@@ -150,6 +185,17 @@ def main():
                      'scheduling).')
         media_id = publish(ig_user_id, token, card['image_url'], card['caption'])
         print(f'  published: media id {media_id}')
+
+        if not args.no_story and card.get('story_image_url'):
+            try:
+                story_id = publish(ig_user_id, token, card['story_image_url'],
+                                   None, story=True)
+                print(f'  story:     media id {story_id}')
+            except SystemExit as e:
+                # The feed post already went up; report the story failure
+                # loudly but do not pretend the whole run failed silently.
+                print(f'  STORY FAILED: {e}')
+                failures += 1
 
     sys.exit(1 if failures else 0)
 

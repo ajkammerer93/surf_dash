@@ -7,8 +7,10 @@ name: Daily social post
 #   IG_USER_ID       Instagram user id
 #   IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
 #
-# Posts daily on a schedule; it can also be run manually from the Actions tab
-# (use dry_run to print the card without posting).
+# Posts daily on two schedules -- one per coast, so each region lands near its
+# own local dawn. Each run publishes a feed card and a matching Story.
+# Can also be run manually from the Actions tab (use dry_run to print the card
+# without posting).
 #
 # Tokens expire after 60 days; instagram-token-refresh.yml rotates them.
 
@@ -24,7 +26,11 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 11 * * *'  # 11:00 UTC, around dawn US East Coast
+    # Two schedules so each coast gets a dawn-ish post rather than one time
+    # that suits the East Coast and catches the Pacific asleep. Minute 7
+    # rather than 0: top-of-hour is when Actions queues are most congested.
+    - cron: '7 11 * * *'   # 07:00 ET  -- east group
+    - cron: '7 16 * * *'   # 09:00 PT / 06:00 HT -- west group
 
 jobs:
   post:
@@ -41,8 +47,15 @@ jobs:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           INPUT_REGION: ${{ inputs.region }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           ARGS=""
           if [ -n "$INPUT_REGION" ]; then ARGS="$ARGS --region $INPUT_REGION"; fi
           if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          # Which cron fired decides which coast posts. A manual run sends no
+          # group, so it posts whatever region the rotation names today.
+          case "$SCHEDULE" in
+            "7 11 * * *") ARGS="$ARGS --group east" ;;
+            "7 16 * * *") ARGS="$ARGS --group west" ;;
+          esac
           python scripts/instagram_publish.py $ARGS

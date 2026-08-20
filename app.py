@@ -2594,16 +2594,20 @@ def _fit_card_title(draw, text, max_width, max_size=58, min_size=38):
     return font, min_size, (best[1] if best else [text])
 
 
-def _render_social_card(data, fmt='PNG'):
-    """Render the 1080x1350 (4:5 portrait) Instagram card.
+def _render_social_card(data, fmt='PNG', story=False):
+    """Render the Instagram card: 1080x1350 (4:5 feed) or 1080x1920 (9:16 story).
 
-    fmt is 'PNG' or 'JPEG'. Instagram's content-publishing API accepts
-    JPEG only, so the posting pipeline pulls the .jpg variant.
+    fmt is 'PNG' or 'JPEG'. Instagram's content-publishing API accepts JPEG
+    only, so the posting pipeline pulls the .jpg variants.
+
+    Stories carry no caption, so the story layout has to say on its own what
+    the feed caption would have said -- hence the call-to-action band that the
+    feed card does without.
     """
     from PIL import Image, ImageDraw
     import io
 
-    W, H = 1080, 1350
+    W, H = 1080, (1920 if story else 1350)
     BG = (10, 10, 10)
     SURFACE = (20, 20, 20)
     BORDER = (42, 42, 42)
@@ -2645,13 +2649,21 @@ def _render_social_card(data, fmt='PNG'):
 
     # Center the row block between the header and footer
     accuracy_ft = data.get('accuracy_mae_ft')
-    foot_h = 118 if accuracy_ft else 90
-    row_h = 300
-    block_top, block_bottom = sub_y + 70, H - foot_h
-    total = len(data['top']) * row_h - 30
+    if story:
+        foot_h = 90 if accuracy_ft else 40
+    else:
+        foot_h = 118 if accuracy_ft else 90
+    # row_h is the pitch between cards; the card box itself stays 270 tall in
+    # both layouts, so the taller story canvas spreads the cards out rather
+    # than stretching each one around the same fixed-position content.
+    row_h = 430 if story else 300
+    box_h = 270
+    cta_h = 150 if story else 0
+    block_top, block_bottom = sub_y + 70, H - foot_h - cta_h
+    total = (len(data['top']) - 1) * row_h + box_h
     y = block_top + max(0, (block_bottom - block_top - total) // 2)
     for i, t in enumerate(data['top']):
-        draw.rectangle([(pad - 20, y), (W - pad + 20, y + row_h - 30)],
+        draw.rectangle([(pad - 20, y), (W - pad + 20, y + box_h)],
                        fill=SURFACE, outline=BORDER)
         draw.text((pad, y + 24), f"{i + 1}.  {t['name']}", fill=TEXT, font=f_spot)
         # Big height number + unit
@@ -2671,17 +2683,31 @@ def _render_social_card(data, fmt='PNG'):
                   t['condition'], fill=cond_color, font=f_cond)
         y += row_h
 
+    if story:
+        # No caption on a story, so the URL has to carry the ask itself.
+        f_cta = _load_og_font('sans_bold', 46)
+        f_cta_sub = _load_og_font('sans', 30)
+        cta_y = H - foot_h - cta_h + 16
+        cta = 'freesurfforecast.com'
+        draw.text(((W - draw.textlength(cta, font=f_cta)) / 2, cta_y),
+                  cta, fill=ACCENT, font=f_cta)
+        sub = '7-day forecasts, buoys, tides and cams - free, no account'
+        draw.text(((W - draw.textlength(sub, font=f_cta_sub)) / 2, cta_y + 62),
+                  sub, fill=TEXT_DIM, font=f_cta_sub)
+
     # Footer
     draw.rectangle([(0, H - foot_h), (W, H)], fill=SURFACE)
     draw.line([(0, H - foot_h), (W, H - foot_h)], fill=BORDER)
-    foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
-    foot_w = draw.textlength(foot, font=f_foot)
-    draw.text(((W - foot_w) / 2, H - foot_h + 22), foot, fill=TEXT, font=f_foot)
+    if not story:
+        foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
+        foot_w = draw.textlength(foot, font=f_foot)
+        draw.text(((W - foot_w) / 2, H - foot_h + 22), foot, fill=TEXT, font=f_foot)
     if accuracy_ft:
         f_acc = _load_og_font('sans', 26)
         acc = f'Graded against NOAA buoys - {accuracy_ft}ft average error, 30 days'
         acc_w = draw.textlength(acc, font=f_acc)
-        draw.text(((W - acc_w) / 2, H - foot_h + 68), acc, fill=TEXT_DIM, font=f_acc)
+        acc_y = H - foot_h + (34 if story else 68)
+        draw.text(((W - acc_w) / 2, acc_y), acc, fill=TEXT_DIM, font=f_acc)
 
     buf = io.BytesIO()
     if fmt == 'JPEG':
@@ -2691,8 +2717,8 @@ def _render_social_card(data, fmt='PNG'):
     return buf.getvalue()
 
 
-def _serve_social_card(region_slug, fmt):
-    """Shared body for the .png and .jpg card routes."""
+def _serve_social_card(region_slug, fmt, story=False):
+    """Shared body for the feed and story card routes."""
     from region_pages import REGIONS_BY_SLUG
     from flask import abort
     if region_slug not in REGIONS_BY_SLUG:
@@ -2701,7 +2727,7 @@ def _serve_social_card(region_slug, fmt):
     if not data:
         abort(503)
     try:
-        img_bytes = _render_social_card(data, fmt=fmt)
+        img_bytes = _render_social_card(data, fmt=fmt, story=story)
     except Exception as e:
         logger.error(f"Social card render failed for {region_slug}: {e}")
         abort(500)
@@ -2724,6 +2750,18 @@ def social_card_jpg(region_slug):
     return _serve_social_card(region_slug, 'JPEG')
 
 
+@app.route('/social/story/<region_slug>.jpg')
+def social_story_jpg(region_slug):
+    """1080x1920 (9:16) variant for Instagram Stories."""
+    return _serve_social_card(region_slug, 'JPEG', story=True)
+
+
+@app.route('/social/story/<region_slug>.png')
+def social_story_png(region_slug):
+    """PNG story variant, for previewing the layout."""
+    return _serve_social_card(region_slug, 'PNG', story=True)
+
+
 @app.route('/api/social-card/<region_slug>')
 def social_card_meta(region_slug):
     """Caption + spot metadata matching /social/daily/<region>.png."""
@@ -2739,6 +2777,7 @@ def social_card_meta(region_slug):
         'caption': data['caption'],
         'image_url': f"https://freesurfforecast.com/social/daily/{region_slug}.jpg",
         'image_url_png': f"https://freesurfforecast.com/social/daily/{region_slug}.png",
+        'story_image_url': f"https://freesurfforecast.com/social/story/{region_slug}.jpg",
         'accuracy_mae_ft': data.get('accuracy_mae_ft'),
         'spots': data['top'],
     })

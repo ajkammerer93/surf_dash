@@ -663,6 +663,40 @@ class TestSocialCards:
         assert png.status_code == 200
         assert png.data[:8] == b'\x89PNG\r\n\x1a\n'
 
+    def test_story_route(self, client):
+        """Stories need a 9:16 canvas, not the 4:5 feed card letterboxed."""
+        from PIL import Image
+        import io as _io
+        resp = self._with_fake_upstream(client, '/social/story/virginia-coast.jpg')
+        assert resp.status_code == 200
+        assert resp.content_type == 'image/jpeg'
+        assert Image.open(_io.BytesIO(resp.data)).size == (1080, 1920)
+
+    def test_feed_and_story_sizes_differ(self, client):
+        from PIL import Image
+        import io as _io
+        feed = self._with_fake_upstream(client, '/social/daily/virginia-coast.jpg')
+        assert Image.open(_io.BytesIO(feed.data)).size == (1080, 1350)
+
+    def test_caption_api_exposes_story_url(self, client):
+        resp = self._with_fake_upstream(client, '/api/social-card/virginia-coast')
+        d = resp.get_json()
+        assert d['story_image_url'].endswith('/social/story/virginia-coast.jpg')
+
+    def test_every_rotation_region_has_a_posting_group(self):
+        """Each region must map to a schedule group, or its day silently
+        posts nothing once the cron is split by coast."""
+        import importlib.util, os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            'instagram_publish', os.path.join(root, 'scripts', 'instagram_publish.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert len(mod.REGION_ROTATION) == 7
+        for region in mod.REGION_ROTATION:
+            assert region in mod.REGION_GROUPS, f'{region} has no posting group'
+            assert mod.REGION_GROUPS[region] in ('east', 'west')
+
     def test_card_title_fits_canvas_for_every_region(self):
         """Long region names used to run off the 1080px canvas at a fixed
         58px title. Every region must fit within the padded width."""
