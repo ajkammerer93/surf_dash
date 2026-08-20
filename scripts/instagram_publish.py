@@ -138,6 +138,9 @@ def main():
                         help="With --dry-run: print the next 7 days' rotation")
     parser.add_argument('--no-story', action='store_true',
                         help='Post only the feed card, skip the story')
+    parser.add_argument('--story-only', action='store_true',
+                        help='Post only the story, skip the feed card -- lets '
+                             'you test stories without duplicating a feed post')
     parser.add_argument('--group', choices=['east', 'west'],
                         help='Only post if the day\'s region is in this group; '
                              'lets one schedule serve East Coast mornings and '
@@ -146,6 +149,8 @@ def main():
 
     if args.week and not args.dry_run:
         sys.exit('--week only makes sense with --dry-run')
+    if args.story_only and args.no_story:
+        sys.exit('--story-only and --no-story cancel each other out')
 
     today = datetime.now()
     if args.week:
@@ -183,8 +188,9 @@ def main():
             sys.exit('IG_USER_ID and IG_ACCESS_TOKEN env vars are required to '
                      'post (or use --dry-run to print the card for manual '
                      'scheduling).')
-        media_id = publish(ig_user_id, token, card['image_url'], card['caption'])
-        print(f'  published: media id {media_id}')
+        if not args.story_only:
+            media_id = publish(ig_user_id, token, card['image_url'], card['caption'])
+            print(f'  published: media id {media_id}')
 
         if not args.no_story and card.get('story_image_url'):
             try:
@@ -192,8 +198,8 @@ def main():
                                    None, story=True)
                 print(f'  story:     media id {story_id}')
             except SystemExit as e:
-                # The feed post already went up; report the story failure
-                # loudly but do not pretend the whole run failed silently.
+                # On a normal run the feed post already went up, so report the
+                # story failure loudly but keep the two outcomes distinct.
                 print(f'  STORY FAILED: {e}')
                 failures += 1
 
