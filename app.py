@@ -2691,7 +2691,9 @@ def _render_social_card(data, fmt='PNG', story=False):
         cta = 'freesurfforecast.com'
         draw.text(((W - draw.textlength(cta, font=f_cta)) / 2, cta_y),
                   cta, fill=ACCENT, font=f_cta)
-        sub = '7-day forecasts, buoys, tides and cams - free, no account'
+        # The API cannot attach a link sticker to a story, so the only route
+        # off the image is the profile link -- say so explicitly.
+        sub = 'Link in bio - 7-day forecasts, buoys, tides, cams. Free.'
         draw.text(((W - draw.textlength(sub, font=f_cta_sub)) / 2, cta_y + 62),
                   sub, fill=TEXT_DIM, font=f_cta_sub)
 
