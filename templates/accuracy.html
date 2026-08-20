@@ -12,12 +12,12 @@
     <meta property="og:description" content="The surf forecast that grades itself — live verification against NOAA buoys.">
     <meta property="og:url" content="https://freesurfforecast.com/accuracy">
     <meta property="og:site_name" content="Free Surf Forecast">
-    <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
+    <meta property="og:image" content="https://freesurfforecast.com/og/accuracy.png">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Forecast Accuracy Report | Free Surf Forecast">
     <meta name="twitter:description" content="The surf forecast that grades itself — live verification against NOAA buoys.">
-    <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
+    <meta name="twitter:image" content="https://freesurfforecast.com/og/accuracy.png">
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
 
@@ -260,7 +260,15 @@
             The surf forecast that grades itself. Every 6 hours we snapshot our own
             forecasts at NOAA buoy locations, then score them against what the buoys
             actually measured. No cherry-picking — every scored forecast is counted,
-            and the raw numbers are in the <a href="/api/accuracy">open JSON dataset</a>.
+            and every scored pair is published as an open dataset.
+        </p>
+
+        <p class="tagline" style="margin-top: -0.5rem;">
+            Check our work:
+            <a href="/api/accuracy">summary JSON</a> &middot;
+            <a href="/accuracy/stations.csv">per-station CSV</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash/blob/verification-data/pairs.jsonl">every scored pair</a> &middot;
+            <a href="https://github.com/ajkammerer93/surf_dash/blob/master/scripts/forecast_verification.py">the scoring code</a>
         </p>
 
         {% if stats and stats.n_pairs and stats.overall.all %}

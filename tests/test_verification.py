@@ -300,3 +300,55 @@ class TestRoutes:
         for s in data["stations"]:
             assert -90 < s["lat"] < 90 and -180 < s["lon"] < 180
             assert s["name"] and s["region"]
+
+
+class TestAccuracyPublicArtifacts:
+    """The accuracy claim only lands if a skeptic can check it and a shared
+    link previews the actual numbers."""
+
+    def _with_stats(self, path, stats):
+        orig = app_module._get_verification_stats
+        app_module._get_verification_stats = lambda: stats
+        try:
+            return app.test_client().get(path)
+        finally:
+            app_module._get_verification_stats = orig
+
+    def test_stations_csv(self):
+        stats = _stats_for("41110", 34.43, -77.55, bias_m=0.2)
+        resp = self._with_stats('/accuracy/stations.csv', stats)
+        assert resp.status_code == 200
+        assert 'text/csv' in resp.content_type
+        assert 'attachment' in resp.headers.get('Content-Disposition', '')
+        lines = resp.data.decode().splitlines()
+        assert lines[0].startswith('station_id,name,region')
+        # one 'all' row plus the three lead bins
+        assert len(lines) == 5
+        assert all(line.startswith('41110,') for line in lines[1:])
+
+    def test_stations_csv_degrades_without_stats(self):
+        resp = self._with_stats('/accuracy/stations.csv', None)
+        assert resp.status_code == 503
+
+    def test_accuracy_og_image(self):
+        from PIL import Image
+        import io as _io
+        stats = _stats_for("41110", 34.43, -77.55, bias_m=0.2)
+        resp = self._with_stats('/og/accuracy.png', stats)
+        assert resp.status_code == 200
+        assert resp.content_type == 'image/png'
+        assert Image.open(_io.BytesIO(resp.data)).size == (1200, 630)
+
+    def test_accuracy_og_renders_without_stats(self):
+        """A stats outage must not break link previews."""
+        resp = self._with_stats('/og/accuracy.png', None)
+        assert resp.status_code == 200
+
+    def test_accuracy_page_points_at_its_own_og_image(self):
+        stats = _stats_for("41110", 34.43, -77.55, bias_m=0.2)
+        html = self._with_stats('/accuracy', stats).data.decode()
+        assert 'og/accuracy.png' in html
+        assert 'static/og-image.png' not in html
+        # the check-our-work links
+        assert '/accuracy/stations.csv' in html
+        assert 'pairs.jsonl' in html

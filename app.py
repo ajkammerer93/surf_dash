@@ -2379,6 +2379,96 @@ def _render_og_image(slug, location):
     return buf.getvalue()
 
 
+def _render_accuracy_og():
+    """1200x630 OG card for /accuracy, carrying the live headline numbers.
+
+    A shared accuracy link is the whole pitch -- "we score ourselves against
+    NOAA buoys and here is the miss" -- so the preview image has to state the
+    numbers rather than show generic branding.
+    """
+    from PIL import Image, ImageDraw
+    import io as _io
+
+    W, H = 1200, 630
+    BG = (10, 10, 10)
+    SURFACE = (20, 20, 20)
+    BORDER = (42, 42, 42)
+    TEXT = (232, 232, 232)
+    TEXT_DIM = (136, 136, 136)
+    ACCENT = (68, 255, 136)
+
+    stats = _get_verification_stats() or {}
+    overall = ((stats.get('overall') or {}).get('all') or {})
+    n_pairs = overall.get('n') or stats.get('n_pairs') or 0
+    mae_m = overall.get('mae_m')
+    mae_ft = f'{mae_m * 3.28084:.1f} ft' if mae_m else '--'
+    n_stations = len(stats.get('stations') or {})
+
+    img = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W, 8)], fill=ACCENT)
+
+    pad = 64
+    f_brand = _load_og_font('sans_bold', 24)
+    f_head = _load_og_font('sans_bold', 60)
+    f_sub = _load_og_font('sans', 28)
+    f_stat = _load_og_font('mono_bold', 72)
+    f_label = _load_og_font('sans', 24)
+    f_foot = _load_og_font('sans_bold', 26)
+
+    draw.text((pad, 44), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    draw.text((pad, 96), 'The surf forecast', fill=TEXT, font=f_head)
+    draw.text((pad, 166), 'that grades itself', fill=ACCENT, font=f_head)
+    draw.text((pad, 254),
+              'Every forecast scored against NOAA buoy observations.',
+              fill=TEXT_DIM, font=f_sub)
+
+    # Three stat tiles
+    tiles = [
+        (f'{n_pairs:,}', 'forecasts scored'),
+        (mae_ft, 'average miss'),
+        (str(n_stations), 'buoys, every region'),
+    ]
+    tile_w = (W - 2 * pad - 40) // 3
+    ty = 330
+    for i, (value, label) in enumerate(tiles):
+        tx = pad + i * (tile_w + 20)
+        draw.rectangle([(tx, ty), (tx + tile_w, ty + 180)],
+                       fill=SURFACE, outline=BORDER)
+        # Shrink the value if it would overflow its tile.
+        f_val = f_stat
+        for size in range(72, 32, -4):
+            f_val = _load_og_font('mono_bold', size)
+            if draw.textlength(value, font=f_val) <= tile_w - 40:
+                break
+        draw.text((tx + 24, ty + 34), value, fill=ACCENT, font=f_val)
+        draw.text((tx + 24, ty + 128), label, fill=TEXT_DIM, font=f_label)
+
+    draw.text((pad, H - 62), 'freesurfforecast.com/accuracy',
+              fill=TEXT, font=f_foot)
+    rolling = 'Rolling 30-day window, updated every 6 hours'
+    draw.text((W - pad - draw.textlength(rolling, font=f_label), H - 58),
+              rolling, fill=TEXT_DIM, font=f_label)
+
+    buf = _io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
+@app.route('/og/accuracy.png')
+def og_accuracy_image():
+    """OG preview image for /accuracy, rendered from the live stats."""
+    try:
+        png_bytes = _render_accuracy_og()
+    except Exception as e:
+        logger.error(f"Accuracy OG render failed: {e}")
+        from flask import abort
+        abort(500)
+    resp = Response(png_bytes, mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
+
+
 @app.route('/og/<slug>.png')
 def og_image(slug):
     """Return a 1200x630 PNG OG image for the given forecast slug."""
@@ -3157,6 +3247,42 @@ def _apply_bias_correction(data, lat, lon):
         'adjustments_m': {k: round(v, 3) for k, v in adjustments.items()},
     }
     return corrected
+
+
+@app.route('/accuracy/stations.csv')
+def accuracy_csv():
+    """Per-station verification stats as CSV.
+
+    The JSON endpoint is the machine-readable source, but a spreadsheet is
+    what a blogger or reporter checking the claim will actually open.
+    """
+    import csv as _csv
+    from io import StringIO
+    stats = _get_verification_stats()
+    if not stats or not stats.get('stations'):
+        return Response('', mimetype='text/csv', status=503)
+
+    buf = StringIO()
+    w = _csv.writer(buf)
+    w.writerow(['station_id', 'name', 'region', 'lat', 'lon', 'lead_bin',
+                'n_pairs', 'bias_m', 'mae_m', 'rmse_m', 'period_bias_s'])
+    for sid, st in sorted(stats['stations'].items()):
+        rows = [('all', st.get('all') or {})]
+        rows += sorted((st.get('bins') or {}).items())
+        for label, agg in rows:
+            if not agg:
+                continue
+            w.writerow([sid, st.get('name', ''), st.get('region', ''),
+                        st.get('lat', ''), st.get('lon', ''), label,
+                        agg.get('n', ''), agg.get('bias_m', ''),
+                        agg.get('mae_m', ''), agg.get('rmse_m', ''),
+                        agg.get('period_bias_s', '')])
+
+    resp = Response(buf.getvalue(), mimetype='text/csv')
+    resp.headers['Content-Disposition'] = \
+        'attachment; filename="freesurfforecast-accuracy-stations.csv"'
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
 
 
 @app.route('/api/accuracy')
