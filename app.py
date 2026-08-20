@@ -2560,8 +2560,31 @@ def _social_card_data(region_slug):
     }
 
 
-def _render_social_card(data):
-    """Render the 1080x1350 (4:5 portrait) Instagram card PNG."""
+def _fit_card_title(draw, text, max_width, max_size=58, min_size=38):
+    """Pick the largest title font that fits max_width, wrapping to two lines
+    only when even min_size overflows. Long region names ("South Carolina &
+    Georgia Surf Check") ran off the 1080px canvas at the old fixed size."""
+    for size in range(max_size, min_size - 1, -2):
+        font = _load_og_font('sans_bold', size)
+        if draw.textlength(text, font=font) <= max_width:
+            return font, size, [text]
+    font = _load_og_font('sans_bold', min_size)
+    words = text.split()
+    best = None
+    for i in range(1, len(words)):
+        pair = [' '.join(words[:i]), ' '.join(words[i:])]
+        widest = max(draw.textlength(line, font=font) for line in pair)
+        if best is None or widest < best[0]:
+            best = (widest, pair)
+    return font, min_size, (best[1] if best else [text])
+
+
+def _render_social_card(data, fmt='PNG'):
+    """Render the 1080x1350 (4:5 portrait) Instagram card.
+
+    fmt is 'PNG' or 'JPEG'. Instagram's content-publishing API accepts
+    JPEG only, so the posting pipeline pulls the .jpg variant.
+    """
     from PIL import Image, ImageDraw
     import io
 
@@ -2584,7 +2607,6 @@ def _render_social_card(data):
 
     pad = 64
     f_brand = _load_og_font('sans_bold', 28)
-    f_title = _load_og_font('sans_bold', 58)
     f_date = _load_og_font('sans', 28)
     f_spot = _load_og_font('sans_bold', 40)
     f_huge = _load_og_font('mono_bold', 110)
@@ -2598,12 +2620,17 @@ def _render_social_card(data):
     draw.text((W - pad - date_w, 52), data['date'], fill=TEXT_DIM, font=f_date)
 
     title = f"{data['region_title']} Surf Check"
-    draw.text((pad, 120), title, fill=TEXT, font=f_title)
-    draw.text((pad, 200), "TODAY'S TOP SPOTS", fill=ACCENT, font=f_brand)
+    f_title, title_size, title_lines = _fit_card_title(draw, title, W - 2 * pad)
+    title_y = 120
+    line_h = title_size + 6
+    for i, line in enumerate(title_lines):
+        draw.text((pad, title_y + i * line_h), line, fill=TEXT, font=f_title)
+    sub_y = title_y + len(title_lines) * line_h + 16
+    draw.text((pad, sub_y), "TODAY'S TOP SPOTS", fill=ACCENT, font=f_brand)
 
     # Center the row block between the header and footer
     row_h = 300
-    block_top, block_bottom = 270, H - 90
+    block_top, block_bottom = sub_y + 70, H - 90
     total = len(data['top']) * row_h - 30
     y = block_top + max(0, (block_bottom - block_top - total) // 2)
     for i, t in enumerate(data['top']):
@@ -2635,30 +2662,44 @@ def _render_social_card(data):
     draw.text(((W - foot_w) / 2, H - 64), foot, fill=TEXT_DIM, font=f_foot)
 
     buf = io.BytesIO()
-    img.save(buf, format='PNG')
+    if fmt == 'JPEG':
+        img.save(buf, format='JPEG', quality=90, optimize=True, progressive=True)
+    else:
+        img.save(buf, format='PNG')
     return buf.getvalue()
+
+
+def _serve_social_card(region_slug, fmt):
+    """Shared body for the .png and .jpg card routes."""
+    from region_pages import REGIONS_BY_SLUG
+    from flask import abort
+    if region_slug not in REGIONS_BY_SLUG:
+        abort(404)
+    data = cached(f"social:{region_slug}", lambda: _social_card_data(region_slug), ttl=3600)
+    if not data:
+        abort(503)
+    try:
+        img_bytes = _render_social_card(data, fmt=fmt)
+    except Exception as e:
+        logger.error(f"Social card render failed for {region_slug}: {e}")
+        abort(500)
+    mime = 'image/jpeg' if fmt == 'JPEG' else 'image/png'
+    resp = Response(img_bytes, mimetype=mime)
+    resp.headers['Cache-Control'] = 'public, max-age=1800'
+    return resp
 
 
 @app.route('/social/daily/<region_slug>.png')
 def social_card_png(region_slug):
-    """Instagram-ready regional report card (1080x1350 PNG, live data)."""
-    from region_pages import REGIONS_BY_SLUG
-    if region_slug not in REGIONS_BY_SLUG:
-        from flask import abort
-        abort(404)
-    data = cached(f"social:{region_slug}", lambda: _social_card_data(region_slug), ttl=3600)
-    if not data:
-        from flask import abort
-        abort(503)
-    try:
-        png_bytes = _render_social_card(data)
-    except Exception as e:
-        logger.error(f"Social card render failed for {region_slug}: {e}")
-        from flask import abort
-        abort(500)
-    resp = Response(png_bytes, mimetype='image/png')
-    resp.headers['Cache-Control'] = 'public, max-age=1800'
-    return resp
+    """Regional report card (1080x1350 PNG, live data)."""
+    return _serve_social_card(region_slug, 'PNG')
+
+
+@app.route('/social/daily/<region_slug>.jpg')
+def social_card_jpg(region_slug):
+    """Same card as JPEG. Instagram's content-publishing API rejects PNG,
+    so this is the variant the posting pipeline hands to the Graph API."""
+    return _serve_social_card(region_slug, 'JPEG')
 
 
 @app.route('/api/social-card/<region_slug>')
@@ -2674,7 +2715,8 @@ def social_card_meta(region_slug):
         'region': data['region_slug'],
         'date': data['date'],
         'caption': data['caption'],
-        'image_url': f"https://freesurfforecast.com/social/daily/{region_slug}.png",
+        'image_url': f"https://freesurfforecast.com/social/daily/{region_slug}.jpg",
+        'image_url_png': f"https://freesurfforecast.com/social/daily/{region_slug}.png",
         'spots': data['top'],
     })
 

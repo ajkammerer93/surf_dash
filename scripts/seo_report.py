@@ -37,6 +37,21 @@ HISTORY_FILE = os.path.join(
 # Metrics collection
 # ---------------------------------------------------------------------------
 
+def _schema_types(html):
+    """@type values of every JSON-LD block on a page."""
+    blocks = re.findall(
+        r'<script type="application/ld\+json">\s*(\{.*?\})\s*</script>',
+        html, re.DOTALL,
+    )
+    types = []
+    for block in blocks:
+        try:
+            types.append(json.loads(block).get('@type', 'unknown'))
+        except json.JSONDecodeError:
+            types.append('invalid_json')
+    return blocks, types
+
+
 def collect_metrics_local():
     """Collect metrics using Flask test client (no network needed)."""
     from app import app, LOCATION_BY_SLUG, SLUG_BY_COORDS
@@ -165,26 +180,19 @@ def collect_metrics_local():
         }
 
         # --- Structured data ---
-        r = c.get('/forecast/virginia-beach')
-        html = r.data.decode()
-        json_ld_blocks = re.findall(
-            r'<script type="application/ld\+json">\s*(\{.*?\})\s*</script>',
-            html, re.DOTALL,
-        )
-        schema_types = []
-        for block in json_ld_blocks:
-            try:
-                data = json.loads(block)
-                schema_types.append(data.get('@type', 'unknown'))
-            except json.JSONDecodeError:
-                schema_types.append('invalid_json')
+        # FAQPage lives on /faq, not on the forecast pages, so it needs its
+        # own fetch -- checking only the forecast page reported a false FAIL.
+        json_ld_blocks, schema_types = _schema_types(
+            c.get('/forecast/virginia-beach').data.decode())
+        _, faq_types = _schema_types(c.get('/faq').data.decode())
 
         metrics['structured_data'] = {
             'json_ld_block_count': len(json_ld_blocks),
             'schema_types': schema_types,
+            'faq_schema_types': faq_types,
             'has_breadcrumb': 'BreadcrumbList' in schema_types,
             'has_web_application': 'WebApplication' in schema_types,
-            'has_faq': 'FAQPage' in schema_types,
+            'has_faq': 'FAQPage' in faq_types,
         }
 
         # --- Technical ---
@@ -280,23 +288,16 @@ def collect_metrics_remote(base_url):
     forecast_html = req.get(
         f'{base_url}/forecast/virginia-beach', timeout=15
     ).text
-    json_ld_blocks = re.findall(
-        r'<script type="application/ld\+json">\s*(\{.*?\})\s*</script>',
-        forecast_html, re.DOTALL,
-    )
-    schema_types = []
-    for block in json_ld_blocks:
-        try:
-            data = json.loads(block)
-            schema_types.append(data.get('@type', 'unknown'))
-        except json.JSONDecodeError:
-            schema_types.append('invalid_json')
+    json_ld_blocks, schema_types = _schema_types(forecast_html)
+    # FAQPage lives on /faq, not on the forecast pages.
+    _, faq_types = _schema_types(req.get(f'{base_url}/faq', timeout=15).text)
     metrics['structured_data'] = {
         'json_ld_block_count': len(json_ld_blocks),
         'schema_types': schema_types,
+        'faq_schema_types': faq_types,
         'has_breadcrumb': 'BreadcrumbList' in schema_types,
         'has_web_application': 'WebApplication' in schema_types,
-        'has_faq': 'FAQPage' in schema_types,
+        'has_faq': 'FAQPage' in faq_types,
     }
 
     # --- Internal links ---

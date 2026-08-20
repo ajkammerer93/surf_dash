@@ -585,7 +585,7 @@ class TestEmbedWidget:
 
 
 class TestSocialCards:
-    """Social content pipeline: /social/daily/<region>.png + caption API."""
+    """Social content pipeline: /social/daily/<region>.{png,jpg} + caption API."""
 
     FAKE_FORECAST = {
         'forecast': [{
@@ -609,18 +609,46 @@ class TestSocialCards:
         assert resp.content_type == 'image/png'
         assert resp.data[:8] == b'\x89PNG\r\n\x1a\n'
 
+    def test_jpg_route(self, client):
+        """Instagram's publishing API accepts JPEG only, so the .jpg variant
+        must exist and really be a JPEG."""
+        resp = self._with_fake_upstream(client, '/social/daily/virginia-coast.jpg')
+        assert resp.status_code == 200
+        assert resp.content_type == 'image/jpeg'
+        assert resp.data[:3] == b'\xff\xd8\xff'
+
     def test_caption_api(self, client):
         resp = self._with_fake_upstream(client, '/api/social-card/virginia-coast')
         assert resp.status_code == 200
         d = resp.get_json()
         assert 'freesurfforecast.com' in d['caption']
         assert '#surf' in d['caption']
-        assert d['image_url'].endswith('/social/daily/virginia-coast.png')
+        # The publisher posts this URL straight to the Graph API, so it has to
+        # be the JPEG -- a PNG here would fail every automated post.
+        assert d['image_url'].endswith('/social/daily/virginia-coast.jpg')
+        assert d['image_url_png'].endswith('/social/daily/virginia-coast.png')
         assert d['spots'][0]['height_ft'] == 3.3  # 1.0 m
 
     def test_unknown_region_404(self, client):
         assert client.get('/social/daily/atlantis.png').status_code == 404
+        assert client.get('/social/daily/atlantis.jpg').status_code == 404
         assert client.get('/api/social-card/atlantis').status_code == 404
+
+    def test_card_title_fits_canvas_for_every_region(self):
+        """Long region names used to run off the 1080px canvas at a fixed
+        58px title. Every region must fit within the padded width."""
+        from PIL import Image, ImageDraw
+        import app as a
+        from region_pages import REGIONS_BY_SLUG
+
+        draw = ImageDraw.Draw(Image.new('RGB', (1080, 1350)))
+        max_width = 1080 - 2 * 64
+        for region in REGIONS_BY_SLUG.values():
+            title = f"{region['short_title']} Surf Check"
+            font, _size, lines = a._fit_card_title(draw, title, max_width)
+            widest = max(draw.textlength(line, font=font) for line in lines)
+            assert widest <= max_width, f"{title} overflows at {widest}px"
+            assert len(lines) <= 2
 
     def test_simple_score_ranking(self):
         import app as a
