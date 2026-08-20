@@ -718,3 +718,60 @@ class TestSocialCards:
         big_clean = {'wave_height': 2.0, 'wave_period': 14, 'wind_speed': 5}
         small_blown = {'wave_height': 0.5, 'wave_period': 5, 'wind_speed': 35}
         assert a._simple_surf_score(big_clean) > a._simple_surf_score(small_blown)
+
+
+class TestInternalLinkMesh:
+    """Search Console showed 130 of 187 URLs discovered but never crawled.
+    Nearby-spot links are the main crawl path into those pages, so the mesh
+    must not leave any spot unreachable."""
+
+    def _map(self):
+        import app as a
+        a._nearby_for_slug('wrightsville-beach')  # force the lazy build
+        return a._NEARBY_BY_SLUG
+
+    def test_no_spot_is_orphaned(self):
+        import app as a
+        from collections import Counter
+        inbound = Counter()
+        for spots in self._map().values():
+            for spot in spots:
+                inbound[spot['slug']] += 1
+        orphans = [s for s in a.LOCATION_BY_SLUG if inbound[s] == 0]
+        assert orphans == [], f'unreachable from any nearby list: {orphans}'
+
+    def test_every_page_emits_a_minimum_of_links(self):
+        import app as a
+        for slug, spots in self._map().items():
+            assert len(spots) >= a.NEARBY_MIN_COUNT, f'{slug} emits {len(spots)}'
+
+    def test_isolated_spot_still_gets_links(self):
+        """Westport WA's nearest neighbour is 261 miles away -- outside the
+        radius, so it used to emit nothing at all."""
+        import app as a
+        spots = a._nearby_for_slug('westport-wa')
+        assert len(spots) >= a.NEARBY_MIN_COUNT
+        assert all(s['distance_mi'] > 0 for s in spots)
+
+    def test_nearby_links_render_on_an_isolated_page(self, client):
+        import re
+        html = client.get('/forecast/key-west-fl').data.decode()
+        assert len(re.findall(r'href="/forecast/', html)) >= 4
+
+
+class TestSitemapLastmod:
+    def test_lastmod_is_stable_not_todays_date(self):
+        """Every URL used to claim it changed today, every day. Google
+        discounts lastmod once it proves unreliable."""
+        import app as a
+        first = a._content_lastmod()
+        assert first == a._content_lastmod()
+        import datetime as dt
+        dt.date.fromisoformat(first)  # raises if malformed
+
+    def test_sitemap_uses_one_content_date(self, client):
+        import re
+        import app as a
+        sm = client.get('/sitemap.xml').data.decode()
+        values = set(re.findall(r'<lastmod>([^<]+)</lastmod>', sm))
+        assert values == {a._content_lastmod()}

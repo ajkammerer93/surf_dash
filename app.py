@@ -1886,28 +1886,117 @@ def _seasonal_climatology_note(state_code):
     return _SEASONAL_NOTES.get(state_code)
 
 
-def _find_nearby_spots(lat, lon, exclude_slug=None, count=5, max_km=80):
-    """Return up to `count` closest forecast locations within `max_km`.
+def _find_nearby_spots(lat, lon, exclude_slug=None, count=5, max_km=80,
+                       min_count=0):
+    """Return the closest forecast locations, preferring those within `max_km`.
 
     Used for the server-rendered "Nearby Spots" footer block — each entry
     becomes a crawlable internal link to /forecast/<slug>, seeding PageRank
     into the long-tail forecast pages.
+
+    The radius alone left isolated spots stranded: Galveston, Marquette,
+    Westport and eight others had no neighbour inside it, so they emitted no
+    links and, more importantly, nothing linked back to them. Those orphans
+    are exactly the pages Search Console reports as discovered-but-never-
+    crawled. So the radius now sets the preference, not a hard floor: if
+    fewer than `min_count` spots fall inside it, the nearest ones beyond it
+    are appended until the floor is met. Distances are rendered, so a 261-mile
+    entry reads as the honest "nothing closer" that it is.
+
+    That padding is opt-in via `min_count` (never more than `count`), so
+    `max_km` stays a hard filter for every other caller.
     """
-    spots = []
+    min_count = min(min_count, count)
+    scored = []
     for slug, loc in LOCATION_BY_SLUG.items():
         if exclude_slug and slug == exclude_slug:
             continue
         dist = haversine_distance(lat, lon, loc['lat'], loc['lon'])
-        if dist <= max_km:
-            spots.append({
-                'slug': slug,
-                'name': loc['name'],
-                'distance_km': round(dist, 1),
-                'distance_mi': round(dist * 0.621371, 1),
-                'state': loc.get('state'),
-            })
-    spots.sort(key=lambda s: s['distance_km'])
-    return spots[:count]
+        scored.append((dist, {
+            'slug': slug,
+            'name': loc['name'],
+            'distance_km': round(dist, 1),
+            'distance_mi': round(dist * 0.621371, 1),
+            'state': loc.get('state'),
+        }))
+    scored.sort(key=lambda item: item[0])
+
+    within = [spot for dist, spot in scored if dist <= max_km][:count]
+    if len(within) >= min_count:
+        return within
+
+    seen = {spot['slug'] for spot in within}
+    for _dist, spot in scored:
+        if len(within) >= min_count:
+            break
+        if spot['slug'] not in seen:
+            within.append(spot)
+            seen.add(spot['slug'])
+    return within
+
+
+# Nearby-spot links are the main crawl path into the long-tail forecast
+# pages, so they are precomputed once at startup rather than recalculated on
+# every render, and then patched for reciprocity: proximity is not symmetric,
+# so a remote spot can list its nearest neighbour while that neighbour, having
+# four closer options, never links back. Key West was left that way -- reachable
+# only from /locations, which is precisely the profile of the pages Search
+# Console reports as discovered but never crawled.
+NEARBY_COUNT = 6
+NEARBY_MAX_KM = 150
+NEARBY_MIN_COUNT = 4
+_NEARBY_BY_SLUG = None
+_nearby_map_lock = threading.Lock()
+
+
+def _build_nearby_map():
+    nearby = {}
+    for slug, loc in LOCATION_BY_SLUG.items():
+        nearby[slug] = _find_nearby_spots(
+            loc['lat'], loc['lon'], exclude_slug=slug,
+            count=NEARBY_COUNT, max_km=NEARBY_MAX_KM, min_count=NEARBY_MIN_COUNT)
+
+    linked = set()
+    for spots in nearby.values():
+        linked.update(spot['slug'] for spot in spots)
+
+    for slug in LOCATION_BY_SLUG:
+        if slug in linked:
+            continue
+        loc = LOCATION_BY_SLUG[slug]
+        host = min(
+            (s for s in LOCATION_BY_SLUG if s != slug),
+            key=lambda s: haversine_distance(
+                loc['lat'], loc['lon'],
+                LOCATION_BY_SLUG[s]['lat'], LOCATION_BY_SLUG[s]['lon']),
+            default=None)
+        if not host:
+            continue
+        host_loc = LOCATION_BY_SLUG[host]
+        dist = haversine_distance(host_loc['lat'], host_loc['lon'],
+                                  loc['lat'], loc['lon'])
+        nearby[host].append({
+            'slug': slug,
+            'name': loc['name'],
+            'distance_km': round(dist, 1),
+            'distance_mi': round(dist * 0.621371, 1),
+            'state': loc.get('state'),
+        })
+        logger.info(f"Nearby map: linked orphan {slug} from {host}")
+    return nearby
+
+
+def _nearby_for_slug(slug):
+    """Precomputed nearby list for a known slug, building the map on first
+    use -- haversine_distance is defined further down this module, so the map
+    cannot be built at import time."""
+    global _NEARBY_BY_SLUG
+    if _NEARBY_BY_SLUG is None:
+        with _nearby_map_lock:
+            if _NEARBY_BY_SLUG is None:
+                _NEARBY_BY_SLUG = _build_nearby_map()
+                logger.info(f"Built nearby map for {len(_NEARBY_BY_SLUG)} spots")
+    return _NEARBY_BY_SLUG.get(slug)
 
 
 def _get_ssr_summary(lat, lon, location=None):
@@ -2030,7 +2119,13 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
     # Server-rendered "Nearby Spots" list — crawlable internal links to seed
     # PageRank into the long-tail forecast pages. Use ~150km (~93 mi) as
     # a plausible surfer driving radius; 80 km was too tight at many spots.
-    nearby_spots = _find_nearby_spots(lat, lon, exclude_slug=location_slug, count=5, max_km=150)
+    # Known spots use the precomputed reciprocal map; an arbitrary lat/lon on
+    # the "/" route still needs a live lookup.
+    nearby_spots = _nearby_for_slug(location_slug) if location_slug else None
+    if nearby_spots is None:
+        nearby_spots = _find_nearby_spots(
+            lat, lon, exclude_slug=location_slug, count=NEARBY_COUNT,
+            max_km=NEARBY_MAX_KM, min_count=NEARBY_MIN_COUNT)
 
     return render_template(
         'index.html',
@@ -2916,10 +3011,42 @@ _PRIORITY_FORECAST_SLUGS = {
 }
 
 
+_CONTENT_LASTMOD = None
+
+
+def _content_lastmod():
+    """Date the site's page content actually last changed.
+
+    Every URL previously claimed a lastmod of today, regenerated daily, which
+    is false for all but the forecast data and teaches Google to distrust the
+    signal entirely -- it discounts lastmod when it proves unreliable. The
+    honest answer is when the templates and page-generating code last changed,
+    which on a deployed checkout is the deploy.
+    """
+    global _CONTENT_LASTMOD
+    if _CONTENT_LASTMOD is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        candidates = [os.path.join(here, f) for f in
+                      ('app.py', 'region_pages.py', 'learn_articles.py')]
+        tpl = os.path.join(here, 'templates')
+        for root, _dirs, files in os.walk(tpl):
+            candidates.extend(os.path.join(root, f) for f in files)
+        newest = 0
+        for path in candidates:
+            try:
+                newest = max(newest, os.path.getmtime(path))
+            except OSError:
+                continue
+        stamp = newest or time.time()
+        _CONTENT_LASTMOD = datetime.fromtimestamp(
+            stamp, timezone.utc).strftime('%Y-%m-%d')
+    return _CONTENT_LASTMOD
+
+
 @app.route('/sitemap.xml')
 def sitemap_xml():
     """Generate sitemap.xml from location slugs."""
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    today = _content_lastmod()
 
     urls = ['<?xml version="1.0" encoding="UTF-8"?>']
     urls.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
