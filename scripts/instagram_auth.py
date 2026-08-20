@@ -56,38 +56,89 @@ def _app_secret(args):
     return secret
 
 
+def build_auth_url(app_id, redirect_uri, scopes=SCOPES, force_reauth=True):
+    """Assemble the authorization URL the way the App Dashboard does.
+
+    Note the redirect_uri is NOT percent-encoded. urlencode() escapes the
+    colon and slashes, and Instagram then matches the escaped string against
+    the registered URIs literally and serves a generic "invalid link" page.
+    Meta's own generated URL leaves it raw, so we do too.
+    """
+    parts = []
+    if force_reauth:
+        parts.append('force_reauth=true')
+    parts.append(f'client_id={app_id}')
+    parts.append(f'redirect_uri={redirect_uri}')
+    parts.append('response_type=code')
+    parts.append('scope=' + urllib.parse.quote(scopes, safe=''))
+    return f'{AUTH_URL}?' + '&'.join(parts)
+
+
 def cmd_url(args):
-    query = urllib.parse.urlencode({
-        'client_id': args.app_id,
-        'redirect_uri': args.redirect_uri,
-        'response_type': 'code',
-        'scope': SCOPES,
-    })
+    url = build_auth_url(args.app_id, args.redirect_uri, args.scopes)
     print('Open this URL, approve, then copy the "code" query parameter from')
     print('the address bar you land on (it expires in about a minute):\n')
-    print(f'{AUTH_URL}?{query}\n')
+    print(f'{url}\n')
     print('The redirect page itself does not need to exist -- only the code matters.')
     print(f'Note: {args.redirect_uri} must be listed verbatim in the app\'s')
     print('valid OAuth redirect URIs, or Instagram rejects the request.')
 
 
+def _clean_code(raw):
+    """Normalize a code copied out of the address bar.
+
+    Instagram appends "#_" to the redirect, and a pasted code often carries it
+    along with stray whitespace. Both make the code invalid, and the API
+    reports that as a redirect_uri mismatch, which sends you hunting in the
+    wrong place.
+    """
+    code = raw.strip().strip('"\'')
+    if '#' in code:
+        code = code.split('#', 1)[0]
+    return urllib.parse.unquote(code)
+
+
 def cmd_exchange(args):
     secret = _app_secret(args)
+    code = _clean_code(args.code)
+    if code != args.code:
+        print(f'Cleaned the pasted code down to {len(code)} chars.')
 
     # Authorization code -> short-lived (1 hour) token.
-    resp = requests.post(TOKEN_URL, data={
+    fields = {
         'client_id': args.app_id,
         'client_secret': secret,
         'grant_type': 'authorization_code',
         'redirect_uri': args.redirect_uri,
-        'code': args.code,
-    }, timeout=60)
-    body = resp.json()
+        'code': code,
+    }
+    # Meta documents this call with curl -F, i.e. multipart/form-data, and the
+    # endpoint has been picky about it -- urlencoded bodies come back as a
+    # redirect_uri mismatch. Try multipart first, then fall back, because a
+    # code is single-use and a second attempt would need a fresh one anyway.
+    attempts = [
+        ('multipart', lambda: requests.post(
+            TOKEN_URL, files={k: (None, v) for k, v in fields.items()}, timeout=60)),
+        ('urlencoded', lambda: requests.post(TOKEN_URL, data=fields, timeout=60)),
+    ]
+    body = {}
+    for label, send in attempts:
+        resp = send()
+        body = resp.json()
+        if 'access_token' in body:
+            print(f'Exchanged the code ({label}).')
+            break
+        print(f'  {label} attempt failed: {body.get("error_message", body)}')
     if 'access_token' not in body:
         sys.exit(f'Code exchange failed: {body}\n\n'
-                 'Most common causes: the code was already used, it expired '
-                 '(they last about a minute), or redirect_uri does not match '
-                 'the one used to generate the code.')
+                 f'redirect_uri sent: {args.redirect_uri}\n'
+                 f'code length: {len(code)} chars, ends with "{code[-6:]}"\n\n'
+                 'That error message names redirect_uri, but Meta returns it '
+                 'for any bad code -- most often one that was already used or '
+                 'has expired. Codes are short-lived, so generate a fresh one '
+                 'and run this command immediately. Only if that keeps failing '
+                 'is the redirect_uri actually suspect: it must match the '
+                 'authorize URL exactly, trailing slash included.')
     short_token = body['access_token']
 
     # Short-lived -> long-lived (60 days).
@@ -154,6 +205,8 @@ def main():
     p_url = sub.add_parser('url', help='print the authorization URL')
     p_url.add_argument('--app-id', required=True, help='Instagram App ID')
     p_url.add_argument('--redirect-uri', default=DEFAULT_REDIRECT)
+    p_url.add_argument('--scopes', default=SCOPES,
+                       help='comma-separated scopes (default: the two we need)')
     p_url.set_defaults(func=cmd_url)
 
     p_ex = sub.add_parser('exchange', help='trade the code for a 60-day token')

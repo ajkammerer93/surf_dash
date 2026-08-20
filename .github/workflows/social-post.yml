@@ -7,9 +7,8 @@ name: Daily social post
 #   IG_USER_ID       Instagram user id
 #   IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
 #
-# The schedule is commented out until those secrets exist — uncomment it to
-# enable automatic daily posting. Until then the workflow runs manually from
-# the Actions tab (use dry_run to print the card without posting).
+# Posts daily on a schedule; it can also be run manually from the Actions tab
+# (use dry_run to print the card without posting).
 #
 # Tokens expire after 60 days; instagram-token-refresh.yml rotates them.
 
@@ -24,8 +23,8 @@ on:
         description: 'Print the card without posting'
         type: boolean
         default: false
-  # schedule:
-  #   - cron: '0 11 * * *'  # 11:00 UTC, around dawn US East Coast
+  schedule:
+    - cron: '0 11 * * *'  # 11:00 UTC, around dawn US East Coast
 
 jobs:
   post:
