@@ -272,6 +272,22 @@ def _sitemap_urls():
     return re.findall(r'<loc>([^<]+)</loc>', r.text)
 
 
+def _cf_site_tags(token, account):
+    """Web Analytics sites on the account, as (site_tag, host) pairs."""
+    try:
+        r = requests.get(
+            f'https://api.cloudflare.com/client/v4/accounts/{account}/rum/site_info/list',
+            headers={'Authorization': f'Bearer {token}'}, timeout=30)
+        if not r.ok:
+            return {'error': f'HTTP {r.status_code} listing RUM sites'}
+        return [{'site_tag': s.get('site_tag'),
+                 'host': (s.get('ruleset') or {}).get('zone_name') or s.get('site_token'),
+                 'auto_install': s.get('auto_install')}
+                for s in (r.json().get('result') or [])]
+    except (requests.RequestException, ValueError) as e:
+        return {'error': str(e)[:200]}
+
+
 def collect_cloudflare():
     """Web Analytics pageviews and top paths.
 
@@ -332,9 +348,15 @@ def collect_cloudflare():
                              'on that account)'}
         acc = accounts[0]
         if not acc.get('total'):
+            # Zero events with a valid account is almost always the wrong site
+            # tag, so enumerate the account's actual Web Analytics sites rather
+            # than leaving someone to guess. These tags are embedded in the
+            # public page's beacon, so listing them reveals nothing private.
+            available = _cf_site_tags(token, account)
             return {'window_days': 7, 'pageviews': 0,
-                    'note': 'account matched but no RUM events in the window '
-                            '- check CF_SITE_TAG matches the beacon token',
+                    'note': 'account matched but no RUM events in the window',
+                    'configured_site_tag_suffix': (site_tag or '')[-6:],
+                    'available_sites': available,
                     'top_paths': [], 'top_referrers': []}
         return {
             'window_days': 7,
