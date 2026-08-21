@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.39
+**Current version:** v0.11.42
 
 ## Dashboard
 
@@ -70,7 +70,7 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (289 tests)
+pytest tests/                                          # full suite (425 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -154,8 +154,21 @@ its own unprotected data branch, which the app or the next run reads back.
 | `social-post.yml` | daily, two schedules by coast | posts to Instagram |
 | `seo-audit.yml` | daily | `seo-data` |
 | `youtube-cam-scan.yml` | weekly | `cam-data` + the rolling review issue |
+| `ux-audit.yml` | weekly | `ux-data` |
 | `instagram-token-refresh.yml` | monthly | rotates the 60-day token |
+| `social-accuracy-post.yml` | manual only | posts the weekly accuracy card |
 | `seo-tests.yml` | weekly + on push | — |
+
+`social-accuracy-post.yml` has its schedule commented out on purpose and its
+`dry_run` input defaults to true, so it publishes nothing until I uncomment the
+cron. It posts a card built from the live verification stats, and refuses rather
+than posting when those stats are stale, thin or malformed.
+
+`ux-audit.yml` runs `scripts/ux_audit.py`, which measures the live site with
+Playwright at two viewports across six pages and records CLS, LCP, console and
+request failures, horizontal overflow, tap-target and font sizes, WCAG contrast,
+heading order and image alt gaps, plus a screenshot of each. It records and never
+judges; reading the snapshot happens in the review log, issue #28.
 
 ## Deployment
 
