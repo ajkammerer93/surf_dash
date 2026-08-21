@@ -2091,7 +2091,61 @@ def _get_ssr_summary(lat, lon, location=None):
 
     return summary
 
-def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
+# A pin-dropped name arrives on the query string, so it is attacker-supplied
+# and lands in <title>, the meta description, the OG/Twitter tags and three
+# JSON-LD blocks. Jinja escapes HTML but JSON string context is not HTML, so
+# whitelist plain text here rather than trusting the template layer to
+# neutralise markup. Everything outside letters, digits and this small
+# punctuation set is dropped, not encoded. '&' is deliberately out:
+# it is the lead character of every HTML entity and no spot name needs it.
+CUSTOM_NAME_MAX_LEN = 60
+_PLACE_NAME_PUNCT = set(" '-.,()/")
+
+
+def _sanitize_place_name(raw):
+    """Reduce an untrusted ?name= to plain text, or None if nothing survives."""
+    if not raw:
+        return None
+    # Fold tabs/newlines to spaces first so "Pipe\nline" does not become
+    # "Pipeline" once the filter drops them.
+    cleaned = re.sub(r'\s+', ' ', raw)
+    cleaned = ''.join(
+        ch for ch in cleaned
+        if ch.isprintable() and (ch.isalnum() or ch in _PLACE_NAME_PUNCT)
+    )
+    # Trim leading/trailing separators, but not brackets -- "Sao Conrado
+    # (Rio)" should keep its closing paren.
+    cleaned = re.sub(r' +', ' ', cleaned).strip(" '-.,/")
+    if not cleaned:
+        return None
+    return cleaned[:CUSTOM_NAME_MAX_LEN].strip(" '-.,/")
+
+
+def _custom_location_from_args():
+    """Parse ?lat/?lon/?name on "/" into a validated (lat, lon, name).
+
+    Returns None when the params are absent or unusable so the caller falls
+    back to the default location. Known coordinates never get here — the
+    before_request handler 301s those to /forecast/<slug> first.
+    """
+    if not request.args.get('lat') or not request.args.get('lon'):
+        return None
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    if lat is None or lon is None:
+        return None
+    # NaN/inf fail both comparisons, so this rejects them too.
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return None
+    name = _sanitize_place_name(request.args.get('name'))
+    if not name:
+        # Same shape the frontend uses when a pin has no reverse-geocoded name.
+        name = f"Location ({lat:.2f}, {lon:.2f})"
+    return lat, lon, name
+
+
+def _render_dashboard(lat, lon, name, canonical_url, location_slug=None,
+                      is_custom=False):
     """Shared renderer for index and forecast-by-slug routes."""
     location = LOCATION_BY_SLUG.get(location_slug) if location_slug else None
     location_state = (location or {}).get('state')
@@ -2108,9 +2162,17 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
     facing = ssr_summary.get('orientation_cardinal')
     facing_phrase = f" {facing}-facing beach. " if facing else " "
     page_title = f"Surf Forecast for {name}{state_suffix} | Free Surf Forecast"
+    # Waves, wind, swell and cams are global; tides and buoys are NOAA, so US
+    # only. A pin dropped outside NDBC range must not promise tide predictions
+    # the page will never be able to show. The buoy lookup is in-memory, so
+    # this costs nothing.
+    if is_custom and not ssr_summary.get('nearest_buoy_id'):
+        coverage_phrase = "Wave height, period, swell direction, wind, and nearby surf cameras."
+    else:
+        coverage_phrase = "Wave height, period, wind, tides, and live surf cameras."
     meta_description = (
         f"Free 7-day surf forecast for {name}{state_suffix}.{facing_phrase}"
-        "Wave height, period, wind, tides, and live surf cameras. No ads, no sign-up."
+        f"{coverage_phrase} No ads, no sign-up."
     )
 
     # Display-state for the SSR heading — same dedup logic as the meta string
@@ -2120,12 +2182,18 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None):
     # PageRank into the long-tail forecast pages. Use ~150km (~93 mi) as
     # a plausible surfer driving radius; 80 km was too tight at many spots.
     # Known spots use the precomputed reciprocal map; an arbitrary lat/lon on
-    # the "/" route still needs a live lookup.
+    # the "/" route still needs a live lookup. The min_count padding exists to
+    # stop isolated *indexed* pages from emitting zero internal links, but a
+    # pin-drop page canonicalises to "/", so it seeds no PageRank and the
+    # padding only produces nonsense — a pin at Uluwatu would list Carolina
+    # beaches 9,000 miles away. Keep the radius a hard filter there and let
+    # the block disappear when nothing is in range.
     nearby_spots = _nearby_for_slug(location_slug) if location_slug else None
     if nearby_spots is None:
         nearby_spots = _find_nearby_spots(
             lat, lon, exclude_slug=location_slug, count=NEARBY_COUNT,
-            max_km=NEARBY_MAX_KM, min_count=NEARBY_MIN_COUNT)
+            max_km=NEARBY_MAX_KM,
+            min_count=0 if is_custom else NEARBY_MIN_COUNT)
 
     return render_template(
         'index.html',
@@ -2165,14 +2233,24 @@ def redirect_query_params_to_slug():
 # Route for the main dashboard (default location)
 @app.route('/')
 def index():
-    """Renders the main dashboard page with SEO meta tags."""
-    lat = DEFAULT_LAT
-    lon = DEFAULT_LON
-    name = 'Surf City, North Carolina'
+    """Renders the main dashboard page with SEO meta tags.
+
+    The frontend writes ?lat=&lon=&name= into the URL whenever a surfer drops
+    a pin outside the curated spot list, and those links get shared, so the
+    page has to describe the pinned coordinates rather than Surf City. The
+    canonical stays "/" for every variant: pin coordinates are an unbounded
+    URL space and crawl budget is already the binding constraint here. A
+    noindex header would fight the canonical, so canonical alone.
+    """
     canonical_url = 'https://freesurfforecast.com/'
+    custom = _custom_location_from_args()
+    if custom:
+        lat, lon, name = custom
+        return _render_dashboard(lat, lon, name, canonical_url, is_custom=True)
     # Look up slug for default location
     default_slug = SLUG_BY_COORDS.get((round(DEFAULT_LAT, 4), round(DEFAULT_LON, 4)))
-    return _render_dashboard(lat, lon, name, canonical_url, location_slug=default_slug)
+    return _render_dashboard(DEFAULT_LAT, DEFAULT_LON, 'Surf City, North Carolina',
+                             canonical_url, location_slug=default_slug)
 
 
 @app.route('/ig')
@@ -3771,6 +3849,11 @@ def ocean_basin():
     else:
         return jsonify({"error": "Could not retrieve ocean basin data."}), 500
 
+# Beyond this, NOAA has no harmonic station covering the point and the nearest
+# match is an unrelated body of water.
+NON_TIDAL_STATION_KM = 300
+
+
 def find_nearest_tide_station(target_lat, target_lon):
     """
     Finds the nearest NOAA tide prediction station to the given coordinates.
@@ -3918,10 +4001,19 @@ def tides():
             return None
         # The Great Lakes (and other non-tidal waters) have no NOAA harmonic
         # stations — the nearest match can be an ocean station hundreds of km
-        # away whose predictions are meaningless here.
-        if station.get("distance_km", 0) > 300:
+        # away whose predictions are meaningless here. Naming it anyway
+        # implies a relationship that does not exist: Uluwatu was being told
+        # its tides come from Djakarta, 1169 km off. Report the absence and
+        # keep the distance only as a diagnostic.
+        if station.get("distance_km", 0) > NON_TIDAL_STATION_KM:
             logger.info(f"Nearest tide station {station['id']} is {station['distance_km']} km away — treating as non-tidal")
-            return {"non_tidal": True, "hourly": [], "high_low": [], "station": station}
+            return {
+                "non_tidal": True,
+                "hourly": [],
+                "high_low": [],
+                "station": None,
+                "nearest_station_km": station.get("distance_km"),
+            }
         data = get_tide_data(station["id"])
         if data:
             data["station"] = station

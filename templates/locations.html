@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Surf Forecast Locations | Free Surf Forecast</title>
-    <meta name="description" content="Browse {{ total_count }} surf forecast locations. Free 7-day wave, wind, and tide forecasts for beaches along the US East Coast. No ads, no sign-up.">
+    <meta name="description" content="Browse {{ total_count }} surf forecast locations, or drop a pin on any coastline on earth. Free 7-day wave, wind, and swell forecasts, plus NOAA tides at US spots. No ads, no sign-up.">
     <link rel="canonical" href="https://freesurfforecast.com/locations">
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="Surf Forecast Locations | Free Surf Forecast">
-    <meta property="og:description" content="Browse {{ total_count }} surf forecast locations along the US East Coast.">
+    <meta property="og:description" content="Browse {{ total_count }} surf forecast locations, or drop a pin on any coastline on earth.">
     <meta property="og:url" content="https://freesurfforecast.com/locations">
     <meta property="og:site_name" content="Free Surf Forecast">
     <meta property="og:image" content="https://freesurfforecast.com/static/og-image.png">
@@ -18,7 +18,7 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Surf Forecast Locations | Free Surf Forecast">
-    <meta name="twitter:description" content="Browse {{ total_count }} surf forecast locations along the US East Coast.">
+    <meta name="twitter:description" content="Browse {{ total_count }} surf forecast locations, or drop a pin on any coastline on earth.">
     <meta name="twitter:image" content="https://freesurfforecast.com/static/og-image.png">
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 20 Q8 10 14 18 Q20 26 26 16 Q29 11 30 12' fill='none' stroke='%2344ff88' stroke-width='3' stroke-linecap='round'/><path d='M2 24 Q8 16 14 22 Q20 28 26 20 Q29 16 30 17' fill='none' stroke='%233388ff' stroke-width='2.5' stroke-linecap='round'/></svg>">
@@ -170,6 +170,86 @@
             color: var(--text);
         }
 
+        /* "Pick any spot" CTA. The 145 curated pages are a subset of what the
+           forecast covers, so someone scanning this list and not finding their
+           break needs a way out that isn't the back button. */
+        .anywhere-cta {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--status-live);
+            padding: 12px 14px;
+            margin-bottom: 28px;
+            text-decoration: none;
+            color: var(--text);
+            transition: border-color 0.15s;
+        }
+        .anywhere-cta:hover { border-color: var(--status-live); }
+        .anywhere-cta svg {
+            flex-shrink: 0;
+            color: var(--status-live);
+            margin-top: 2px;
+        }
+        .anywhere-cta-text { flex: 1 1 0; min-width: 0; font-size: 12px; line-height: 1.6; }
+        .anywhere-cta-text strong {
+            display: block;
+            font-size: 13px;
+            color: var(--text);
+        }
+        .anywhere-cta-text span { color: var(--text-dim); }
+        .anywhere-cta-go {
+            margin-left: auto;
+            align-self: center;
+            font-size: 11px;
+            white-space: nowrap;
+            color: var(--status-live);
+        }
+
+        .anywhere-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--status-live);
+            padding: 18px 20px;
+            margin-top: 36px;
+        }
+        .anywhere-panel h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--status-live);
+            margin-bottom: 8px;
+        }
+        .anywhere-panel p {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            max-width: 62ch;
+        }
+        .anywhere-panel .coverage-note {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .anywhere-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            color: var(--text);
+            background: transparent;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-decoration: none;
+        }
+        .anywhere-btn:hover { border-color: var(--status-live); color: var(--status-live); }
+
+        @media (max-width: 600px) {
+            .anywhere-cta { flex-wrap: wrap; }
+            .anywhere-cta-go { flex: 0 0 100%; margin-left: 26px; margin-top: 4px; align-self: flex-start; }
+        }
+
         .site-footer {
             text-align: center;
             padding: 12px 16px;
@@ -201,6 +281,15 @@
         <h1>Surf Forecast Locations</h1>
         <p class="subtitle">Free 7-day surf forecasts for {{ total_count }} coastal locations. Wave height, period, wind, tides, and live cameras.</p>
 
+        <a class="anywhere-cta" href="/#pick">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span class="anywhere-cta-text">
+                <strong>Don't see your break?</strong>
+                <span>Drop a pin anywhere on the map and get the same 7-day wave, wind, and swell forecast.</span>
+            </span>
+            <span class="anywhere-cta-go">Open the map &rarr;</span>
+        </a>
+
         {% for region, locs in grouped_locations.items()|sort %}
         <div class="region-group">
             <h2>{{ region }} ({{ locs|length }})</h2>
@@ -211,6 +300,13 @@
             </div>
         </div>
         {% endfor %}
+
+        <div class="anywhere-panel">
+            <h2>Your spot isn't on this list?</h2>
+            <p>These {{ total_count }} locations are the ones with their own page &mdash; the forecast itself isn't limited to them. Drop a pin on any coastline on earth and you get the same 7-day wave height, period, swell direction, and wind forecast, plus any live cameras nearby.</p>
+            <p class="coverage-note">US spots also get NOAA tide predictions and live buoy readings.</p>
+            <a class="anywhere-btn" href="/#pick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg> Pick a spot on the map</a>
+        </div>
     </div>
 
     <footer class="site-footer">

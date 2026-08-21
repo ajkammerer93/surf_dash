@@ -234,6 +234,15 @@
             background: rgba(255,255,255,0.03);
         }
 
+        /* The button carries the location name, so nothing about it says
+           "clickable" on its own -- the caret is the only affordance. */
+        .header-location-btn .header-location-caret {
+            flex-shrink: 0;
+            color: var(--text-muted);
+            transition: color 0.15s;
+        }
+        .header-location-btn:hover .header-location-caret { color: var(--text); }
+
         .header-location-btn svg {
             flex-shrink: 0;
             color: var(--status-live);
@@ -2276,6 +2285,54 @@
             opacity: 0.85;
         }
 
+        /* The map is the second way in, not a footnote: search only finds
+           places a gazetteer knows, the map covers every other coastline. */
+        .pick-divider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 10px 0 8px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+        .pick-divider::before,
+        .pick-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .modal-body p.pick-map-cta {
+            display: flex;
+            align-items: flex-start;
+            gap: 7px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .pick-map-cta svg {
+            flex-shrink: 0;
+            color: var(--status-live);
+            margin-top: 2px;
+        }
+        .pick-map-cta em {
+            font-style: normal;
+            color: var(--text-muted);
+        }
+
+        .search-status {
+            display: none;
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--status-warning);
+            margin-bottom: 2px;
+        }
+        .search-status.visible { display: block; }
+
         /* === Favorites === */
         .favorites-section {
             margin-bottom: 10px;
@@ -2484,6 +2541,7 @@
             }
             .header-location-btn .header-coords { display: none; }
             .header-location-btn svg { display: none; }
+            .header-location-btn .header-location-caret { display: block; }
             .header-location-btn { padding: 3px 6px; max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .header-location { font-size: 10px; }
             .header-sep { display: none; }
@@ -2504,7 +2562,9 @@
             .modal-overlay { padding: 10px; }
             .modal-card { max-height: 95vh; }
             #location-map { height: 300px !important; }
-            .location-search input { font-size: 16px; padding: 10px; }
+            /* min-width:0 or the 16px placeholder's min-content width pushes
+               the geolocate button past the right edge of the card */
+            .location-search input { font-size: 16px; padding: 10px; min-width: 0; }
             .location-search button { font-size: 14px; padding: 10px 14px; }
             .favorite-item { padding: 6px 10px; font-size: 13px; }
             .btn-save-favorite { font-size: 13px; padding: 8px 14px; }
@@ -2529,7 +2589,7 @@
         "url": "https://freesurfforecast.com/",
         "applicationCategory": "WeatherApplication",
         "operatingSystem": "All",
-        "description": "{{ meta_description }}",
+        "description": {{ meta_description|tojson }},
         "offers": {
             "@type": "Offer",
             "price": "0",
@@ -2537,7 +2597,7 @@
         },
         "contentLocation": {
             "@type": "Place",
-            "name": "{{ location_name }}",
+            "name": {{ location_name|tojson }},
             "geo": {
                 "@type": "GeoCoordinates",
                 "latitude": {{ location_lat }},
@@ -2568,7 +2628,7 @@
             {
                 "@type": "ListItem",
                 "position": 3,
-                "name": "{{ location_name }}",
+                "name": {{ location_name|tojson }},
                 "item": "{{ canonical_url }}"
             }
         ]
@@ -2580,9 +2640,9 @@
     {
         "@context": "https://schema.org",
         "@type": "TouristAttraction",
-        "name": "{{ location_name }} Surf Forecast",
+        "name": {{ (location_name ~ " Surf Forecast")|tojson }},
         "url": "{{ canonical_url }}",
-        "description": "{{ meta_description }}",
+        "description": {{ meta_description|tojson }},
         "geo": {
             "@type": "GeoCoordinates",
             "latitude": {{ location_lat }},
@@ -2631,6 +2691,7 @@
                     <span class="header-coords">
                         <span id="display-lat">{{ "%.2f"|format(location_lat) }}</span>, <span id="display-lon">{{ "%.2f"|format(location_lon) }}</span>
                     </span>
+                    <svg class="header-location-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
             </div>
             <div class="header-toolbar-right">
@@ -2776,10 +2837,10 @@
     </div>
 
     <!-- Location Modal -->
-    <div class="modal-overlay" id="locationModal" role="dialog" aria-modal="true" aria-label="Select location">
+    <div class="modal-overlay" id="locationModal" role="dialog" aria-modal="true" aria-label="Pick a location">
         <div class="modal-card">
             <div class="modal-top">
-                <span class="modal-title">Select Location</span>
+                <span class="modal-title">Pick Any Spot</span>
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -2794,7 +2855,13 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     </button>
                 </div>
-                <p>Or click anywhere on the map to select a location.</p>
+                <div class="search-status" id="location-search-status" role="status" aria-live="polite"></div>
+                <div class="pick-divider"><span>or</span></div>
+                <p class="pick-map-cta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span>Click anywhere on the map to forecast that exact spot &mdash; any coastline on earth.
+                    <em>US spots also get NOAA tide predictions and live buoy readings.</em></span>
+                </p>
                 <div id="location-map" style="height: 420px;"></div>
                 <div class="modal-selected">
                     <strong>Selected:</strong> <span id="selected-location-text">None</span>
@@ -5590,6 +5657,18 @@
             }
         });
 
+        // Deep link into the picker: "/#pick" (used by the "don't see your
+        // break?" links on /locations) opens the location modal on arrival.
+        // Registered before the onboarding handler below so the welcome card
+        // stays suppressed -- anyone arriving here already knows where to go.
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.hash !== '#pick') return;
+            // Drop the fragment so a reload or back-nav doesn't reopen the modal.
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            try { localStorage.setItem('sd-seen-onboarding', '1'); } catch (e) {}
+            openModal();
+        });
+
         // === Global location state ===
         const DEFAULT_LOCATION = {
             lat: 34.42711,
@@ -5650,6 +5729,22 @@
             optimal_tide: {{ (location_optimal_tide or '')|tojson }}
         };
 
+        // ?name= is attacker-supplied and flows into the swell-map popup, the
+        // ICS export and localStorage, so reduce it to plain text on the way in
+        // rather than at each use. Mirrors _sanitize_place_name() in app.py so
+        // the client and the server-rendered title always show the same string.
+        function sanitizePlaceName(raw) {
+            if (!raw) return null;
+            var kept = String(raw).replace(/\s+/g, ' ').split('').filter(function(ch) {
+                return /[\p{L}\p{N}]/u.test(ch) || " '-.,()/".indexOf(ch) !== -1;
+            }).join('');
+            // Trim leading/trailing separators, but not brackets -- "Sao
+            // Conrado (Rio)" should keep its closing paren.
+            var trimmed = kept.replace(/ +/g, ' ').replace(/^[ '\-.,\/]+/, '').replace(/[ '\-.,\/]+$/, '');
+            if (!trimmed) return null;
+            return trimmed.slice(0, 60).replace(/[ '\-.,\/]+$/, '') || null;
+        }
+
         function getInitialLocation() {
             // Priority 1: Server-injected location (from /forecast/<slug> route)
             if (window._serverLocation) {
@@ -5663,13 +5758,17 @@
                 return {
                     lat: urlLat,
                     lon: urlLon,
-                    name: params.get('name') || `Location (${urlLat.toFixed(2)}, ${urlLon.toFixed(2)})`
+                    name: sanitizePlaceName(params.get('name')) || `Location (${urlLat.toFixed(2)}, ${urlLon.toFixed(2)})`
                 };
             }
             // Priority 3: localStorage last-location
             try {
                 const saved = JSON.parse(localStorage.getItem('last-location'));
                 if (saved && typeof saved.lat === 'number' && typeof saved.lon === 'number') {
+                    // Entries written before names were sanitised can still be
+                    // sitting in storage, so clean on read as well as on write.
+                    saved.name = sanitizePlaceName(saved.name) ||
+                        `Location (${saved.lat.toFixed(2)}, ${saved.lon.toFixed(2)})`;
                     return saved;
                 }
             } catch (e) {}
@@ -6083,19 +6182,29 @@
             });
 
             // Location search handler
+            function setSearchStatus(msg) {
+                const el = document.getElementById('location-search-status');
+                if (!el) return;
+                el.textContent = msg || '';
+                el.classList.toggle('visible', !!msg);
+            }
+
             function searchLocation(query) {
                 if (!query.trim()) return;
+                setSearchStatus('');
                 fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&limit=1`)
                     .then(r => r.json())
                     .then(results => {
                         if (!Array.isArray(results) || results.length === 0) {
-                            document.getElementById('selected-location-text').textContent = 'No results found';
+                            // Not a dead end: the map still covers spots the
+                            // gazetteer has never heard of.
+                            setSearchStatus('Nothing matched "' + query.trim() + '" \u2014 click the map below to pick that spot directly.');
                             return;
                         }
                         const lat = parseFloat(results[0].lat);
                         const lon = parseFloat(results[0].lon);
                         if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-                            document.getElementById('selected-location-text').textContent = 'Invalid location result';
+                            setSearchStatus('That result had no usable coordinates \u2014 click the map below to pick the spot directly.');
                             return;
                         }
                         const name = (typeof results[0].display_name === 'string')
@@ -6113,7 +6222,9 @@
                         document.getElementById('save-favorite-btn').disabled = false;
                         updateSaveFavoriteButton();
                     })
-                    .catch(() => {});
+                    .catch(() => {
+                        setSearchStatus('Search is unavailable right now \u2014 click the map below to pick the spot directly.');
+                    });
             }
 
             document.getElementById('location-search-btn').addEventListener('click', () => {
@@ -7970,8 +8081,12 @@
                 iconSize: [20, 20],
                 iconAnchor: [10, 10]
             });
+            // bindPopup treats a string as HTML, and this name can come from
+            // ?name=. Hand it a text node so the markup can never be parsed.
+            const locationPopup = document.createElement('span');
+            locationPopup.textContent = currentLocation.name;
             L.marker([currentLocation.lat, currentLocation.lon], { icon: locationIcon })
-                .addTo(mapSwell).bindPopup(currentLocation.name);
+                .addTo(mapSwell).bindPopup(locationPopup);
 
             // Cursor probe: local grid first, basin fallback
             attachProbe(mapSwell, function(ll) {
