@@ -290,9 +290,47 @@
             padding-top: 68px;
         }
 
+        /* The hero always fills with exactly six rows (the next six hours)
+           once the forecast arrives. Until then it is empty and zero-height,
+           so it inflated by 183px on mobile and shoved the whole dashboard
+           down -- the single largest layout shift on the page. Reserving the
+           rows' height costs an empty strip for a moment and removes it. */
+        #forecast-hero-rows {
+            min-height: 95px;
+        }
+        @media (max-width: 700px) {
+            #forecast-hero-rows { min-height: 183px; }
+        }
+
         /* === GridStack Dashboard === */
         .grid-stack {
             min-height: calc(100vh - 68px);
+        }
+
+        /* Before GridStack initialises, panels sit in normal flow at their
+           natural heights; GridStack then absolutely-positions all of them at
+           once. That repaint measured 0.45-0.48 CLS -- roughly five times the
+           0.1 "good" threshold -- because the whole page lurched after it had
+           already painted.
+
+           So while pending, the items are taken out of flow and hidden: the
+           container holds its reserved height, nothing below it moves, and the
+           shift happens to elements that were never visible, which is both
+           invisible to the user and uncounted by CLS. The class is added by
+           script, never in markup, so a browser that never runs the init still
+           renders every panel normally. */
+        .grid-stack.grid-pending .grid-stack-item {
+            position: absolute;
+            visibility: hidden;
+        }
+
+        /* The reserved height is applied as an exact height, not a min-height,
+           and clipped: during init GridStack momentarily lays out every panel
+           including the default-hidden ones (47 rows, 3290px) before settling
+           at 36 rows. A min-height would let that overshoot through and shove
+           the page down. */
+        .grid-stack.grid-pending {
+            overflow: hidden;
         }
 
         .grid-stack-item-content {
@@ -2811,6 +2849,25 @@
     </section>
 
     <div class="grid-stack" id="dashboard-grid">
+    <script>
+        // Inline and immediate: the panels must be hidden before the browser
+        // paints them, or the shift we are trying to avoid has already
+        // happened. The timeout is a safety net -- if GridStack fails to load
+        // or throws, the dashboard reveals itself anyway rather than staying
+        // invisible.
+        (function () {
+            var grid = document.getElementById('dashboard-grid');
+            if (!grid) return;
+            grid.classList.add('grid-pending');
+            window._revealGrid = function () {
+                grid.classList.remove('grid-pending');
+                grid.style.minHeight = '';
+                grid.style.maxHeight = '';
+            };
+            setTimeout(window._revealGrid, 4000);
+
+        })();
+    </script>
 
         <!-- Current Conditions -->
         <div class="grid-stack-item" data-panel-id="conditions" gs-x="0" gs-y="0" gs-w="4" gs-h="4">
@@ -3163,6 +3220,63 @@
         </div>
 
     </div>
+    <script>
+        // Runs here, not above the panels: at the opening tag the item divs
+        // are not parsed yet, so any measurement of them finds nothing.
+        //
+        // Hiding the panels stops them shifting, but the container itself
+        // still grew from its 100vh placeholder (800px) to its real height
+        // (2520px on mobile) at init, shoving everything below the dashboard
+        // down and scoring 0.25 CLS on its own. GridStack lays out at exactly
+        // 70px per row, so the final height is knowable up front: the row
+        // count is the column-stacked sum on mobile and the deepest y+h on
+        // desktop. The hidden-panel list mirrors DEFAULT_HIDDEN_PANELS; a
+        // stale copy costs only reservation accuracy, never correctness.
+        (function () {
+            var grid = document.getElementById('dashboard-grid');
+            if (!grid) return;
+            try {
+                var CELL = 70;
+                var hidden = ['daylight', 'compare', 'tides'];
+                var storedHidden = localStorage.getItem('hidden-panels');
+                if (storedHidden !== null) hidden = JSON.parse(storedHidden) || [];
+
+                var boxes = [];
+                var saved = localStorage.getItem('dashboard-layout');
+                if (saved) {
+                    JSON.parse(saved).forEach(function (n) {
+                        boxes.push({id: n.id, y: +n.y || 0, h: +n.h || 0});
+                    });
+                }
+                if (!boxes.length) {
+                    Array.prototype.forEach.call(
+                        grid.querySelectorAll('.grid-stack-item'), function (el) {
+                            boxes.push({
+                                id: el.getAttribute('data-panel-id'),
+                                y: +el.getAttribute('gs-y') || 0,
+                                h: +el.getAttribute('gs-h') || 0
+                            });
+                        });
+                }
+
+                var stacked = 0, deepest = 0;
+                boxes.forEach(function (b) {
+                    if (b.id && hidden.indexOf(b.id) !== -1) return;
+                    stacked += b.h;
+                    deepest = Math.max(deepest, b.y + b.h);
+                });
+                var rows = window.matchMedia('(max-width: 700px)').matches
+                    ? stacked : deepest;
+                // min+max rather than height: GridStack sets style.height on
+                // the container itself, so writing (and later clearing) that
+                // property destroys its layout and collapses the grid.
+                if (rows > 0) {
+                    grid.style.minHeight = (rows * CELL) + 'px';
+                    grid.style.maxHeight = (rows * CELL) + 'px';
+                }
+            } catch (e) { /* reservation is an optimisation, never a blocker */ }
+        })();
+    </script>
 
     {% if nearby_spots %}
     <aside class="nearby-spots" aria-label="Nearby surf spots">
@@ -4120,8 +4234,18 @@
                 }
             } catch (e) {}
 
-            // Apply saved hidden panels after GridStack init
-            setTimeout(applyHiddenPanels, 0);
+            // Apply saved hidden panels after GridStack init, then reveal --
+            // revealing before this ran would flash panels the user has hidden.
+            setTimeout(function () {
+                applyHiddenPanels();
+                // Hiding panels makes GridStack reflow; revealing in the same
+                // frame exposes the pre-reflow height and shifts the page.
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () {
+                        if (window._revealGrid) window._revealGrid();
+                    });
+                });
+            }, 0);
 
             // Panels toggle button
             document.getElementById('panels-toggle-btn').addEventListener('click', function(e) {
