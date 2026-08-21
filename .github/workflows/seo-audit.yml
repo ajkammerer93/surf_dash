@@ -14,7 +14,9 @@ name: SEO audit
 #   GSC_PROPERTY   sc-domain:freesurfforecast.com, or the URL-prefix form
 #   CF_API_TOKEN   Cloudflare token with Account Analytics: Read
 #   CF_ACCOUNT_ID  Cloudflare account id
-#   CF_SITE_TAG    Web Analytics site tag (the beacon token)
+#   CF_SITE_TAG    Web Analytics site tag -- NOT the beacon token in the page
+#                  snippet. They differ, and the beacon token returns a valid
+#                  account with zero events, which looks like a dead site.
 #
 # Runs after the day's forecast-verification cycle so the freshness check sees
 # a settled pipeline rather than one mid-run.

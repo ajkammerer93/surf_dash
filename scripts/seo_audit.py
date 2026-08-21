@@ -20,7 +20,10 @@ Credentials, all optional, all read from the environment:
     GSC_PROPERTY     Search Console property, e.g. sc-domain:freesurfforecast.com
     CF_API_TOKEN     Cloudflare token with Account Analytics: Read
     CF_ACCOUNT_ID    Cloudflare account id
-    CF_SITE_TAG      Cloudflare Web Analytics site tag
+    CF_SITE_TAG      Cloudflare Web Analytics SITE TAG. This is NOT the
+                     beacon token embedded in the page's JS snippet -- they are
+                     two different values for the same site, and using the
+                     beacon token yields a valid account with zero events.
     GITHUB_TOKEN     Raises the GitHub API rate limit; the repo is public, so
                      unauthenticated works too.
 """
