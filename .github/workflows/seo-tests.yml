@@ -25,8 +25,13 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run SEO tests
-        run: pytest tests/test_seo.py -v
+      - name: Run tests
+        # tests/, not tests/test_seo.py: the accuracy-card and UX-collector
+        # suites were invisible to CI while this named one file, so a
+        # regression in either would have reached master green. Nothing here
+        # needs playwright -- the collector imports it lazily, inside the
+        # function that launches a browser.
+        run: pytest tests/ -v
 
       - name: Generate SEO report
         if: always()

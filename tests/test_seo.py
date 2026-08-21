@@ -597,13 +597,27 @@ class TestSocialCards:
     }
 
     # 0.152 m is the real 30-day MAE at the time of writing -> 0.5 ft.
-    FAKE_VERIFICATION = {'stations': {}, 'overall': {'all': {'mae_m': 0.152}}}
+    # A publishable stats shape: the accuracy line on this card answers to
+    # the same guards as the weekly accuracy card (recent, enough pairs,
+    # enough stations), so a fixture that would be refused in production must
+    # not be the one the caption test passes with.
+    @staticmethod
+    def _fake_verification():
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        return {
+            'generated': (_dt.now(_tz.utc) - _td(hours=2)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'window_days': 30,
+            'n_pairs': 50000,
+            'overall': {'all': {'mae_m': 0.152, 'n': 50000}},
+            'stations': {f'440{i:02d}': {'all': {'mae_m': 0.16, 'n': 2000}}
+                         for i in range(8)},
+        }
 
     def _with_fake_upstream(self, client, path, verification=True):
         from unittest.mock import patch
         import app as a
         a._cache.pop('social:virginia-coast', None)
-        stats = self.FAKE_VERIFICATION if verification else None
+        stats = self._fake_verification() if verification else None
         # Patched, not merely faked: the real lookup would reach out to
         # raw.githubusercontent on a 10s timeout during the test run.
         with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST), \
@@ -647,6 +661,35 @@ class TestSocialCards:
         assert d['accuracy_mae_ft'] == 0.5
         assert '0.5ft average error' in d['caption']
         assert 'NOAA buoys' in d['caption']
+
+    def test_caption_drops_the_accuracy_line_when_the_stats_are_stale(self, client):
+        """The daily card states the same measured error as the weekly accuracy
+        card, off the same file, so it answers to the same publication guards.
+        Stale stats reach here looking healthy -- the app serves the last good
+        stats.json for up to a week -- and this card posts every day, so it is
+        the surface that would state an old number first."""
+        from unittest.mock import patch
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        import app as a
+        a._cache.pop('social:virginia-coast', None)
+        stale = self._fake_verification()
+        stale['generated'] = (_dt.now(_tz.utc) - _td(days=6)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST), \
+                patch('app._get_verification_stats', return_value=stale):
+            d = client.get('/api/social-card/virginia-coast').get_json()
+        assert d['accuracy_mae_ft'] is None
+        assert 'average error' not in d['caption']
+
+    def test_caption_drops_the_accuracy_line_when_too_few_stations(self, client):
+        from unittest.mock import patch
+        import app as a
+        a._cache.pop('social:virginia-coast', None)
+        thin = self._fake_verification()
+        thin['stations'] = {'44001': {'all': {'mae_m': 0.16, 'n': 2000}}}
+        with patch('app.get_point_weather_data', return_value=self.FAKE_FORECAST), \
+                patch('app._get_verification_stats', return_value=thin):
+            d = client.get('/api/social-card/virginia-coast').get_json()
+        assert d['accuracy_mae_ft'] is None
 
     def test_card_renders_without_verification_stats(self, client):
         """The accuracy line is a bonus, never a hard dependency -- if the

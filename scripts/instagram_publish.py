@@ -14,6 +14,14 @@ Actions, but also works as a manual weekly routine:
     # Post today's card (requires IG_USER_ID and IG_ACCESS_TOKEN env vars)
     python scripts/instagram_publish.py
 
+    # Post the weekly forecast-accuracy card instead of a regional one
+    python scripts/instagram_publish.py --accuracy
+
+The accuracy endpoint answers 503 when its publication guards decide the
+verification data is too stale or too thin to publish. That is a deliberate
+"no", so --accuracy prints the reason and exits 0 rather than retrying or
+failing the run -- a skipped week is a correct outcome.
+
 Credentials (env vars):
     IG_USER_ID       Instagram user id (from scripts/instagram_auth.py)
     IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
@@ -52,6 +60,10 @@ REGION_GROUPS = {
     'new-england': 'east',
 }
 
+# Not a region -- the weekly card built from the forecast-verification
+# pipeline, which scores forecasts against NDBC buoys.
+ACCURACY_SLUG = 'accuracy'
+
 REGION_ROTATION = [
     'outer-banks',          # Monday
     'southern-california',  # Tuesday
@@ -63,15 +75,53 @@ REGION_ROTATION = [
 ]
 
 
-def fetch_card(base_url, region, retries=3, wait_s=25):
-    """Fetch caption + image URL for a region. The first request after a cold
-    cache can 503 while the server gathers upstream forecasts — retry."""
-    url = f'{base_url}/api/social-card/{region}'
+class CardRefused(Exception):
+    """The endpoint declined to build a card on purpose, as opposed to failing
+    to build one. Only the accuracy card can refuse."""
+
+
+def _refusal_reason(resp):
+    """The endpoint's own reason for declining, or None if this 503 did not
+    come from the endpoint.
+
+    Only a JSON body carrying the guard marker counts. A 503 is also what a
+    dead site, a CDN error page or a failed stats fetch produces, and reading
+    those as "the guards said no" turns an outage into a green run with a
+    silently skipped week -- a no-op that reports success. Anything that is not
+    the endpoint speaking falls through to the normal retry-then-fail path.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    if body.get('error') != 'accuracy card not published' and not body.get('reason'):
+        return None
+    for key in ('reason', 'error', 'message', 'detail'):
+        if body.get(key):
+            return str(body[key])
+    return 'no reason given'
+
+
+def fetch_card(base_url, slug, retries=3, wait_s=25, refuse_on_503=False):
+    """Fetch caption + image URL for a card. The first request after a cold
+    cache can 503 while the server gathers upstream forecasts — retry.
+
+    refuse_on_503 turns that around for the accuracy card, whose 503 is the
+    publication guards saying no. Retrying a guard just asks the same question
+    three times and delays the same answer, so raise CardRefused instead.
+    """
+    url = f'{base_url}/api/social-card/{slug}'
     for attempt in range(retries):
         try:
             resp = requests.get(url, timeout=120)
             if resp.status_code == 200:
                 return resp.json()
+            if refuse_on_503 and resp.status_code == 503:
+                reason = _refusal_reason(resp)
+                if reason:
+                    raise CardRefused(reason)
             print(f'  {url} -> HTTP {resp.status_code} (attempt {attempt + 1}/{retries})')
         except requests.RequestException as e:
             print(f'  {url} -> {e} (attempt {attempt + 1}/{retries})')
@@ -141,21 +191,37 @@ def main():
     parser.add_argument('--story-only', action='store_true',
                         help='Post only the story, skip the feed card -- lets '
                              'you test stories without duplicating a feed post')
+    parser.add_argument('--accuracy', action='store_true',
+                        help='Post the weekly forecast-accuracy card instead '
+                             'of a regional one; skips cleanly (exit 0) when '
+                             'the endpoint refuses to publish')
     parser.add_argument('--group', choices=['east', 'west'],
                         help='Only post if the day\'s region is in this group; '
                              'lets one schedule serve East Coast mornings and '
                              'another serve Pacific mornings')
     args = parser.parse_args()
 
+    if args.accuracy:
+        # --region/--group/--week all describe the weekday region rotation,
+        # which the accuracy card is not part of.
+        clashes = [name for name, on in (('--region', args.region),
+                                         ('--group', args.group),
+                                         ('--week', args.week)) if on]
+        if clashes:
+            sys.exit(f'--accuracy posts the weekly accuracy card, which is not '
+                     f'part of the region rotation, so it cannot be combined '
+                     f'with {", ".join(clashes)}.')
     if args.week and not args.dry_run:
         sys.exit('--week only makes sense with --dry-run')
     if args.story_only and args.no_story:
         sys.exit('--story-only and --no-story cancel each other out')
 
     today = datetime.now()
-    if args.week:
+    if args.accuracy:
+        targets = [(today.strftime('%A %b %d'), ACCURACY_SLUG)]
+    elif args.week:
         days = [(today + timedelta(days=i)) for i in range(7)]
-        regions = [(d.strftime('%A %b %d'), REGION_ROTATION[d.weekday()]) for d in days]
+        targets = [(d.strftime('%A %b %d'), REGION_ROTATION[d.weekday()]) for d in days]
     else:
         region = args.region or REGION_ROTATION[today.weekday()]
         # An explicitly requested region is a deliberate manual post, so the
@@ -164,14 +230,33 @@ def main():
             print(f"Today's region ({region}) is not in the {args.group} group "
                   f"- nothing to do on this schedule.")
             sys.exit(0)
-        regions = [(today.strftime('%A %b %d'), region)]
+        targets = [(today.strftime('%A %b %d'), region)]
 
     failures = 0
-    for label, region in regions:
-        print(f'== {label}: {region} ==')
-        card = fetch_card(args.base_url, region)
+    for label, slug in targets:
+        print(f'== {label}: {slug} ==')
+        try:
+            card = fetch_card(args.base_url, slug, refuse_on_503=args.accuracy)
+        except CardRefused as e:
+            # A refused week is the guards working, not a broken run. Exiting
+            # non-zero here would paint the weekly job red on purpose and train
+            # me to ignore it, so report and stop clean -- but annotate the run
+            # in Actions, because a skipped week that shows as a plain green
+            # tick is indistinguishable from a week that posted.
+            print(f'  endpoint refused to publish: {e}')
+            print('  nothing to post - skipping this week.')
+            if os.environ.get('GITHUB_ACTIONS'):
+                print(f'::warning::accuracy post skipped: {e}')
+            sys.exit(0)
         if not card:
             print('  FAILED to fetch card data')
+            failures += 1
+            continue
+        # A 200 missing its fields is a real failure, not a skip. Catch it here
+        # so it reports readably instead of tracebacking mid-publish.
+        missing = [k for k in ('image_url', 'caption') if not card.get(k)]
+        if missing:
+            print(f'  FAILED: card response is missing {", ".join(missing)}')
             failures += 1
             continue
         if args.dry_run:
@@ -192,7 +277,13 @@ def main():
             media_id = publish(ig_user_id, token, card['image_url'], card['caption'])
             print(f'  published: media id {media_id}')
 
-        if not args.no_story and card.get('story_image_url'):
+        if args.no_story or not card.get('story_image_url'):
+            # Say so. With --story-only and no story URL the loop would
+            # otherwise end having printed nothing and posted nothing, which
+            # reads exactly like a successful post.
+            if not args.no_story:
+                print('  no story_image_url in the card - story skipped')
+        else:
             try:
                 story_id = publish(ig_user_id, token, card['story_image_url'],
                                    None, story=True)

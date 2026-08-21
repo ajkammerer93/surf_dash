@@ -2828,9 +2828,16 @@ def _social_card_data(region_slug):
     accuracy_mae_ft = None
     try:
         vstats = _get_verification_stats()
-        mae_m = (((vstats or {}).get('overall') or {}).get('all') or {}).get('mae_m')
-        if mae_m:
-            accuracy_mae_ft = round(mae_m * 3.28084, 1)
+        # The same publication guards as the weekly accuracy card. This card
+        # states the identical number off the identical file and posts daily,
+        # so guarding only the weekly one would guard the claim on the surface
+        # that publishes least. Dropping the line costs a sentence; stating a
+        # stale or thin number costs the claim.
+        blocked, _scored = _accuracy_claim_block(vstats)
+        if blocked:
+            logger.warning(f"Social card accuracy line dropped: {blocked}")
+        else:
+            accuracy_mae_ft = round(vstats['overall']['all']['mae_m'] * 3.28084, 1)
     except Exception as e:
         logger.warning(f"Social card accuracy lookup failed: {e}")
 
@@ -2858,10 +2865,24 @@ def _social_card_data(region_slug):
     }
 
 
-def _fit_card_title(draw, text, max_width, max_size=58, min_size=38):
+def _fit_card_title(draw, text, max_width, max_size=58, min_size=38, lines=None):
     """Pick the largest title font that fits max_width, wrapping to two lines
     only when even min_size overflows. Long region names ("South Carolina &
-    Georgia Surf Check") ran off the 1080px canvas at the old fixed size."""
+    Georgia Surf Check") ran off the 1080px canvas at the old fixed size.
+
+    Pass `lines` when the break is deliberate rather than something to solve
+    for (the accuracy headline is written as two lines): the widest of them
+    then drives one shared size, so the two lines never render at different
+    sizes. `text` is ignored in that case.
+    """
+    if lines:
+        # Floor well below min_size: a headline three sizes too small still
+        # reads, a headline running off the canvas does not.
+        for size in range(max_size, 11, -2):
+            font = _load_og_font('sans_bold', size)
+            if max(draw.textlength(ln, font=font) for ln in lines) <= max_width:
+                return font, size, list(lines)
+        return _load_og_font('sans_bold', 12), 12, list(lines)
     for size in range(max_size, min_size - 1, -2):
         font = _load_og_font('sans_bold', size)
         if draw.textlength(text, font=font) <= max_width:
@@ -3066,6 +3087,494 @@ def social_card_meta(region_slug):
         'accuracy_mae_ft': data.get('accuracy_mae_ft'),
         'spots': data['top'],
     })
+
+
+# --- Weekly forecast-accuracy card -------------------------------------
+# Same shape as the daily regional card, but the subject is our own
+# verification record: /social/accuracy.jpg renders the image and
+# /api/social-card/accuracy returns the caption.
+#
+# A card that states a measured error figure is a public claim, so the guards
+# below all have to hold before one is published. Skipping a week costs
+# nothing; posting a stale or thin number costs the only thing this card is
+# for. The routes are deliberately absent from the sitemap and unlinked from
+# any page -- the site is crawl-budget constrained and discoverable URLs that
+# serve no searcher actively hurt it.
+ACCURACY_CARD_MAX_AGE_H = 48       # pipeline runs every 6h; older means it stopped
+ACCURACY_CARD_MIN_PAIRS = 1000     # under this the mean is noise, not a claim
+ACCURACY_CARD_MIN_STATIONS = 5     # a national figure needs more than one coast
+ACCURACY_SPOTLIGHT_MIN_N = 200     # the per-buoy line needs its own usable sample
+# Lead bins in display order, as (stats key, card label).
+ACCURACY_CARD_BINS = [('0-24', '0-24h'), ('24-48', '24-48h'), ('48-72', '48-72h')]
+ACCURACY_HASHTAGS = '#forecastaccuracy #surfscience #ndbc #waveforecast'
+
+
+# Why the last build refused, so /api/social-card/accuracy can say so in its
+# 503 body -- the posting workflow prints that line and it is the only place
+# a skipped week is visible without going to the server logs.
+_ACCURACY_CARD_LAST_SKIP = None
+
+
+def _accuracy_card_skip(reason):
+    """Log a tripped publication guard, remember it, and return None."""
+    global _ACCURACY_CARD_LAST_SKIP
+    _ACCURACY_CARD_LAST_SKIP = reason
+    logger.warning(f"Accuracy card skipped: {reason}")
+    return None
+
+
+def _accuracy_claim_block(stats):
+    """Why the measured-error figure must not be published right now, or None
+    when it may be. Returns (reason, scored_stations).
+
+    The weekly accuracy card and the daily regional card quote the same number
+    out of the same stats.json, so they have to agree about when that number is
+    publishable -- a guard that covers only one of the two surfaces is not a
+    guard on the claim, and the daily card is the one that posts every day.
+    """
+    if not stats:
+        return 'verification stats unavailable', {}
+
+    generated = stats.get('generated')
+    try:
+        gen_dt = datetime.fromisoformat(str(generated).replace('Z', '+00:00'))
+        if gen_dt.tzinfo is None:
+            gen_dt = gen_dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return f'unparseable generated timestamp {generated!r}', {}
+    age_h = (datetime.now(timezone.utc) - gen_dt).total_seconds() / 3600.0
+    if age_h < -1:
+        # A stamp in the future is a broken clock or a broken writer -- the
+        # same class of failure the age check exists to catch. Accepting it
+        # would leave the guard permanently blind instead of tripping it.
+        return (f'generated timestamp {generated} is {-age_h:.1f}h in the '
+                f'future'), {}
+    if age_h > ACCURACY_CARD_MAX_AGE_H:
+        # The app serves the last good stats.json for up to a week, so old
+        # numbers reach this point looking perfectly healthy.
+        return (f'stats are {age_h:.1f}h old (max {ACCURACY_CARD_MAX_AGE_H}h), '
+                f'generated {generated}'), {}
+
+    overall = ((stats.get('overall') or {}).get('all') or {})
+    if overall.get('mae_m') is None:
+        return 'overall mae_m missing from the stats', {}
+
+    n_pairs = overall.get('n') or stats.get('n_pairs') or 0
+    if n_pairs < ACCURACY_CARD_MIN_PAIRS:
+        return (f'only {n_pairs} scored pairs '
+                f'(need {ACCURACY_CARD_MIN_PAIRS})'), {}
+
+    scored = {sid: st for sid, st in (stats.get('stations') or {}).items()
+              if isinstance(st, dict) and (st.get('all') or {}).get('n')}
+    if len(scored) < ACCURACY_CARD_MIN_STATIONS:
+        return (f'only {len(scored)} stations have scored pairs '
+                f'(need {ACCURACY_CARD_MIN_STATIONS})'), scored
+    return None, scored
+
+
+def _accuracy_card_data():
+    """Data + caption for the weekly accuracy card, or None when a guard trips.
+
+    None is a normal answer ("not this week"), not an error -- callers turn it
+    into a 503. Each refusal logs which guard failed, because a silently
+    skipped weekly post is otherwise invisible until someone notices the feed
+    has gone quiet.
+    """
+    try:
+        return _accuracy_card_build()
+    except Exception as e:
+        # A stats file in a shape compute_stats cannot produce (a null bins
+        # object, a station that is a string) is still a reason to skip a week
+        # rather than a 500: the posting script reads a 500 as "the site is
+        # broken", retries it three times and paints the run red over data no
+        # retry can fix.
+        logger.exception('Accuracy card build failed')
+        return _accuracy_card_skip(f'stats have an unusable shape: {e}')
+
+
+def _accuracy_card_build():
+    """Body of _accuracy_card_data; see there for why it is wrapped."""
+    stats = _get_verification_stats()
+    blocked, scored = _accuracy_claim_block(stats)
+    if blocked:
+        return _accuracy_card_skip(blocked)
+
+    generated = stats.get('generated')
+    overall = ((stats.get('overall') or {}).get('all') or {})
+    mae_m = overall.get('mae_m')
+    n_pairs = overall.get('n') or stats.get('n_pairs') or 0
+
+    bins = []
+    for key, label in ACCURACY_CARD_BINS:
+        b = ((stats.get('overall') or {}).get('bins') or {}).get(key) or {}
+        if b.get('mae_m') is None:
+            continue
+        bins.append({'label': label,
+                     'mae_ft': round(b['mae_m'] * 3.28084, 1),
+                     'n': b.get('n') or 0})
+
+    # Rotate the spotlight buoy by ISO week so the weekly post is not
+    # byte-identical every week. The pick is a pure function of the week and
+    # the eligible list, so caption and image always agree within a build --
+    # but the list is recomputed from a stats file that refreshes every 6h, so
+    # a station ageing out of the window mid-week can move the pick on the
+    # next cache miss. That is fine for a once-a-week post and is why the
+    # caption never promises a particular buoy.
+    spotlight = None
+    eligible = sorted(sid for sid, st in scored.items()
+                      if (st['all'].get('n') or 0) >= ACCURACY_SPOTLIGHT_MIN_N
+                      and st['all'].get('mae_m') is not None)
+    if eligible:
+        sid = eligible[datetime.now(timezone.utc).isocalendar()[1] % len(eligible)]
+        st = scored[sid]
+        spotlight = {
+            'id': sid,
+            'name': st.get('name') or sid,
+            'region': st.get('region') or '',
+            'n': st['all'].get('n') or 0,
+            'mae_ft': round(st['all']['mae_m'] * 3.28084, 1),
+        }
+
+    window_days = stats.get('window_days') or 30
+    mae_ft = round(mae_m * 3.28084, 1)
+    date_str = datetime.now(timezone.utc).strftime('%b %-d')
+
+    # Not "week of": the numbers are a rolling window ending today, so a week
+    # label would describe a period the figures are not scoped to.
+    lines = [f'How accurate is a free surf forecast? Here is the receipt, '
+             f'{date_str}.', '']
+    lines.append(f'Average miss: {mae_ft:.1f} ft across {n_pairs:,} scored '
+                 f'forecasts over a rolling {window_days} days.')
+    if bins:
+        lines.append('By lead time: ' + ', '.join(
+            f"{b['mae_ft']:.1f} ft at {b['label']}" for b in bins) + '.')
+    lines.append('')
+    lines.append(f'Method: every few hours we snapshot our own wave-height '
+                 f'forecast at {len(scored)} NDBC buoy positions, then score it '
+                 f'against the wave height those buoys actually measured. Every '
+                 f'pair counts, including the ones we got wrong.')
+    if spotlight:
+        region = f" ({spotlight['region']})" if spotlight['region'] else ''
+        lines.append('')
+        lines.append(f"Buoy of the week: {spotlight['name']}{region} - "
+                     f"{spotlight['mae_ft']:.1f} ft average miss over "
+                     f"{spotlight['n']:,} scored forecasts.")
+    lines.append('')
+    lines.append('Verification is United States only: the NDBC buoys we score '
+                 'against sit in US waters. The wave, wind and swell forecasts '
+                 'on the site are global.')
+    lines.append('')
+    lines.append('Every station, every number, and a downloadable CSV: '
+                 'freesurfforecast.com/accuracy')
+    lines.append('')
+    lines.append(f'{SOCIAL_BASE_HASHTAGS} {ACCURACY_HASHTAGS}')
+
+    return {
+        'kind': 'accuracy',
+        'date': date_str,
+        'generated': generated,
+        'window_days': window_days,
+        'n_pairs': n_pairs,
+        'mae_ft': mae_ft,
+        # "or 0.0" normalises -0.0, which a tiny negative bias rounds to.
+        'bias_ft': round((overall.get('bias_m') or 0.0) * 3.28084, 2) or 0.0,
+        'rmse_ft': (round(overall['rmse_m'] * 3.28084, 1)
+                    if overall.get('rmse_m') is not None else None),
+        'n_stations': len(scored),
+        'bins': bins,
+        'spotlight': spotlight,
+        'caption': '\n'.join(lines),
+        'image_url': 'https://freesurfforecast.com/social/accuracy.jpg',
+        'image_url_png': 'https://freesurfforecast.com/social/accuracy.png',
+        'story_image_url': 'https://freesurfforecast.com/social/accuracy-story.jpg',
+    }
+
+
+def _render_accuracy_card(data, fmt='PNG', story=False):
+    """Render the weekly accuracy card: 1080x1350 (feed) or 1080x1920 (story).
+
+    Same palette and canvas as _render_social_card. Every string is measured
+    before it is drawn and shrunk to fit -- this card exists to state numbers,
+    so a clipped one is worse than a small one, and the inputs range from
+    "0.5 ft" to "1,284,336" to "Long Island (30nm S of Islip), NY".
+    """
+    from PIL import Image, ImageDraw
+    import io
+
+    W, H = 1080, (1920 if story else 1350)
+    BG = (10, 10, 10)
+    SURFACE = (20, 20, 20)
+    BORDER = (42, 42, 42)
+    TEXT = (232, 232, 232)
+    TEXT_DIM = (136, 136, 136)
+    ACCENT = (68, 255, 136)
+
+    img = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W, 10)], fill=ACCENT)
+
+    pad = 64
+    box_l, box_r = pad - 20, W - pad + 20      # panel edges, as on the daily card
+    box_w = box_r - box_l
+    ins = 32                                   # panel inner padding
+
+    def fit(text, kind, max_size, max_width, min_size=12):
+        """Largest font of `kind` at which `text` fits max_width."""
+        for size in range(max_size, min_size - 1, -2):
+            f = _load_og_font(kind, size)
+            if draw.textlength(text, font=f) <= max_width:
+                return f
+        return _load_og_font(kind, min_size)
+
+    def fit_block(text, kind, max_size, max_width, max_height, min_size=12):
+        """Like fit(), but bounded vertically too. The hero number is sized to
+        fill its panel, and width alone let a 200px glyph run down over the
+        line beneath it."""
+        for size in range(max_size, min_size - 1, -2):
+            f = _load_og_font(kind, size)
+            bb = draw.textbbox((0, 0), text, font=f)
+            if bb[2] - bb[0] <= max_width and bb[3] - bb[1] <= max_height:
+                return f
+        return _load_og_font(kind, min_size)
+
+    def center(text, font, y, fill):
+        draw.text(((W - draw.textlength(text, font=font)) / 2, y),
+                  text, fill=fill, font=font)
+
+    f_brand = _load_og_font('sans_bold', 28)
+    f_date = _load_og_font('sans', 28)
+    draw.text((pad, 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    draw.text((W - pad - draw.textlength(data['date'], font=f_date), 52),
+              data['date'], fill=TEXT_DIM, font=f_date)
+    draw.text((pad, 106), 'WEEKLY ACCURACY REPORT', fill=ACCENT, font=f_brand)
+
+    f_head, head_size, head_lines = _fit_card_title(
+        draw, '', W - 2 * pad, max_size=(80 if story else 68), min_size=44,
+        lines=['The surf forecast', 'that grades itself'])
+    y = 154
+    for i, line in enumerate(head_lines):
+        draw.text((pad, y + i * (head_size + 8)), line,
+                  fill=(TEXT if i == 0 else ACCENT), font=f_head)
+    y += len(head_lines) * (head_size + 8)
+
+    # Block heights, then spread the leftover space as equal gaps so the
+    # layout adapts to the taller story canvas (and to a missing spotlight)
+    # instead of needing two hand-tuned coordinate sets.
+    hero_h = 340 if story else 300
+    tile_h = 170 if story else 142
+    lead_h = (270 if story else 212) if data.get('bins') else 0
+    # 140, not 128: at 128 the name's descenders sat on the detail line's
+    # ascenders on every real card (measured, 2-4px of overlap).
+    spot_h = (160 if story else 140) if data.get('spotlight') else 0
+    scope_h = 84 if story else 76
+    foot_h = 100
+    cta_h = 180 if story else 0
+
+    blocks = [h for h in (hero_h, tile_h, lead_h, spot_h, scope_h) if h]
+    content_bottom = H - foot_h - cta_h
+    slack = content_bottom - y - sum(blocks)
+    gap = max(10, int(slack / (len(blocks) + 1)))
+    y += gap
+
+    # Hero: the average miss, in feet.
+    draw.rectangle([(box_l, y), (box_r, y + hero_h)], fill=SURFACE, outline=BORDER)
+    label = 'AVERAGE MISS VS NOAA BUOY OBSERVATIONS'
+    draw.text((box_l + ins, y + 24), label, fill=TEXT_DIM,
+              font=fit(label, 'sans', 26, box_w - 2 * ins))
+    # Size the number to the free band between the label and the note, and
+    # place it by its ink box rather than its text origin so it sits in that
+    # band whatever size it lands on.
+    note_y = y + hero_h - 50
+    band_top = y + 76
+    num = f"{data['mae_ft']:.1f}"
+    f_num = fit_block(num, 'mono_bold', 220, box_w - 2 * ins - 200,
+                      note_y - 16 - band_top)
+    nb = draw.textbbox((0, 0), num, font=f_num)
+    draw.text((box_l + ins - nb[0], band_top - nb[1]), num, fill=ACCENT, font=f_num)
+    f_unit = _load_og_font('sans_bold', 60)
+    ub = draw.textbbox((0, 0), 'ft', font=f_unit)
+    draw.text((box_l + ins + (nb[2] - nb[0]) + 18 - ub[0],
+               band_top + (nb[3] - nb[1]) - (ub[3] - ub[1]) - ub[1]),
+              'ft', fill=TEXT_DIM, font=f_unit)
+    note = 'How far our forecast wave height lands from the measured wave height.'
+    draw.text((box_l + ins, note_y), note, fill=TEXT_DIM,
+              font=fit(note, 'sans', 26, box_w - 2 * ins))
+    y += hero_h + gap
+
+    # Supporting stats.
+    tiles = [(f"{data['n_pairs']:,}", 'forecasts scored'),
+             (f"{data['n_stations']}", 'NOAA buoys'),
+             (f"{data['window_days']} days", 'rolling window')]
+    tw = (box_w - 2 * 16) // 3
+    for i, (value, caption) in enumerate(tiles):
+        tx = box_l + i * (tw + 16)
+        draw.rectangle([(tx, y), (tx + tw, y + tile_h)], fill=SURFACE, outline=BORDER)
+        draw.text((tx + 24, y + 26), value, fill=TEXT,
+                  font=fit(value, 'mono_bold', 56, tw - 48))
+        draw.text((tx + 24, y + tile_h - 46), caption, fill=TEXT_DIM,
+                  font=fit(caption, 'sans', 26, tw - 48))
+    y += tile_h + gap
+
+    # Lead-time breakdown -- the part that makes the headline number credible,
+    # so it gets a full-width panel rather than a footnote. An empty box says
+    # nothing, so a stats file with no usable bins drops the panel entirely.
+    lead_bins = data.get('bins') or []
+    if lead_bins:
+        draw.rectangle([(box_l, y), (box_r, y + lead_h)], fill=SURFACE, outline=BORDER)
+        lead_title = 'AVERAGE MISS BY FORECAST LEAD TIME'
+        draw.text((box_l + ins, y + 22), lead_title, fill=ACCENT,
+                  font=fit(lead_title, 'sans_bold', 28, box_w - 2 * ins))
+        cw = (box_w - 2 * ins) / len(lead_bins)
+        for i, b in enumerate(lead_bins):
+            cx = box_l + ins + i * cw
+            if i:
+                draw.line([(cx - 8, y + 78), (cx - 8, y + lead_h - 28)], fill=BORDER)
+            value = f"{b['mae_ft']:.1f} ft"
+            draw.text((cx, y + (96 if story else 80)), value, fill=TEXT,
+                      font=fit(value, 'mono_bold', 62 if story else 54, cw - 28))
+            draw.text((cx, y + lead_h - (76 if story else 62)), b['label'],
+                      fill=ACCENT, font=fit(b['label'], 'sans_bold', 34, cw - 28))
+            n_line = f"{b['n']:,} scored"
+            draw.text((cx, y + lead_h - (40 if story else 32)), n_line,
+                      fill=TEXT_DIM, font=fit(n_line, 'sans', 24, cw - 28))
+        y += lead_h + gap
+
+    # Spotlight buoy (rotates weekly).
+    spot = data.get('spotlight')
+    if spot:
+        draw.rectangle([(box_l, y), (box_r, y + spot_h)], fill=SURFACE, outline=BORDER)
+        draw.text((box_l + ins, y + 20), 'BUOY OF THE WEEK', fill=ACCENT,
+                  font=_load_og_font('sans_bold', 24))
+        name = spot['name'] + (f" - {spot['region']}" if spot.get('region') else '')
+        draw.text((box_l + ins, y + (60 if story else 54)), name, fill=TEXT,
+                  font=fit(name, 'sans_bold', 40 if story else 34, box_w - 2 * ins))
+        detail = (f"{spot['mae_ft']:.1f} ft average miss over "
+                  f"{spot['n']:,} scored forecasts")
+        draw.text((box_l + ins, y + spot_h - (52 if story else 44)), detail,
+                  fill=TEXT_DIM, font=fit(detail, 'sans', 28, box_w - 2 * ins))
+        y += spot_h + gap
+
+    # Scope. Tides and buoys are US-only; the forecasts are not. Saying so on
+    # the card keeps the claim honest without the caption having to carry it.
+    scope_size = 30 if story else 26
+    for i, line in enumerate(['Scored against NOAA buoys in United States waters.',
+                              'Wave, wind and swell forecasts on the site are global.']):
+        center(line, fit(line, 'sans', scope_size, W - 2 * pad),
+               y + i * (scope_size + 12), TEXT_DIM)
+    y += scope_h + gap
+
+    if story:
+        # A story carries no caption, so the image has to make the ask itself.
+        # The API cannot attach a link sticker, so the profile link is the
+        # only route off the image -- say so explicitly.
+        cta_y = H - foot_h - cta_h + 30
+        cta = 'freesurfforecast.com/accuracy'
+        center(cta, fit(cta, 'sans_bold', 46, W - 2 * pad), cta_y, ACCENT)
+        sub = 'Link in bio - every station, every number, downloadable.'
+        center(sub, fit(sub, 'sans', 30, W - 2 * pad), cta_y + 68, TEXT_DIM)
+
+    draw.rectangle([(0, H - foot_h), (W, H)], fill=SURFACE)
+    draw.line([(0, H - foot_h), (W, H - foot_h)], fill=BORDER)
+    if not story:
+        # The story already carries the URL in its call-to-action band, so
+        # repeating it here would just be the same line twice.
+        foot = 'freesurfforecast.com/accuracy'
+        center(foot, fit(foot, 'sans_bold', 34, W - 2 * pad), H - foot_h + 18, TEXT)
+    sub = f"Rolling {data['window_days']}-day window, rescored every 6 hours"
+    center(sub, fit(sub, 'sans', 26, W - 2 * pad),
+           H - foot_h + (34 if story else 60), TEXT_DIM)
+
+    buf = io.BytesIO()
+    if fmt == 'JPEG':
+        img.save(buf, format='JPEG', quality=90, optimize=True, progressive=True)
+    else:
+        img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
+def _serve_accuracy_card(fmt, story=False):
+    """Shared body for the four accuracy card image routes."""
+    from flask import abort
+    data = cached('social:accuracy', _accuracy_card_data, ttl=3600)
+    if not data:
+        # A tripped publication guard is "not today", not a crash. Built by
+        # hand rather than via abort() so the noindex header rides along on
+        # the refusal too.
+        resp = Response(f'accuracy card not published: '
+                        f'{_ACCURACY_CARD_LAST_SKIP or "guard tripped"}\n',
+                        status=503, mimetype='text/plain')
+        resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        return resp
+    try:
+        img_bytes = _render_accuracy_card(data, fmt=fmt, story=story)
+    except Exception as e:
+        logger.error(f"Accuracy card render failed: {e}")
+        abort(500)
+    resp = Response(img_bytes, mimetype='image/jpeg' if fmt == 'JPEG' else 'image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=1800'
+    resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    return resp
+
+
+@app.route('/social/accuracy.jpg')
+def social_accuracy_jpg():
+    """Weekly accuracy card (1080x1350 JPEG). Instagram's publishing API
+    rejects PNG, so this is the variant the posting pipeline uploads."""
+    return _serve_accuracy_card('JPEG')
+
+
+@app.route('/social/accuracy.png')
+def social_accuracy_png():
+    """Same card as PNG, for previewing the layout."""
+    return _serve_accuracy_card('PNG')
+
+
+@app.route('/social/accuracy-story.jpg')
+def social_accuracy_story_jpg():
+    """1080x1920 (9:16) story variant of the weekly accuracy card."""
+    return _serve_accuracy_card('JPEG', story=True)
+
+
+@app.route('/social/accuracy-story.png')
+def social_accuracy_story_png():
+    """PNG story variant, for previewing the layout."""
+    return _serve_accuracy_card('PNG', story=True)
+
+
+# Declared as a static rule so it wins over /api/social-card/<region_slug>;
+# Werkzeug ranks rules without converters first, so "accuracy" never reaches
+# the region lookup regardless of declaration order.
+@app.route('/api/social-card/accuracy')
+def social_accuracy_meta():
+    """Caption + numbers matching /social/accuracy.jpg."""
+    data = cached('social:accuracy', _accuracy_card_data, ttl=3600)
+    if not data:
+        resp = jsonify({'error': 'accuracy card not published',
+                        'reason': _ACCURACY_CARD_LAST_SKIP or 'guard tripped'})
+        resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        return resp, 503
+    resp = jsonify({
+        'kind': data['kind'],
+        'date': data['date'],
+        'caption': data['caption'],
+        'image_url': data['image_url'],
+        'image_url_png': data['image_url_png'],
+        'story_image_url': data['story_image_url'],
+        'stats': {
+            'generated': data['generated'],
+            'window_days': data['window_days'],
+            'n_pairs': data['n_pairs'],
+            'mae_ft': data['mae_ft'],
+            'bias_ft': data['bias_ft'],
+            'rmse_ft': data['rmse_ft'],
+            'n_stations': data['n_stations'],
+            'bins': data['bins'],
+            'spotlight': data['spotlight'],
+        },
+    })
+    resp.headers['Cache-Control'] = 'public, max-age=1800'
+    resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    return resp
 
 
 @app.route('/sw.js')

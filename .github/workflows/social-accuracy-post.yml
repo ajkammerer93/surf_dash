@@ -1,0 +1,74 @@
+name: Weekly accuracy post
+
+# Posts the weekly forecast-accuracy card to Instagram: how close last week's
+# wave-height forecasts landed, scored against NDBC buoy observations.
+#
+# THIS WORKFLOW IS NOT LIVE. The schedule: block below is commented out, so the
+# job can only ever run when I start it by hand from the Actions tab. It cannot
+# fire on its own until those lines are uncommented and pushed.
+#
+# Before uncommenting the schedule, check that:
+#   1. A manual run with dry_run left on prints a card whose numbers I would be
+#      happy to publish (MAE, pair count, buoy count, date range).
+#   2. A manual run with dry_run off actually lands a post and a Story on the
+#      account, and the card renders correctly at Instagram's crop.
+#   3. /api/social-card/accuracy returns 503 when the publication guards should
+#      refuse -- the script treats that as a deliberate skip and exits clean, so
+#      a guarded week shows as a green run with nothing posted.
+#   4. The IG_ACCESS_TOKEN secret is current; instagram-token-refresh.yml
+#      rotates it every 60 days.
+#
+# Requires the same two repository secrets as social-post.yml
+# (Settings -> Secrets and variables -> Actions), both produced by
+# scripts/instagram_auth.py:
+#   IG_USER_ID       Instagram user id
+#   IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the card without posting'
+        type: boolean
+        # Defaults on: a stray Run-workflow click should show me the card, not
+        # publish it.
+        default: true
+      story_only:
+        description: 'Post only the story (no feed card)'
+        type: boolean
+        default: false
+  # Intended cadence once I have vetted it by hand -- uncomment to go live.
+  # Sunday late morning, when the week just scored is complete. Minute 7 rather
+  # than 0: top-of-hour is when Actions queues are most congested, same reason
+  # as social-post.yml.
+  # schedule:
+  #   - cron: '7 15 * * 0'   # 11:07 ET Sunday
+
+# One accuracy post at a time. Two overlapping runs would publish the same card
+# twice.
+concurrency:
+  group: social-accuracy-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Post accuracy card
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_STORY_ONLY: ${{ inputs.story_only }}
+        run: |
+          ARGS="--accuracy"
+          # A scheduled run sends no inputs, so both of these are empty there
+          # and the job posts for real.
+          if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "$INPUT_STORY_ONLY" = "true" ]; then ARGS="$ARGS --story-only"; fi
+          python scripts/instagram_publish.py $ARGS

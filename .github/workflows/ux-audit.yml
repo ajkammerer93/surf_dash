@@ -1,0 +1,229 @@
+name: UI/UX audit
+
+# Drives a real browser over the live site once a week and publishes the
+# snapshot -- metrics, console errors and screenshots -- to the unprotected
+# ux-data branch, the same arrangement seo-audit, forecast-verification and
+# youtube-cam-scan use.
+#
+# Why a branch and not the repo: master is protected, so no scheduled job can
+# commit to it. The alternative -- leaving the snapshot in the CI workspace --
+# is exactly the bug that made the cam scan file a duplicate review issue every
+# week for six weeks: the workspace is discarded when the run ends, so every
+# scheduled run started from nothing and could never see what the previous one
+# found. A weekly UX snapshot is only worth collecting if last week's is still
+# there to compare against, so the history has to live somewhere durable.
+#
+# Needs no secrets. scripts/ux_audit.py exits 0 even when it could not collect
+# anything, recording a top-level "unavailable" reason instead, so a site or
+# browser problem shows up as a warning in the log and a published snapshot
+# rather than a red run with no data.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Site to audit (defaults to production)'
+        required: false
+        default: 'https://freesurfforecast.com'
+  schedule:
+    # Mondays 16:40 UTC = 12:40 ET. Daytime on purpose: at the old 05:40 UTC
+    # the site was measured and photographed after dark, so every shot showed
+    # the AFTER DARK badge and black cam panels rather than the state
+    # essentially every real visitor sees.
+    - cron: '40 16 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ux-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # Worst case is roughly 16 measurements x (45s navigation + 15s
+    # networkidle + 3.5s settle + scroll pass + 9s lazy settle + 45s
+    # screenshot) ~= 35 minutes, which only happens when the site is degraded
+    # -- exactly the week the snapshot is worth having. A happy run is 6-8
+    # minutes.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the ux-data branch
+        id: uxdata
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: ux-data
+          path: uxdata
+
+      - name: Start ux-data on the first run
+        if: steps.uxdata.outcome != 'success'
+        run: |
+          # actions/checkout fails hard on a ref that does not exist yet, and
+          # the branch is created by this workflow rather than by hand -- so the
+          # very first run would red-fail for no reason. Fall back to an empty
+          # orphan branch instead; the commit step below pushes it.
+          rm -rf uxdata
+          mkdir -p uxdata
+          cd uxdata
+          git init -q -b ux-data
+          git remote add origin \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          echo "Initialised an empty ux-data branch."
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install playwright
+      # Root is available on the runner, so the browser's system libraries can
+      # be installed here. Locally they are not, which is why --with-deps is
+      # correct in CI only.
+      - run: playwright install --with-deps chromium
+
+      - name: Collect UX snapshot
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://freesurfforecast.com' }}
+        run: python scripts/ux_audit.py --data-dir uxdata --base-url "$BASE_URL"
+
+      - name: Report what the collector saw
+        continue-on-error: true
+        run: |
+          # A readout, not a gate: a bad week should still publish its snapshot.
+          python - <<'PY'
+          import json, os
+
+          path = 'uxdata/ux-latest.json'
+          if not os.path.exists(path):
+              print(f"::warning::no snapshot written to {path}")
+              raise SystemExit(0)
+          try:
+              snap = json.load(open(path))
+          except Exception as exc:
+              print(f"::warning::could not read {path}: {exc}")
+              raise SystemExit(0)
+
+          if snap.get('unavailable'):
+              print(f"::warning::UX audit unavailable: {snap['unavailable']}")
+
+          pages = snap.get('pages') or []
+          if isinstance(pages, dict):
+              pages = [dict(p, url=p.get('url', k)) for k, p in pages.items()]
+
+          def num(page, section, key):
+              sec = page.get(section)
+              return sec.get(key) if isinstance(sec, dict) else None
+
+          def txt(v, fmt='{}'):
+              return fmt.format(v) if isinstance(v, (int, float)) else '?'
+
+          # Key names below are the ones scripts/ux_audit.py actually writes.
+          # Three of them used to be guesses and every one failed silently:
+          # there is no "console_errors" key (it is a {level: count} dict under
+          # "console"), "overflow" is a dict that is always present so a plain
+          # truth test warned on every clean page, and "url" repeats across the
+          # viewport/theme variants of one path while "key" does not.
+          for page in pages:
+              if not isinstance(page, dict):
+                  continue
+              name = (page.get('key') or page.get('url')
+                      or page.get('path') or page.get('name') or '?')
+              if page.get('unavailable'):
+                  print(f"::warning::{name} unavailable: {page['unavailable']}")
+                  continue
+              if page.get('error'):
+                  print(f"::warning::{name} errored: {page['error']}")
+                  continue
+
+              console = page.get('console')
+              if isinstance(console, dict):
+                  # A page that throws is counted as 'pageerror', not 'error'.
+                  n_errors = (console.get('error') or 0) + (console.get('pageerror') or 0)
+              else:
+                  n_errors = console or 0
+
+              overflow = page.get('overflow')
+              if isinstance(overflow, dict):
+                  # The document scrolling sideways is the defect. Elements
+                  # hanging past the right edge inside a clipping ancestor are
+                  # normal (map tiles, table scrollers) and are counted, not
+                  # warned about.
+                  overflows = bool(overflow.get('overflows'))
+                  offenders = overflow.get('offender_count') or 0
+                  clipped = overflow.get('clipped_count') or 0
+                  overflow_txt = 'yes' if overflows else 'no'
+                  if offenders:
+                      overflow_txt += f" (overhangs={offenders}, clipped={clipped})"
+              else:
+                  overflows = bool(overflow)
+                  overflow_txt = 'yes' if overflows else 'no'
+
+              failed = page.get('failed_requests')
+              failed = failed if isinstance(failed, list) else []
+              # Third-party teardown noise (aborted cam telemetry, map tiles)
+              # is every failed request in a normal week, so a bare total
+              # trains the reader to ignore the one number that matters.
+              n_first = sum(1 for f in failed
+                            if isinstance(f, dict) and f.get('first_party'))
+
+              # A check that threw records itself as "<name>_error" and the
+              # page still looks measured. Unreported, that is a check quietly
+              # producing no data forever.
+              broken = sorted(k[:-6] for k in page if k.endswith('_error'))
+
+              low = num(page, 'contrast', 'low_count')
+              unparsed = num(page, 'contrast', 'unparsed') or 0
+              small = num(page, 'tap_targets', 'small_count')
+              total_taps = num(page, 'tap_targets', 'total')
+              tap_txt = (f"{small}/{total_taps}" if small is not None else 'n/a')
+              cls = page.get('cls')
+              print(f"{name}: status={page.get('status', '?')} "
+                    f"CLS={txt(cls, '{:.3f}')} "
+                    f"scrolled={txt(page.get('cls_after_scroll'), '{:.3f}')} "
+                    f"LCP={txt(page.get('lcp_ms'))}ms "
+                    f"console_errors={n_errors} "
+                    f"failed_requests={len(failed)} (first-party {n_first}) "
+                    f"overflow={overflow_txt} "
+                    f"low_contrast={txt(low)} (unparsed {unparsed}) "
+                    f"tap_small={tap_txt} "
+                    f"tiny_text={txt(num(page, 'tiny_text', 'count'))} "
+                    f"h1={txt(num(page, 'headings', 'h1_count'))} "
+                    f"heading_skips={len(num(page, 'headings', 'skips') or [])} "
+                    f"img_missing_alt={txt(num(page, 'images', 'missing_alt'))} "
+                    f"img_no_dimensions={txt(num(page, 'images', 'no_dimensions'))}")
+              if n_errors:
+                  print(f"::warning::{name}: {n_errors} console error(s)")
+              if overflows:
+                  print(f"::warning::{name}: the document scrolls horizontally")
+              if n_first:
+                  print(f"::warning::{name}: {n_first} first-party request(s) failed")
+              if broken:
+                  print(f"::warning::{name}: check(s) threw and reported nothing: "
+                        f"{', '.join(broken)}")
+              if unparsed:
+                  # Colours this build cannot parse are skipped, not guessed,
+                  # so a rising count means the contrast check is going blind.
+                  print(f"::warning::{name}: {unparsed} colour(s) not parsed, "
+                        f"excluded from the contrast check")
+
+          if not pages:
+              print("::warning::snapshot recorded no pages")
+          PY
+
+      - name: Commit snapshot
+        if: always()
+        run: |
+          cd uxdata
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "UX audit $(date -u +%Y-%m-%dT%H:%MZ)"
+            # Explicit refspec so this works both for a checked-out ux-data and
+            # for the orphan branch created above, which has no upstream.
+            git push origin HEAD:ux-data
+          fi
