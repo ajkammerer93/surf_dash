@@ -63,6 +63,13 @@ def _clear_caches():
             app_module._cache.pop(key, None)
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch):
+    """The spectrum fetch retries once with a real sleep in production. Tests
+    that exercise the failure path should not pay for it."""
+    monkeypatch.setattr(app_module, 'NDBC_SPECTRUM_RETRY_WAIT_S', 0)
+
+
 @pytest.fixture
 def obs_text(monkeypatch):
     """Install a synthetic latest_obs feed."""
@@ -445,3 +452,56 @@ class TestSpectrum:
         client.get('/api/social-card/highlight')
         card = app_module._cache['social:highlight:auto']['data']
         assert card['spectrum'] is not None
+
+    def test_long_period_is_on_the_left(self, monkeypatch):
+        # Matches the on-page buoy chart, which sorts descending. Flipping this
+        # would put the swell a reader cares about last.
+        from PIL import Image
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(20.0, 1.0, 0.8)]))
+        app_module._cache.pop('ndbc:spec:L', None)
+        long_spec = app_module._spectrum_for_card('L')
+        img = Image.new('RGB', (400, 300), (0, 0, 0))
+        app_module._draw_spectrum(img, 0, 0, 400, 300, long_spec)
+        long_x = self._peak_column(img)
+
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(5.0, 1.0, 0.5)]))
+        app_module._cache.pop('ndbc:spec:S', None)
+        short_spec = app_module._spectrum_for_card('S')
+        img2 = Image.new('RGB', (400, 300), (0, 0, 0))
+        app_module._draw_spectrum(img2, 0, 0, 400, 300, short_spec)
+        short_x = self._peak_column(img2)
+        assert long_x < short_x, 'long period must plot to the left of short'
+
+    def _peak_column(self, img):
+        """x of the vertical peak marker: the column with the most non-background
+        pixels in the plot band."""
+        w, h = img.size
+        best, best_n = 0, -1
+        for x in range(w):
+            n = sum(1 for y in range(40, h - 40)
+                    if img.getpixel((x, y)) not in ((0, 0, 0), (20, 20, 20)))
+            if n > best_n:
+                best, best_n = x, n
+        return best
+
+    @pytest.mark.parametrize('period,expected', [
+        (18.0, 'Ground swell'), (12.0, 'Ground swell'),
+        (11.9, 'Mid-period swell'), (9.0, 'Mid-period swell'),
+        (8.9, 'Wind swell'), (4.0, 'Wind swell'),
+    ])
+    def test_swell_type_thresholds_match_the_page(self, period, expected):
+        assert app_module._swell_type(period)[0] == expected
+
+    def test_two_peaks_of_the_same_type_are_not_called_a_mix(self, monkeypatch, client, obs_text):
+        # 16s and 13s are both groundswell; the old copy asserted "groundswell
+        # over local wind sea" for any two peaks, which was simply wrong.
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(16.0, 1.0, 1.0),
+                                                    (12.5, 0.8, 1.0)]))
+        app_module._cache.pop('ndbc:spec:T', None)
+        spec = app_module._spectrum_for_card('T')
+        assert spec['second'] is not None
+        for p in (spec['peak'][0], spec['second'][0]):
+            assert app_module._swell_type(p)[0] == 'Ground swell'

@@ -3952,6 +3952,15 @@ def _highlight_card_data(kind=None):
     }
 
 
+# Matches the thresholds and colours the on-page buoy chart uses, so the two
+# figures classify a swell the same way and a reader moving between them is not
+# told two different things.
+SPECTRUM_SWELL_TYPES = (
+    (12.0, 'Ground swell', (51, 136, 255)),
+    (9.0, 'Mid-period swell', (217, 119, 6)),
+    (0.0, 'Wind swell', (255, 102, 68)),
+)
+
 SPECTRUM_MIN_S = 4.0
 SPECTRUM_MAX_S = 22.0
 # Two peaks are only worth calling separate swells if they are properly apart.
@@ -3959,9 +3968,33 @@ SPECTRUM_MAX_S = 22.0
 SPECTRUM_PEAK_SEPARATION_S = 3.0
 
 
-def _get_ndbc_spectrum(station_id):
-    return cached(f'ndbc:spec:{station_id}',
-                  lambda: _fetch_ndbc_spectrum(station_id), ttl=1800)
+def _swell_type(period):
+    for floor, name, colour in SPECTRUM_SWELL_TYPES:
+        if period >= floor:
+            return name, colour
+    return SPECTRUM_SWELL_TYPES[-1][1], SPECTRUM_SWELL_TYPES[-1][2]
+
+
+NDBC_SPECTRUM_RETRY_WAIT_S = 2
+
+
+def _get_ndbc_spectrum(station_id, retries=2, wait_s=None):
+    """The station's 1D spectrum, retried once.
+
+    cached() does not store a None, so a failed fetch is not sticky -- but the
+    built card is cached for half an hour, so a single slow response from NDBC
+    during a cold start locks in a spectrum-less card for that whole window.
+    The card is built once per half hour and posted once a day; one retry is
+    cheap insurance against the post quietly losing its plot.
+    """
+    for attempt in range(retries):
+        spec = cached(f'ndbc:spec:{station_id}',
+                      lambda: _fetch_ndbc_spectrum(station_id), ttl=1800)
+        if spec:
+            return spec
+        if attempt < retries - 1:
+            time.sleep(NDBC_SPECTRUM_RETRY_WAIT_S if wait_s is None else wait_s)
+    return None
 
 
 def _spectrum_for_card(station_id):
@@ -4005,7 +4038,7 @@ def _spectrum_for_card(station_id):
 
 def _draw_spectrum(img, x, y, w, h, spec,
                    bg=(20, 20, 20), grid=(42, 42, 42), text=(136, 136, 136),
-                   accent=(68, 255, 136), second_col=(90, 169, 255)):
+                   accent=(68, 255, 136)):
     """Plot wave energy against period.
 
     Drawn into its own image and pasted, for the same reason the map is: PIL
@@ -4035,7 +4068,10 @@ def _draw_spectrum(img, x, y, w, h, spec,
     peak_e = spec['peak'][1]
 
     def px(period):
-        return pad_l + (period - SPECTRUM_MIN_S) / (SPECTRUM_MAX_S - SPECTRUM_MIN_S) * pw
+        # Reversed, long period on the LEFT, matching the on-page buoy chart,
+        # which sorts its points descending for the same reason: the swell a
+        # reader cares about should be the one they read first.
+        return pad_l + (SPECTRUM_MAX_S - period) / (SPECTRUM_MAX_S - SPECTRUM_MIN_S) * pw
 
     def py(e):
         return pad_t + ph - (e / peak_e) * ph
@@ -4054,11 +4090,11 @@ def _draw_spectrum(img, x, y, w, h, spec,
     d.polygon(poly, fill=(24, 52, 40))
     d.line(pts, fill=accent, width=4, joint='curve')
 
-    for period, colour, tag in ((spec['peak'][0], accent, 'peak'),
-                                (spec['second'][0] if spec['second'] else None,
-                                 second_col, 'second')):
+    for period in (spec['peak'][0],
+                   spec['second'][0] if spec['second'] else None):
         if period is None:
             continue
+        colour = _swell_type(period)[1]
         mx = px(period)
         d.line([(mx, pad_t + 6), (mx, pad_t + ph)], fill=colour, width=2)
         lab = f'{period:.0f}s'
@@ -4257,12 +4293,18 @@ def _render_highlight_card(data, fmt='PNG', story=False):
         draw.rectangle([(sx, y), (sx + sw, y + plot_h)], outline=BORDER)
         draw.rectangle([(sx, y + plot_h), (box_r, y + map_h)],
                        fill=SURFACE, outline=BORDER)
+        # Derived, not asserted: two peaks at 16s and 13s are both groundswell,
+        # and calling that "groundswell over local wind sea" would be wrong.
+        primary_type = _swell_type(spec['peak'][0])[0]
         if spec.get('second'):
             head_txt = f"Two swells: {spec['peak'][0]:.0f}s and {spec['second'][0]:.0f}s"
-            sub_txt = 'Groundswell over local wind sea'
+            second_type = _swell_type(spec['second'][0])[0]
+            sub_txt = (f'{primary_type} over {second_type.lower()}'
+                       if second_type != primary_type
+                       else f'Two {primary_type.lower()} peaks')
         else:
             head_txt = f"One swell, peaking at {spec['peak'][0]:.0f}s"
-            sub_txt = 'Energy concentrated at a single period'
+            sub_txt = f'{primary_type}, energy at a single period'
         draw.text((sx + ins, y + plot_h + 14), head_txt, fill=TEXT,
                   font=fit(head_txt, 'sans_bold', 30, sw - 2 * ins))
         draw.text((sx + ins, y + plot_h + 52), sub_txt, fill=TEXT_DIM,
@@ -4380,6 +4422,7 @@ def social_highlight_meta():
             'value': data['value'],
             'unit': data['unit'],
             'n_stations': data['n_stations'],
+            'spectrum': bool(data.get('spectrum')),
         },
     })
     resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
