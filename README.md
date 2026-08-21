@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.21
+**Current version:** v0.11.39
 
 ## Dashboard
 
@@ -15,6 +15,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 - **Buoy Observations** — NDBC and CDIP real-time data with 1D and 2D spectra and a deep-water-buoy caveat beyond 100 km.
 - **Surf Cameras** — Nearest webcams with safe DOM-rendered attribution, preferring embeddable live streams over link-outs. YouTube live surf cams (owner-enabled embedding only, official privacy-enhanced player) are curated via a scanner + review pipeline; providers that opt out of embedding (e.g. SurfChex) render as designed link-out cards.
 - **Session Planner** — Scored 3-hour windows (0–100) factoring swell direction × beach orientation, period, wind, and tide. The "best window" highlight only appears when a window clears the Good (55+) bar.
+- **Any coastline, not just a spot list** — the 145 listed spots are a starting point, not the limit. Drop a pin anywhere on the map and you get the same 7-day wave, wind and swell forecast, plus nearby cams; tides and buoy observations are US-only, since they come from NOAA CO-OPS and NDBC/CDIP.
 - **Geolocation** — "Use my location" snaps to the nearest of 145 spots; first-time visitors are offered it on the welcome card, never auto-prompted.
 - **Units** — Imperial/metric toggle (ft/mph ↔ m/km·h, °F ↔ °C) across every chart, map, table, and export; scoring is unit-independent.
 - **Condition Alerts** — Browser notifications gated on a user-set score threshold (Fair 35+ / Good 55+ / Prime 75+). No email required.
@@ -28,8 +29,9 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 - **`/regions/<slug>`** — 16 regional landing pages including Great Lakes, Puerto Rico, Delmarva, New England, South Carolina & Georgia, and the Gulf Coast.
 - **`/compare/surfline`**, **`/compare/magicseaweed`** — honest comparison pages for surfers looking for a free alternative.
 - **`/embed/<slug>`** — a free iframe-able live forecast card for surf shops and beach-town sites (the only route that permits framing).
-- **`/social/daily/<region>.png`** + **`/api/social-card/<region>`** — Instagram-ready regional report cards with captions; `scripts/instagram_publish.py` posts them via the Graph API on a weekday rotation (or prints them with `--dry-run` for manual scheduling).
+- **`/social/daily/<region>.{png,jpg}`** + **`/social/story/<region>.jpg`** + **`/api/social-card/<region>`** — Instagram-ready regional report cards (4:5 feed and 9:16 story) with captions, each carrying the verified 30-day forecast error. `scripts/instagram_publish.py` publishes a feed post and a matching story daily on two schedules, one per coast, so each region lands near its own local dawn.
 - **`/accuracy`** — public forecast-verification report: a scheduled pipeline snapshots the site's own forecasts at 21 NDBC buoy locations every 6 hours, scores them against observed wave heights, and publishes rolling 30-day bias/MAE/RMSE stats (raw JSON at `/api/accuracy`). Where a buoy shows a persistent, well-sampled bias, `/api/forecast` automatically applies a capped correction for nearby spots — and always verifies against raw model output so the correction can't mask true model error.
+  The claim is auditable rather than asserted: `/accuracy/stations.csv` for per-station stats, and every scored pair is published on the `verification-data` branch alongside the scoring script.
 - **`/faq`** — surf-forecasting FAQ with `FAQPage` JSON-LD targeting question queries.
 - **Sitemap** with tiered priorities; per-location `TouristAttraction` JSON-LD.
 
@@ -68,7 +70,7 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (182 tests)
+pytest tests/                                          # full suite (289 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -97,7 +99,9 @@ LOG_LEVEL=DEBUG python app.py
 | `region_pages.py` | Region metadata + spot rosters (16 regions) |
 | `surf_cameras.json` | Camera + forecast-only spot catalog → 145 deduped locations |
 | `youtube_cams.json` | Approved YouTube live surf cams (embed-enabled streams only) |
-| `scripts/youtube_cam_scan.py` | YouTube cam discovery/verify/approve pipeline (weekly Action files a review issue) |
+| `scripts/youtube_cam_scan.py` | YouTube cam discovery/verify/approve pipeline; a weekly Action keeps one rolling review issue up to date, ranked by how many scans each stream has survived |
+| `scripts/forecast_verification.py` | Snapshots the site's own forecasts at NDBC buoys and scores them; publishes to the `verification-data` branch |
+| `scripts/seo_audit.py` | Collects CI, site-health, Search Console and Cloudflare metrics into a daily snapshot on the `seo-data` branch |
 | `scripts/instagram_publish.py` | Social pipeline publisher (Graph API or dry-run) |
 | `tests/` | 182 tests across SEO, pure functions, and mocked upstream failures |
 | `static/sw.js` | Service worker (network-first HTML, 24h offline API fallback) |
@@ -138,6 +142,20 @@ Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 | `GET /api/health-upstreams` | Diagnostic: probes each weather source from the server's vantage |
 
 All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully: the wave chain falls from Open-Meteo Marine to WW3 across two independent ERDDAP servers, wind and air-temp have ERDDAP backfills, tides degrade to hourly-only, and if every wave source fails at once the API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
+
+### Scheduled jobs
+
+Master is protected, so none of the scheduled jobs commit to it. Each writes to
+its own unprotected data branch, which the app or the next run reads back.
+
+| Workflow | Cadence | Writes to |
+|---|---|---|
+| `forecast-verification.yml` | every 6h | `verification-data` |
+| `social-post.yml` | daily, two schedules by coast | posts to Instagram |
+| `seo-audit.yml` | daily | `seo-data` |
+| `youtube-cam-scan.yml` | weekly | `cam-data` + the rolling review issue |
+| `instagram-token-refresh.yml` | monthly | rotates the 60-day token |
+| `seo-tests.yml` | weekly + on push | — |
 
 ## Deployment
 
