@@ -775,3 +775,71 @@ class TestSitemapLastmod:
         sm = client.get('/sitemap.xml').data.decode()
         values = set(re.findall(r'<lastmod>([^<]+)</lastmod>', sm))
         assert values == {a._content_lastmod()}
+
+
+class TestInstagramLanding:
+    """/ig is the Instagram bio link. Cloudflare Web Analytics drops query
+    strings and reports no referrer for in-app browsers, so the path itself
+    is the only attribution signal -- it must render the dashboard while
+    staying out of the index."""
+
+    def test_ig_returns_200(self, client):
+        r = client.get('/ig')
+        assert r.status_code == 200
+
+    def test_ig_sets_noindex_header(self, client):
+        r = client.get('/ig')
+        tag = r.headers.get('X-Robots-Tag', '')
+        assert 'noindex' in tag
+        assert 'follow' in tag
+
+    def test_ig_canonical_points_at_homepage(self, client):
+        html = client.get('/ig').data.decode()
+        canonical = re.search(r'<link rel="canonical" href="([^"]+)"', html)
+        assert canonical, "Missing canonical link"
+        assert canonical.group(1) == 'https://freesurfforecast.com/'
+
+    def test_ig_absent_from_sitemap(self, client):
+        xml = client.get('/sitemap.xml').data.decode()
+        assert 'freesurfforecast.com/ig' not in xml
+
+    def test_robots_does_not_block_ig(self, client):
+        """The noindex header only works if crawlers are allowed to fetch it."""
+        text = client.get('/robots.txt').data.decode()
+        assert 'Disallow: /ig' not in text
+
+    def test_ig_renders_the_dashboard(self, client):
+        html = client.get('/ig').data.decode()
+        assert 'id="dashboard-grid"' in html
+        assert 'Surf City' in html
+
+    def test_ig_html_is_cacheable_like_other_pages(self, client):
+        r = client.get('/ig')
+        assert 'max-age=300' in r.headers.get('Cache-Control', '')
+
+
+class TestLayoutStability:
+    """Guards the layout-shift work: the SSR block sits below the dashboard so
+    its removal only reflows below-the-fold content, and the hero card reserves
+    the height it settles at instead of inflating the page when data lands."""
+
+    def test_ssr_summary_sits_below_the_dashboard(self, client):
+        html = client.get('/forecast/virginia-beach').data.decode()
+        grid = html.find('id="dashboard-grid"')
+        ssr = html.find('id="ssr-summary"')
+        end_main = html.find('</main>')
+        assert grid > 0 and ssr > 0 and end_main > 0
+        assert grid < ssr < end_main, "SSR block must render after the grid, inside <main>"
+
+    def test_hero_ships_hidden_with_a_reveal_script(self, client):
+        """Hidden in markup so a no-JS client is not shown an empty card, then
+        revealed inline before first paint."""
+        html = client.get('/forecast/virginia-beach').data.decode()
+        assert '<section id="forecast-hero" class="forecast-hero" style="display:none"' in html
+        assert "getElementById('forecast-hero')" in html
+
+    def test_hero_height_is_reserved(self, client):
+        html = client.get('/forecast/virginia-beach').data.decode()
+        assert re.search(r'#forecast-hero\s*\{\s*min-height:\s*184px', html)
+        assert re.search(r'#forecast-hero\s*\{\s*min-height:\s*294px', html)
+        assert re.search(r'#forecast-hero-rows\s*\{\s*min-height:\s*183px', html)

@@ -2175,6 +2175,26 @@ def index():
     return _render_dashboard(lat, lon, name, canonical_url, location_slug=default_slug)
 
 
+@app.route('/ig')
+def instagram_landing():
+    """Instagram bio-link landing page -- same dashboard as "/".
+
+    Cloudflare Web Analytics does not log query strings, so a
+    ?utm_source=instagram link records nothing, and the Referrers panel
+    only ever shows "none" for in-app browsers. A distinct path is the
+    one signal Cloudflare does report (Top Pages), so Instagram traffic
+    gets its own URL. Canonical points at "/" and the response is
+    noindex so this does not compete with the homepage in search.
+    """
+    default_slug = SLUG_BY_COORDS.get((round(DEFAULT_LAT, 4), round(DEFAULT_LON, 4)))
+    html = _render_dashboard(
+        DEFAULT_LAT, DEFAULT_LON, 'Surf City, North Carolina',
+        'https://freesurfforecast.com/', location_slug=default_slug)
+    response = Response(html, mimetype='text/html')
+    response.headers['X-Robots-Tag'] = 'noindex, follow'
+    return response
+
+
 @app.route('/forecast/<slug>')
 def forecast_by_slug(slug):
     """Renders the dashboard for a known location by its URL slug."""
