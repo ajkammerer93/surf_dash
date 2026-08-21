@@ -3915,9 +3915,28 @@ def _highlight_card_data(kind=None):
     lines.append('')
     lines.append(f'{SOCIAL_BASE_HASHTAGS} #buoy #ndbc #swell #oceanography')
 
+    # One extra request, for the winning station only. Absence is not a
+    # failure: plenty of stations report height and period without publishing a
+    # spectrum, and the card falls back to a full-width map.
+    spectrum = None
+    try:
+        spectrum = _spectrum_for_card(st['id'])
+        # The headline period and the spectrum's peak are two different
+        # measurements and can be minutes apart. A card reading "17 s" next to a
+        # plot labelled "12s" looks like an error rather than like nuance, so
+        # drop the plot instead of arguing with the number above it.
+        if (spectrum and pick['kind'] == 'longest-period'
+                and abs(spectrum['peak'][0] - pick['value']) > 3.0):
+            logger.info(f"Highlight spectrum dropped for {st['id']}: peak "
+                        f"{spectrum['peak'][0]:.1f}s vs headline {pick['value']:.0f}s")
+            spectrum = None
+    except Exception as e:
+        logger.warning(f"Highlight spectrum failed for {st['id']}: {e}")
+
     _HIGHLIGHT_CARD_LAST_SKIP = None
     return {
         'kind': 'highlight',
+        'spectrum': spectrum,
         'highlight': pick['kind'],
         'date': date_str,
         'observed': st['time'].strftime('%Y-%m-%dT%H:%MZ'),
@@ -3931,6 +3950,125 @@ def _highlight_card_data(kind=None):
         'image_url_png': 'https://freesurfforecast.com/social/highlight.png',
         'story_image_url': 'https://freesurfforecast.com/social/highlight-story.jpg',
     }
+
+
+SPECTRUM_MIN_S = 4.0
+SPECTRUM_MAX_S = 22.0
+# Two peaks are only worth calling separate swells if they are properly apart.
+# Adjacent bins either side of one crest are the same swell described twice.
+SPECTRUM_PEAK_SEPARATION_S = 3.0
+
+
+def _get_ndbc_spectrum(station_id):
+    return cached(f'ndbc:spec:{station_id}',
+                  lambda: _fetch_ndbc_spectrum(station_id), ttl=1800)
+
+
+def _spectrum_for_card(station_id):
+    """The 1D energy spectrum, reduced to what the card plots.
+
+    Returns points sorted by period with the primary peak and, when there is
+    one, a well-separated secondary peak -- the wind sea sitting under a
+    groundswell, which is the part a single dominant-period number hides.
+    """
+    spec = _get_ndbc_spectrum(station_id)
+    if not spec:
+        return None
+    freqs, energy = spec.get('frequencies') or [], spec.get('energy') or []
+    if len(freqs) != len(energy) or len(freqs) < 8:
+        return None
+    pts = []
+    for f, e in zip(freqs, energy):
+        if not f or f <= 0 or e is None or e < 0:
+            continue
+        period = 1.0 / f
+        if SPECTRUM_MIN_S <= period <= SPECTRUM_MAX_S:
+            pts.append((period, e))
+    if len(pts) < 6:
+        return None
+    pts.sort()
+    peak_e = max(e for _, e in pts)
+    if peak_e <= 0:
+        return None
+    peak_p = next(p for p, e in pts if e == peak_e)
+    rest = [(p, e) for p, e in pts
+            if abs(p - peak_p) >= SPECTRUM_PEAK_SEPARATION_S]
+    second = None
+    if rest:
+        s_e = max(e for _, e in rest)
+        # A bump at a tenth of the main peak is not a second swell, it is the
+        # tail of the first one.
+        if s_e >= peak_e * 0.25:
+            second = (next(p for p, e in rest if e == s_e), s_e)
+    return {'points': pts, 'peak': (peak_p, peak_e), 'second': second}
+
+
+def _draw_spectrum(img, x, y, w, h, spec,
+                   bg=(20, 20, 20), grid=(42, 42, 42), text=(136, 136, 136),
+                   accent=(68, 255, 136), second_col=(90, 169, 255)):
+    """Plot wave energy against period.
+
+    Drawn into its own image and pasted, for the same reason the map is: PIL
+    does not clip to a region, so a curve leaving the panel would be painted
+    across the rest of the card.
+
+    Period on the x axis rather than frequency: the card's headline number is a
+    period, and the point of the plot is that a reader can see where that number
+    comes from -- and see the second swell the number hides.
+    """
+    from PIL import Image, ImageDraw
+    tile = Image.new('RGB', (int(w), int(h)), bg)
+    d = ImageDraw.Draw(tile)
+
+    # pad_t leaves room for the panel title AND the peak labels beneath it.
+    # At 44 the labels were drawn straight through "WAVE ENERGY BY PERIOD".
+    pad_l, pad_r, pad_t, pad_b = 16, 16, 76, 34
+    pw, ph = w - pad_l - pad_r, h - pad_t - pad_b
+    if pw <= 10 or ph <= 10:
+        img.paste(tile, (int(x), int(y)))
+        return False
+
+    f_lab = _load_og_font('sans_bold', 22)
+    f_tick = _load_og_font('sans', 20)
+    d.text((pad_l, 10), 'WAVE ENERGY BY PERIOD', fill=text, font=f_lab)
+
+    peak_e = spec['peak'][1]
+
+    def px(period):
+        return pad_l + (period - SPECTRUM_MIN_S) / (SPECTRUM_MAX_S - SPECTRUM_MIN_S) * pw
+
+    def py(e):
+        return pad_t + ph - (e / peak_e) * ph
+
+    for tick in (5, 10, 15, 20):
+        tx = px(tick)
+        d.line([(tx, pad_t), (tx, pad_t + ph)], fill=grid, width=1)
+        label = f'{tick}s'
+        d.text((tx - d.textlength(label, font=f_tick) / 2, pad_t + ph + 8),
+               label, fill=text, font=f_tick)
+    d.line([(pad_l, pad_t + ph), (pad_l + pw, pad_t + ph)], fill=grid, width=2)
+
+    pts = [(px(p), py(e)) for p, e in spec['points']]
+    # Filled area, so the two swells read as mass rather than as a squiggle.
+    poly = [(pts[0][0], pad_t + ph)] + pts + [(pts[-1][0], pad_t + ph)]
+    d.polygon(poly, fill=(24, 52, 40))
+    d.line(pts, fill=accent, width=4, joint='curve')
+
+    for period, colour, tag in ((spec['peak'][0], accent, 'peak'),
+                                (spec['second'][0] if spec['second'] else None,
+                                 second_col, 'second')):
+        if period is None:
+            continue
+        mx = px(period)
+        d.line([(mx, pad_t + 6), (mx, pad_t + ph)], fill=colour, width=2)
+        lab = f'{period:.0f}s'
+        lw = d.textlength(lab, font=f_lab)
+        # Keep the label inside the panel when the peak sits against an edge.
+        lx = min(max(mx - lw / 2, pad_l), pad_l + pw - lw)
+        d.text((lx, pad_t - 30), lab, fill=colour, font=f_lab)
+
+    img.paste(tile, (int(x), int(y)))
+    return True
 
 
 def _draw_mini_map(img, x, y, w, h, lat, lon, span_deg=16,
@@ -4088,22 +4226,47 @@ def _render_highlight_card(data, fmt='PNG', story=False):
                   fill=TEXT_DIM, font=f_note)
     y += hero_h + gap
 
-    # Where it was measured.
+    # Where it was measured, and -- when the station publishes one -- the
+    # spectrum it was measured from. The two share the band, so adding the
+    # spectrum costs no height.
     st = data['station']
+    spec = data.get('spectrum')
     cap_h = 86
-    _draw_mini_map(img, box_l, y, box_w, map_h - cap_h,
+    plot_h = map_h - cap_h
+    map_w = (box_w - 16) // 2 if spec else box_w
+
+    _draw_mini_map(img, box_l, y, map_w, plot_h,
                    st['lat'], st['lon'], ocean=(12, 20, 28),
                    land=(36, 40, 44), edge=(58, 64, 70), marker=ACCENT)
-    draw.rectangle([(box_l, y), (box_r, y + map_h - cap_h)], outline=BORDER)
-    draw.rectangle([(box_l, y + map_h - cap_h), (box_r, y + map_h)],
+    draw.rectangle([(box_l, y), (box_l + map_w, y + plot_h)], outline=BORDER)
+    draw.rectangle([(box_l, y + plot_h), (box_l + map_w, y + map_h)],
                    fill=SURFACE, outline=BORDER)
     name = st['name']
-    draw.text((box_l + ins, y + map_h - cap_h + 14), name, fill=TEXT,
-              font=fit(name, 'sans_bold', 34, box_w - 2 * ins - 220))
+    draw.text((box_l + ins, y + plot_h + 14), name, fill=TEXT,
+              font=fit(name, 'sans_bold', 34, map_w - 2 * ins))
     sub = f"NOAA buoy {st['id']}  -  {abs(st['lat']):.1f}{'N' if st['lat'] >= 0 else 'S'}, " \
           f"{abs(st['lon']):.1f}{'E' if st['lon'] >= 0 else 'W'}"
-    draw.text((box_l + ins, y + map_h - cap_h + 52), sub, fill=TEXT_DIM,
-              font=_load_og_font('sans', 25))
+    draw.text((box_l + ins, y + plot_h + 52), sub, fill=TEXT_DIM,
+              font=fit(sub, 'sans', 25, map_w - 2 * ins))
+
+    if spec:
+        sx = box_l + map_w + 16
+        sw = box_r - sx
+        _draw_spectrum(img, sx, y, sw, plot_h, spec, bg=SURFACE, grid=BORDER,
+                       text=TEXT_DIM, accent=ACCENT)
+        draw.rectangle([(sx, y), (sx + sw, y + plot_h)], outline=BORDER)
+        draw.rectangle([(sx, y + plot_h), (box_r, y + map_h)],
+                       fill=SURFACE, outline=BORDER)
+        if spec.get('second'):
+            head_txt = f"Two swells: {spec['peak'][0]:.0f}s and {spec['second'][0]:.0f}s"
+            sub_txt = 'Groundswell over local wind sea'
+        else:
+            head_txt = f"One swell, peaking at {spec['peak'][0]:.0f}s"
+            sub_txt = 'Energy concentrated at a single period'
+        draw.text((sx + ins, y + plot_h + 14), head_txt, fill=TEXT,
+                  font=fit(head_txt, 'sans_bold', 30, sw - 2 * ins))
+        draw.text((sx + ins, y + plot_h + 52), sub_txt, fill=TEXT_DIM,
+                  font=fit(sub_txt, 'sans', 25, sw - 2 * ins))
     y += map_h + gap
 
     # Supporting readings.

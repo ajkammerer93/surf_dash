@@ -57,7 +57,9 @@ def _clear_caches():
     """
     with app_module._cache_lock:
         for key in [k for k in list(app_module._cache)
-                    if k == 'ndbc:latest_obs' or k.startswith('social:highlight')]:
+                    if k == 'ndbc:latest_obs'
+                    or k.startswith('social:highlight')
+                    or k.startswith('ndbc:spec:')]:
             app_module._cache.pop(key, None)
 
 
@@ -351,3 +353,95 @@ class TestLayout:
         app_module._draw_mini_map(img, 100, 100, 200, 100, 36.3, -122.1)
         assert img.getpixel((5, 5)) == (7, 7, 7)
         assert img.getpixel((395, 295)) == (7, 7, 7)
+
+
+class TestSpectrum:
+    def _spec(self, peaks, bins=48):
+        """A synthetic spectrum with Gaussian bumps at the given periods."""
+        import math
+        freqs = [0.033 + i * (0.30 - 0.033) / (bins - 1) for i in range(bins)]
+        energy = []
+        for f in freqs:
+            p = 1.0 / f
+            e = 0.0
+            for centre, amp, width in peaks:
+                e += amp * math.exp(-((p - centre) ** 2) / (2 * width ** 2))
+            energy.append(e)
+        return {'frequencies': freqs, 'energy': energy}
+
+    def test_finds_the_primary_and_a_separated_secondary(self, monkeypatch):
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(16.0, 1.0, 1.2),
+                                                    (8.0, 0.7, 1.0)]))
+        app_module._cache.pop('ndbc:spec:X', None)
+        s = app_module._spectrum_for_card('X')
+        assert abs(s['peak'][0] - 16.0) < 1.5
+        assert s['second'] and abs(s['second'][0] - 8.0) < 1.5
+
+    def test_a_nearby_bump_is_not_a_second_swell(self, monkeypatch):
+        # Bins either side of one crest describe the same swell twice.
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(14.0, 1.0, 1.2)]))
+        app_module._cache.pop('ndbc:spec:Y', None)
+        assert app_module._spectrum_for_card('Y')['second'] is None
+
+    def test_a_tail_is_not_a_second_swell(self, monkeypatch):
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(16.0, 1.0, 1.2),
+                                                    (7.0, 0.05, 1.0)]))
+        app_module._cache.pop('ndbc:spec:Z', None)
+        assert app_module._spectrum_for_card('Z')['second'] is None
+
+    @pytest.mark.parametrize('bad', [
+        None,
+        {'frequencies': [], 'energy': []},
+        {'frequencies': [0.1, 0.2], 'energy': [1.0]},          # mismatched
+        {'frequencies': [0.1] * 20, 'energy': [0.0] * 20},     # all zero
+        {'frequencies': [0.0] * 20, 'energy': [1.0] * 20},     # zero frequency
+    ])
+    def test_unusable_spectra_are_dropped_not_crashed(self, monkeypatch, bad):
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum', lambda sid: bad)
+        app_module._cache.pop('ndbc:spec:B', None)
+        assert app_module._spectrum_for_card('B') is None
+
+    def test_the_plot_stays_inside_its_panel(self, monkeypatch):
+        # Same trap as the map: PIL does not clip, so a curve leaving the panel
+        # would be painted across the card.
+        from PIL import Image
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(16.0, 1.0, 1.2)]))
+        app_module._cache.pop('ndbc:spec:C', None)
+        spec = app_module._spectrum_for_card('C')
+        img = Image.new('RGB', (500, 400), (7, 7, 7))
+        assert app_module._draw_spectrum(img, 100, 100, 300, 200, spec)
+        assert img.getpixel((5, 5)) == (7, 7, 7)
+        assert img.getpixel((495, 395)) == (7, 7, 7)
+
+    def test_card_falls_back_to_a_full_width_map(self, client, obs_text, monkeypatch):
+        from PIL import Image
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum', lambda sid: None)
+        obs_text(_feed(_healthy_rows()))
+        assert client.get('/api/social-card/highlight').get_json()  # still publishes
+        r = client.get('/social/highlight.png')
+        assert r.status_code == 200
+        assert Image.open(io.BytesIO(r.data)).size == (1080, 1350)
+
+    def test_the_plot_is_dropped_when_it_would_contradict_the_headline(
+            self, client, obs_text, monkeypatch):
+        # A card reading "18 s" beside a plot labelled "8s" looks like an error.
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(8.0, 1.0, 1.0)]))
+        obs_text(_feed(_healthy_rows(wvht=2.0, dpd=18.0, wspd=2.0)))
+        d = client.get('/api/social-card/highlight').get_json()
+        assert d['highlight'] == 'longest-period'
+        card = app_module._cache['social:highlight:auto']['data']
+        assert card['spectrum'] is None
+
+    def test_an_agreeing_plot_is_kept(self, client, obs_text, monkeypatch):
+        monkeypatch.setattr(app_module, '_fetch_ndbc_spectrum',
+                            lambda sid: self._spec([(18.0, 1.0, 1.2),
+                                                    (8.0, 0.6, 1.0)]))
+        obs_text(_feed(_healthy_rows(wvht=2.0, dpd=18.0, wspd=2.0)))
+        client.get('/api/social-card/highlight')
+        card = app_module._cache['social:highlight:auto']['data']
+        assert card['spectrum'] is not None
