@@ -1,0 +1,93 @@
+name: SEO audit
+
+# Collects CI health, site health, Search Console and Cloudflare metrics into a
+# snapshot, and publishes it to the unprotected seo-data branch -- the same
+# arrangement forecast-verification.yml uses, because master is protected and
+# the credentials have to live in Actions rather than with whoever reads the
+# data later.
+#
+# Secrets (all optional; each collector degrades on its own and records why):
+#   GSC_SA_JSON    Google service-account key for an account added to the
+#                  Search Console property with FULL permission -- Restricted
+#                  cannot call the URL Inspection API, which is the part that
+#                  tells us how much of the site Google has actually indexed.
+#   GSC_PROPERTY   sc-domain:freesurfforecast.com, or the URL-prefix form
+#   CF_API_TOKEN   Cloudflare token with Account Analytics: Read
+#   CF_ACCOUNT_ID  Cloudflare account id
+#   CF_SITE_TAG    Web Analytics site tag (the beacon token)
+#
+# Runs after the day's forecast-verification cycle so the freshness check sees
+# a settled pipeline rather than one mid-run.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 3 * * *'  # 03:25 UTC daily
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: seo-data
+          path: seodata
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests google-auth google-api-python-client
+
+      - name: Collect audit snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GSC_SA_JSON: ${{ secrets.GSC_SA_JSON }}
+          GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_SITE_TAG: ${{ secrets.CF_SITE_TAG }}
+        run: python scripts/seo_audit.py --data-dir seodata
+
+      - name: Report collector reachability
+        run: |
+          python - <<'PY'
+          import json
+          a = json.load(open('seodata/audit-latest.json'))
+          sc, cf = a.get('search_console', {}), a.get('cloudflare', {})
+          def line(name, section, ok_key):
+              if section.get('unavailable'):
+                  print(f"::warning::{name} unavailable: {section['unavailable']}")
+              elif section.get('error') or section.get(f'{ok_key}_error'):
+                  print(f"::warning::{name} errored: "
+                        f"{section.get('error') or section.get(f'{ok_key}_error')}")
+              else:
+                  print(f"{name}: OK")
+          line('Search Console', sc, 'search_analytics')
+          line('Cloudflare', cf, 'cloudflare')
+          for w in a['ci'].get('failing', []):
+              print(f"::warning::workflow failing: {w}")
+          for p in a['site'].get('problems', []):
+              print(f"::warning::site problem: {p}")
+          PY
+
+      - name: Commit snapshot
+        if: always()
+        run: |
+          cd seodata
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "SEO audit $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

@@ -364,3 +364,37 @@ class TestDistantTideStation:
         })
         data = client.get('/api/tides', query_string={'lat': 34.43, 'lon': -77.55}).get_json()
         assert data['station']['name'] == 'Edge Station'
+
+
+class TestSeoAuditCollectors:
+    """The audit runs unattended, so a missing credential must degrade to a
+    recorded reason rather than an exception that kills the whole snapshot."""
+
+    def _module(self):
+        import importlib.util, os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            'seo_audit', os.path.join(root, 'scripts', 'seo_audit.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_search_console_without_credentials(self, monkeypatch):
+        monkeypatch.delenv('GSC_SA_JSON', raising=False)
+        out = self._module().collect_search_console({})
+        assert 'unavailable' in out and 'GSC_SA_JSON' in out['unavailable']
+
+    def test_cloudflare_without_credentials(self, monkeypatch):
+        for var in ('CF_API_TOKEN', 'CF_ACCOUNT_ID', 'CF_SITE_TAG'):
+            monkeypatch.delenv(var, raising=False)
+        out = self._module().collect_cloudflare()
+        assert 'unavailable' in out
+        assert 'CF_API_TOKEN' in out['unavailable']
+
+    def test_watched_workflows_all_exist(self):
+        """A renamed workflow would silently stop being audited."""
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for wf in self._module().WATCHED_WORKFLOWS:
+            path = os.path.join(root, '.github', 'workflows', wf)
+            assert os.path.exists(path), f'{wf} is watched but does not exist'
