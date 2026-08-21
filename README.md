@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.42
+**Current version:** v0.11.47
 
 ## Dashboard
 
@@ -70,7 +70,7 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (425 tests)
+pytest tests/                                          # full suite (456 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -157,12 +157,20 @@ its own unprotected data branch, which the app or the next run reads back.
 | `ux-audit.yml` | daily | `ux-data` |
 | `instagram-token-refresh.yml` | monthly | rotates the 60-day token |
 | `social-accuracy-post.yml` | manual only | posts the weekly accuracy card |
+| `social-highlight-post.yml` | manual only | posts the daily highlight card |
 | `seo-tests.yml` | weekly + on push | — |
 
 `social-accuracy-post.yml` has its schedule commented out on purpose and its
 `dry_run` input defaults to true, so it publishes nothing until I uncomment the
 cron. It posts a card built from the live verification stats, and refuses rather
 than posting when those stats are stale, thin or malformed.
+
+`social-highlight-post.yml` posts the day's most notable buoy reading - biggest
+seas, longest swell period or strongest wind, whichever clears its bar - with a
+map of where it was measured. Every number on it is an observation rather than a
+forecast. It has an editorial floor as well as the usual data guards: a day where
+nothing is exceptional is skipped rather than posted. Its schedule is commented
+out too.
 
 `ux-audit.yml` runs `scripts/ux_audit.py`, which measures the live site with
 Playwright at two viewports across six pages and records CLS, LCP, console and
