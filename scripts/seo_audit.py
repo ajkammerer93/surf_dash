@@ -321,7 +321,21 @@ def collect_cloudflare():
         body = r.json()
         if body.get('errors'):
             return {'error': str(body['errors'])[:300]}
-        acc = (body['data']['viewer']['accounts'] or [{}])[0]
+        accounts = body['data']['viewer']['accounts'] or []
+        if not accounts:
+            # An empty accounts list is not "no traffic" -- it means the filter
+            # matched nothing, i.e. the account id is wrong or the token cannot
+            # see that account. Silently returning zeros here would look like a
+            # dead site rather than a misconfiguration.
+            return {'error': 'no account matched CF_ACCOUNT_ID (check the id, '
+                             'and that the token has Account Analytics: Read '
+                             'on that account)'}
+        acc = accounts[0]
+        if not acc.get('total'):
+            return {'window_days': 7, 'pageviews': 0,
+                    'note': 'account matched but no RUM events in the window '
+                            '- check CF_SITE_TAG matches the beacon token',
+                    'top_paths': [], 'top_referrers': []}
         return {
             'window_days': 7,
             'pageviews': (acc.get('total') or [{}])[0].get('count'),
