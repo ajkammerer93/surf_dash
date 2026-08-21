@@ -13,7 +13,10 @@ name: YouTube surf cam scan
 #
 # Master is protected, so this workflow never commits to it: approve and reject
 # still happen locally with scripts/youtube_cam_scan.py, and handled ids drop
-# out of the store on the next scan.
+# out of the store on the next scan. Ticking a box in the issue counts as a
+# dismissal -- reviewing a stream often ends in "not this one" rather than an
+# approve or a reject, and that outcome had nowhere to go, so those streams kept
+# coming back.
 #
 # Requires one repository secret:
 #   YOUTUBE_API_KEY   YouTube Data API v3 key (free tier is plenty)
@@ -44,6 +47,20 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
+
+      - name: Absorb any boxes ticked in the review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Must run BEFORE the render: rewriting the issue body wipes the
+          # ticks, and a dismissal lost that way brings the stream straight
+          # back next week.
+          if [ -f camdata/issue-number.txt ]; then
+            ISSUE=$(tr -dc '0-9' < camdata/issue-number.txt)
+            if [ -n "$ISSUE" ]; then
+              python scripts/youtube_cam_scan.py absorb-checkmarks "$ISSUE" --data-dir camdata
+            fi
+          fi
 
       - name: Scan for candidates
         env:

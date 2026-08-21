@@ -449,3 +449,65 @@ class TestCamCandidatePersistence:
         ranked = mod._rank([{'video_id': 'x', 'title': 'x'},
                             {'video_id': 'y', 'times_seen': 3, 'title': 'y'}])
         assert [c['video_id'] for c in ranked] == ['y', 'x']
+
+
+class TestCamCheckmarkDismissal:
+    """Ticking a box in the review issue means "not this one, don't ask again".
+    The scan rewrites that issue body, so the parsing has to survive both the
+    old em-dash format and the current hyphen one -- a parser that knew only
+    one of them silently matched nothing and looked like it worked."""
+
+    def _module(self):
+        import importlib.util, os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            'youtube_cam_scan', os.path.join(root, 'scripts', 'youtube_cam_scan.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_parses_the_current_hyphen_format(self):
+        m = self._module().ISSUE_LINE.match(
+            '- [x] [Some Cam](https://www.youtube.com/watch?v=abcdefghijk) - Chan - '
+            'suggested spot: Venice Beach CA - seen 7x - 811 watching - `abcdefghijk`')
+        assert m and m.group('done') == 'x' and m.group('vid') == 'abcdefghijk'
+
+    def test_parses_the_legacy_em_dash_format(self):
+        m = self._module().ISSUE_LINE.match(
+            '- [ ] [Old Cam](https://www.youtube.com/watch?v=bbbbbbbbbbb) — Chan — '
+            'suggested spot: _no spot match_ — `bbbbbbbbbbb`')
+        assert m and m.group('done') == ' ' and m.group('vid') == 'bbbbbbbbbbb'
+
+    def test_dismissed_ids_are_excluded_from_a_render(self, tmp_path):
+        mod = self._module()
+        store = {
+            'candidates': [
+                {'video_id': 'keepkeepkee', 'title': 'Keep', 'url': 'u',
+                 'channel': 'c', 'times_seen': 5},
+                {'video_id': 'dropdropdro', 'title': 'Drop', 'url': 'u',
+                 'channel': 'c', 'times_seen': 9},
+            ],
+            'dismissed': {'dropdropdro': {'title': 'Drop', 'dismissed_on': '2026-08-21'}},
+        }
+        path = tmp_path / 'youtube_cam_candidates.json'
+        path.write_text(__import__('json').dumps(store))
+        out = tmp_path / 'issue.md'
+
+        class Args:
+            data_dir = str(tmp_path)
+        args = Args()
+        args.out = str(out)
+        mod.cmd_render_issue(args)
+        body = out.read_text()
+        # Dismissed wins even though it has the higher sighting count.
+        assert 'keepkeepkee' in body
+        assert 'dropdropdro' not in body
+
+    def test_the_issue_explains_that_ticking_dismisses(self, tmp_path):
+        """If the issue does not say so, nobody knows the tick means anything."""
+        mod = self._module()
+        out = tmp_path / 'issue.md'
+        mod._write_issue_markdown(
+            [{'video_id': 'aaaaaaaaaaa', 'title': 'A', 'url': 'u',
+              'channel': 'c', 'times_seen': 1}], str(out))
+        assert 'Tick the box' in out.read_text()

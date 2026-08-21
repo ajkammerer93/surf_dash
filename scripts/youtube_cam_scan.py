@@ -67,11 +67,17 @@ TITLE_KEYWORDS = re.compile(r'\b(surf|beach|pier|wave|ocean|cam)\b', re.I)
 # untrusted, so the id is read from the trailing backticked field rather than
 # from anywhere a title could imitate.
 ISSUE_LINE = re.compile(
-    r'^- \[(?P<done>[ x])\] '
+    r'^- \[(?P<done>[ x])\]\s+'
     r'\[(?P<title>.*?)\]\((?P<url>[^)]*)\)'
-    r'(?: — (?P<channel>.*?))?'
-    r'(?: — suggested spot: (?P<spot>.*?))?'
-    r' — `(?P<vid>[A-Za-z0-9_-]{11})`\s*$')
+    r'(?P<rest>.*?)'
+    r'`(?P<vid>[A-Za-z0-9_-]{11})`\s*$')
+
+# The middle of the line is deliberately not pinned down: the old weekly issues
+# separated fields with em dashes and the current renderer uses hyphens, and a
+# parser that only knew one of them matched nothing at all while looking like it
+# worked. Only the checkbox and the trailing id are load-bearing.
+ISSUE_CHANNEL = re.compile(r'^\s*[-—]\s*(?P<channel>.*?)\s*[-—]\s*suggested spot:')
+ISSUE_SPOT = re.compile(r'suggested spot:\s*(?P<spot>.*?)\s*(?:[-—]\s*seen\s|[-—]\s*$|$)')
 
 
 def _candidates_path(data_dir):
@@ -180,7 +186,10 @@ def cmd_scan(args):
     # surf_cameras.json all count as handled -- never re-suggest them.
     known = _handled_ids()
     path = _candidates_path(getattr(args, 'data_dir', None))
-    candidates = _load_json(path, {'candidates': []})
+    candidates = _load_json(path, {'candidates': [], 'dismissed': {}})
+    # Ticked off in the review issue means "not this one" -- as final as a
+    # reject, just expressed in the place the reviewing actually happens.
+    known.update(candidates.get('dismissed', {}))
     existing = {c['video_id']: c for c in candidates['candidates']}
     spots = _load_spots()
 
@@ -305,7 +314,10 @@ def _write_issue_markdown(candidates, path):
                 '\n\nApprove or reject with `scripts/youtube_cam_scan.py`; '
                 'handled entries drop off this list automatically on the next '
                 'scan. This issue is rewritten in place each week rather than '
-                'replaced, so it stays the single place to look.\n')
+                'replaced, so it stays the single place to look.\n\n'
+                'Tick the box on anything you do not want and it will not be '
+                'suggested again, so there is no need to approve or reject a '
+                'stream just to be rid of it.\n')
         for floor, heading in tiers:
             ceiling = tiers[tiers.index((floor, heading)) - 1][0] if floor != 4 else None
             group = [c for c in ranked
@@ -326,12 +338,60 @@ def _write_issue_markdown(candidates, path):
         f.write(f'\n{len(ranked)} awaiting review.\n')
 
 
+def cmd_absorb_checkmarks(args):
+    """Treat a ticked box in the review issue as "not this one, don't ask again".
+
+    Reviewing a stream usually ends one of three ways: approve it, reject it, or
+    decide it is not worth adding and move on. Only the first two had a home,
+    so the third kept coming back every week. Ticking the box in the issue is
+    the natural way to express it, so that is what this reads.
+
+    Ordering matters: the scan rewrites the issue body, which would wipe the
+    ticks, so this has to run BEFORE the render or the dismissal is lost and the
+    stream reappears.
+    """
+    import subprocess
+    path = _candidates_path(args.data_dir)
+    store = _load_json(path, {'candidates': [], 'dismissed': {}})
+    store.setdefault('dismissed', {})
+
+    try:
+        body = subprocess.run(
+            ['gh', 'issue', 'view', str(args.issue), '--json', 'body', '-q', '.body'],
+            capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f'Could not read issue #{args.issue}: {e}')
+        return 1
+
+    ticked = []
+    for line in body.splitlines():
+        m = ISSUE_LINE.match(line.strip())
+        if m and m.group('done') == 'x':
+            ticked.append((m.group('vid'), m.group('title')))
+
+    today = date.today().isoformat()
+    newly = 0
+    for vid, title in ticked:
+        if vid not in store['dismissed']:
+            store['dismissed'][vid] = {'title': title, 'dismissed_on': today}
+            newly += 1
+    before = len(store['candidates'])
+    store['candidates'] = [c for c in store['candidates']
+                           if c['video_id'] not in store['dismissed']]
+    _save_json(path, store)
+    print(f'{len(ticked)} ticked in issue #{args.issue}; {newly} newly dismissed, '
+          f'{before - len(store["candidates"])} removed from the pending list '
+          f'({len(store["dismissed"])} dismissed in total)')
+    return 0
+
+
 def cmd_render_issue(args):
     """Write the ranked pending list to a markdown file."""
     path = _candidates_path(args.data_dir)
-    candidates = _load_json(path, {'candidates': []})['candidates']
+    store = _load_json(path, {'candidates': [], 'dismissed': {}})
     known = _handled_ids()
-    pending = [c for c in candidates if c['video_id'] not in known]
+    known.update(store.get('dismissed', {}))
+    pending = [c for c in store['candidates'] if c['video_id'] not in known]
     _write_issue_markdown(pending, args.out)
     print(f'Wrote {len(pending)} pending candidate(s) to {args.out}')
     return 0
@@ -369,13 +429,16 @@ def cmd_migrate_issues(args):
                 checked_off.add(vid)
                 continue
             seen_counts[vid] = seen_counts.get(vid, 0) + 1
-            spot = m.group('spot')
+            rest = m.group('rest') or ''
+            chan_m = ISSUE_CHANNEL.match(rest)
+            spot_m = ISSUE_SPOT.search(rest)
+            spot = spot_m.group('spot') if spot_m else None
             if spot in ('_no spot match_', '', None):
                 spot = None
             entry = by_id.setdefault(vid, {
                 'video_id': vid,
                 'title': m.group('title'),
-                'channel': m.group('channel') or '',
+                'channel': (chan_m.group('channel') if chan_m else '') or '',
                 'url': m.group('url'),
                 'concurrent_viewers': None,
                 'suggested_spot': spot,
@@ -640,6 +703,12 @@ def main():
     p = sub.add_parser('reject', help='dismiss a candidate permanently')
     p.add_argument('video_id')
     p.set_defaults(func=cmd_reject)
+
+    p = sub.add_parser('absorb-checkmarks',
+                       help='treat ticked boxes in the review issue as dismissals')
+    p.add_argument('issue', type=int, help='issue number to read')
+    p.add_argument('--data-dir', help='directory holding the persistent candidate store')
+    p.set_defaults(func=cmd_absorb_checkmarks)
 
     p = sub.add_parser('render-issue', help='write the ranked pending list as markdown')
     p.add_argument('--data-dir', help='directory holding the persistent candidate store')
