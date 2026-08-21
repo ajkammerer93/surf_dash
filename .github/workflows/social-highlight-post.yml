@@ -5,15 +5,10 @@ name: Daily highlight post
 # wind, whichever clears its bar today. Everything on the card is an
 # observation, not a forecast.
 #
-# THIS WORKFLOW CANNOT FIRE ON ITS OWN. The schedule below is commented out and
-# dry_run defaults to true, so a stray "Run workflow" click prints the card
-# rather than publishing it. Before uncommenting the cron:
-#   1. Run it here with dry_run left checked and read the card it prints.
-#   2. Look at the images: /social/highlight.png and /social/highlight-story.png
-#   3. Run it once with dry_run unchecked and check both in the app.
-#   4. Decide the cadence. The account already posts twice a day from
-#      social-post.yml; this would make three, which may be more than the
-#      audience wants. Every other weekday is a defensible starting point.
+# Live since 2026-08-21, posting a feed card and a matching Story each day.
+# dry_run still defaults to true, so a stray "Run workflow" click prints the card
+# rather than publishing a second one; a scheduled run sends no inputs and posts
+# for real. To pause it, comment out the two schedule lines below.
 #
 # The card declines to publish when nothing is exceptional -- in mid-August the
 # whole network topped out at 9 ft, 15 s and 23 kt, all below their floors. A
@@ -45,12 +40,12 @@ on:
         type: boolean
         default: false
 
-  # Uncomment BOTH lines below to go live. 22:07 UTC is 18:07 ET / 15:07 PT --
-  # late enough that the day's peak readings are in, and clear of the 11:07 and
-  # 16:07 regional posts. Minute 7 rather than 0 because top-of-hour is when the
-  # Actions queue is most congested.
-  # schedule:
-  #   - cron: '7 22 * * *'
+  # 22:07 UTC is 18:07 ET in summer, 17:07 in winter -- East Coast dinner time
+  # either way, which is a prime window, and late enough that the day's peak
+  # readings are in. Clear of the 11:07 and 16:07 regional posts. Minute 7 rather
+  # than 0 because top-of-hour is when the Actions queue is most congested.
+  schedule:
+    - cron: '7 22 * * *'
 
 permissions:
   contents: read
