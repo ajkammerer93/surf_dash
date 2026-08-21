@@ -40,13 +40,14 @@ VIEWPORTS = {
     'desktop': {'width': 1440, 'height': 900, 'scale': 1, 'is_mobile': False},
 }
 
-# Both themes are captured for these paths only. Every extra theme doubles the
-# shot count and the run time, so the rest are measured in light, which is what
-# color_scheme falls back to below. Light is the cheaper half to cover: the
-# dashboard reports fewer low-contrast pairs in light than in dark, so the
-# untested half of the un-themed pages is the worse half -- worth knowing when
-# reading a clean contrast number for /faq or /about.
-THEMED_PATHS = {'/'}
+# Every page is measured in both themes. This was briefly limited to the
+# dashboard to halve the run, but that left the worse half of every other page
+# untested: a hardcoded colour is invisible in exactly one theme, and the one
+# real bug this collector has found so far -- white text on a white panel -- was
+# only wrong in light. A clean contrast number for a page measured in a single
+# theme means very little. The cost is 24 measurements instead of 16, about 90
+# extra seconds.
+THEMES = ('dark', 'light')
 
 # How long to sit on a loaded page before reading CLS and LCP. Layout shifts
 # from late-arriving forecast data land well after load, and LCP is not final
@@ -951,7 +952,7 @@ def run(args):
         'palette': collect_palette(),
         'config': {
             'viewports': VIEWPORTS,
-            'themed_paths': sorted(THEMED_PATHS),
+            'themes': list(THEMES),
             'timeout_ms': args.timeout_ms,
             'settle_ms': SETTLE_MS,
             'screenshots': not args.no_shots,
@@ -993,10 +994,8 @@ def run(args):
             return snapshot
         try:
             for path in pages:
-                themes = ['dark', 'light'] if (
-                    path in THEMED_PATHS or path.startswith('/forecast/')) else [None]
                 for viewport in ('mobile', 'desktop'):
-                    for theme in themes:
+                    for theme in THEMES:
                         snapshot['pages'].append(measure(
                             browser, args.base_url, path, viewport, theme,
                             shots_dir, args.timeout_ms))
@@ -1011,11 +1010,32 @@ def run(args):
         except Exception:
             pass
 
+    # Drop shots this run did not write. They live on a branch and are only
+    # ever overwritten by name, so renaming a page or adding a theme strands the
+    # old file there forever -- and a reviewer reading a screenshot of a layout
+    # that has not existed for a month has no way to tell. Only prune when we
+    # actually produced shots, so a degraded run does not wipe the last good set.
+    pruned = []
+    if shots_dir:
+        kept = {os.path.basename(p['screenshot'])
+                for p in snapshot['pages'] if p.get('screenshot')}
+        if kept:
+            try:
+                for name in sorted(os.listdir(shots_dir)):
+                    if name not in kept:
+                        os.remove(os.path.join(shots_dir, name))
+                        pruned.append(name)
+            except Exception as e:
+                snapshot['prune_error'] = str(e)[:300]
+
     snapshot['summary'] = {
         'measurements': len(snapshot['pages']),
         'with_errors': sum(1 for p in snapshot['pages'] if p.get('error')),
         'screenshots': sum(1 for p in snapshot['pages'] if p.get('screenshot')),
+        'stale_shots_removed': len(pruned),
     }
+    if pruned:
+        snapshot['stale_shots_removed'] = pruned
     return snapshot
 
 
