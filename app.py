@@ -2898,6 +2898,19 @@ def _fit_card_title(draw, text, max_width, max_size=58, min_size=38, lines=None)
     return font, min_size, (best[1] if best else [text])
 
 
+# Instagram draws its own chrome over a story: the progress bar, avatar, account
+# name and timestamp run across the top, and the reply bar across the bottom.
+# Anything placed under them is unreadable -- the brand strip sat behind the
+# account name and the footer sat behind "Say something...".
+#
+# Measured off a posted story rather than taken from a spec sheet: the top chrome
+# covers canvas y 11-91 and the reply bar y 1847-1920. These insets leave better
+# than double that clearance on both ends, which is as much as can be given up
+# before the content blocks stop fitting. The feed card is unaffected.
+STORY_SAFE_TOP = 200
+STORY_SAFE_BOTTOM = 220
+
+
 def _render_social_card(data, fmt='PNG', story=False):
     """Render the Instagram card: 1080x1350 (4:5 feed) or 1080x1920 (9:16 story).
 
@@ -2938,13 +2951,14 @@ def _render_social_card(data, fmt='PNG', story=False):
     f_cond = _load_og_font('sans_bold', 28)
     f_foot = _load_og_font('sans_bold', 30)
 
-    draw.text((pad, 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    top = STORY_SAFE_TOP if story else 0
+    draw.text((pad, top + 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
     date_w = draw.textlength(data['date'], font=f_date)
-    draw.text((W - pad - date_w, 52), data['date'], fill=TEXT_DIM, font=f_date)
+    draw.text((W - pad - date_w, top + 52), data['date'], fill=TEXT_DIM, font=f_date)
 
     title = f"{data['region_title']} Surf Check"
     f_title, title_size, title_lines = _fit_card_title(draw, title, W - 2 * pad)
-    title_y = 120
+    title_y = top + 120
     line_h = title_size + 6
     for i, line in enumerate(title_lines):
         draw.text((pad, title_y + i * line_h), line, fill=TEXT, font=f_title)
@@ -2959,11 +2973,17 @@ def _render_social_card(data, fmt='PNG', story=False):
         foot_h = 118 if accuracy_ft else 90
     # row_h is the pitch between cards; the card box itself stays 270 tall in
     # both layouts, so the taller story canvas spreads the cards out rather
-    # than stretching each one around the same fixed-position content.
-    row_h = 430 if story else 300
+    # than stretching each one around the same fixed-position content. 350, not
+    # the original 430: once the safe margins are reserved the story has barely
+    # more usable height than the feed, and at 430 the third card ran under the
+    # call-to-action band.
+    row_h = 350 if story else 300
     box_h = 270
     cta_h = 150 if story else 0
-    block_top, block_bottom = sub_y + 70, H - foot_h - cta_h
+    # foot_top, not H - foot_h: on a story the footer band has to clear the
+    # reply bar, so everything below the rows is measured from there.
+    foot_top = H - (STORY_SAFE_BOTTOM if story else 0) - foot_h
+    block_top, block_bottom = sub_y + 70, foot_top - cta_h
     total = (len(data['top']) - 1) * row_h + box_h
     y = block_top + max(0, (block_bottom - block_top - total) // 2)
     for i, t in enumerate(data['top']):
@@ -2991,7 +3011,7 @@ def _render_social_card(data, fmt='PNG', story=False):
         # No caption on a story, so the URL has to carry the ask itself.
         f_cta = _load_og_font('sans_bold', 46)
         f_cta_sub = _load_og_font('sans', 30)
-        cta_y = H - foot_h - cta_h + 16
+        cta_y = foot_top - cta_h + 16
         cta = 'freesurfforecast.com'
         draw.text(((W - draw.textlength(cta, font=f_cta)) / 2, cta_y),
                   cta, fill=ACCENT, font=f_cta)
@@ -3001,18 +3021,19 @@ def _render_social_card(data, fmt='PNG', story=False):
         draw.text(((W - draw.textlength(sub, font=f_cta_sub)) / 2, cta_y + 62),
                   sub, fill=TEXT_DIM, font=f_cta_sub)
 
-    # Footer
-    draw.rectangle([(0, H - foot_h), (W, H)], fill=SURFACE)
-    draw.line([(0, H - foot_h), (W, H - foot_h)], fill=BORDER)
+    # Footer. The band still bleeds to the bottom edge so there is no seam
+    # under Instagram's overlay, but its text stays above the reserved strip.
+    draw.rectangle([(0, foot_top), (W, H)], fill=SURFACE)
+    draw.line([(0, foot_top), (W, foot_top)], fill=BORDER)
     if not story:
         foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
         foot_w = draw.textlength(foot, font=f_foot)
-        draw.text(((W - foot_w) / 2, H - foot_h + 22), foot, fill=TEXT, font=f_foot)
+        draw.text(((W - foot_w) / 2, foot_top + 22), foot, fill=TEXT, font=f_foot)
     if accuracy_ft:
         f_acc = _load_og_font('sans', 26)
         acc = f'Graded against NOAA buoys - {accuracy_ft}ft average error, 30 days'
         acc_w = draw.textlength(acc, font=f_acc)
-        acc_y = H - foot_h + (34 if story else 68)
+        acc_y = foot_top + (34 if story else 68)
         draw.text(((W - acc_w) / 2, acc_y), acc, fill=TEXT_DIM, font=f_acc)
 
     buf = io.BytesIO()
@@ -3343,15 +3364,16 @@ def _render_accuracy_card(data, fmt='PNG', story=False):
 
     f_brand = _load_og_font('sans_bold', 28)
     f_date = _load_og_font('sans', 28)
-    draw.text((pad, 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
-    draw.text((W - pad - draw.textlength(data['date'], font=f_date), 52),
+    top = STORY_SAFE_TOP if story else 0
+    draw.text((pad, top + 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    draw.text((W - pad - draw.textlength(data['date'], font=f_date), top + 52),
               data['date'], fill=TEXT_DIM, font=f_date)
-    draw.text((pad, 106), 'WEEKLY ACCURACY REPORT', fill=ACCENT, font=f_brand)
+    draw.text((pad, top + 106), 'WEEKLY ACCURACY REPORT', fill=ACCENT, font=f_brand)
 
     f_head, head_size, head_lines = _fit_card_title(
-        draw, '', W - 2 * pad, max_size=(80 if story else 68), min_size=44,
+        draw, '', W - 2 * pad, max_size=(72 if story else 68), min_size=44,
         lines=['The surf forecast', 'that grades itself'])
-    y = 154
+    y = top + 154
     for i, line in enumerate(head_lines):
         draw.text((pad, y + i * (head_size + 8)), line,
                   fill=(TEXT if i == 0 else ACCENT), font=f_head)
@@ -3360,20 +3382,30 @@ def _render_accuracy_card(data, fmt='PNG', story=False):
     # Block heights, then spread the leftover space as equal gaps so the
     # layout adapts to the taller story canvas (and to a missing spotlight)
     # instead of needing two hand-tuned coordinate sets.
-    hero_h = 340 if story else 300
-    tile_h = 170 if story else 142
-    lead_h = (270 if story else 212) if data.get('bins') else 0
+    # The story used to enlarge every block, which was right when it had 1920px
+    # to spend. After the safe margins it has 1500 of usable height against the
+    # feed's 1350, so the two layouts now share their block sizes and the slack
+    # distribution below spreads the small difference as wider gaps.
+    hero_h = 300
+    tile_h = 142
+    lead_h = 212 if data.get('bins') else 0
     # 140, not 128: at 128 the name's descenders sat on the detail line's
     # ascenders on every real card (measured, 2-4px of overlap).
-    spot_h = (160 if story else 140) if data.get('spotlight') else 0
+    spot_h = 140 if data.get('spotlight') else 0
     scope_h = 84 if story else 76
     foot_h = 100
-    cta_h = 180 if story else 0
+    cta_h = 150 if story else 0
 
     blocks = [h for h in (hero_h, tile_h, lead_h, spot_h, scope_h) if h]
-    content_bottom = H - foot_h - cta_h
+    # foot_top, not H - foot_h: on a story the footer band has to clear the
+    # reply bar, so everything below the header is measured from there.
+    foot_top = H - (STORY_SAFE_BOTTOM if story else 0) - foot_h
+    content_bottom = foot_top - cta_h
     slack = content_bottom - y - sum(blocks)
-    gap = max(10, int(slack / (len(blocks) + 1)))
+    # No floor on the gap: a minimum that the slack cannot pay for pushes the
+    # last block down through the call-to-action band, which is exactly how the
+    # lead-time row ended up under the URL.
+    gap = max(0, int(slack / (len(blocks) + 1)))
     y += gap
 
     # Hero: the average miss, in feet.
@@ -3430,12 +3462,12 @@ def _render_accuracy_card(data, fmt='PNG', story=False):
             if i:
                 draw.line([(cx - 8, y + 78), (cx - 8, y + lead_h - 28)], fill=BORDER)
             value = f"{b['mae_ft']:.1f} ft"
-            draw.text((cx, y + (96 if story else 80)), value, fill=TEXT,
-                      font=fit(value, 'mono_bold', 62 if story else 54, cw - 28))
-            draw.text((cx, y + lead_h - (76 if story else 62)), b['label'],
+            draw.text((cx, y + 80), value, fill=TEXT,
+                      font=fit(value, 'mono_bold', 54, cw - 28))
+            draw.text((cx, y + lead_h - 62), b['label'],
                       fill=ACCENT, font=fit(b['label'], 'sans_bold', 34, cw - 28))
             n_line = f"{b['n']:,} scored"
-            draw.text((cx, y + lead_h - (40 if story else 32)), n_line,
+            draw.text((cx, y + lead_h - 32), n_line,
                       fill=TEXT_DIM, font=fit(n_line, 'sans', 24, cw - 28))
         y += lead_h + gap
 
@@ -3446,11 +3478,11 @@ def _render_accuracy_card(data, fmt='PNG', story=False):
         draw.text((box_l + ins, y + 20), 'BUOY OF THE WEEK', fill=ACCENT,
                   font=_load_og_font('sans_bold', 24))
         name = spot['name'] + (f" - {spot['region']}" if spot.get('region') else '')
-        draw.text((box_l + ins, y + (60 if story else 54)), name, fill=TEXT,
-                  font=fit(name, 'sans_bold', 40 if story else 34, box_w - 2 * ins))
+        draw.text((box_l + ins, y + 54), name, fill=TEXT,
+                  font=fit(name, 'sans_bold', 34, box_w - 2 * ins))
         detail = (f"{spot['mae_ft']:.1f} ft average miss over "
                   f"{spot['n']:,} scored forecasts")
-        draw.text((box_l + ins, y + spot_h - (52 if story else 44)), detail,
+        draw.text((box_l + ins, y + spot_h - 44), detail,
                   fill=TEXT_DIM, font=fit(detail, 'sans', 28, box_w - 2 * ins))
         y += spot_h + gap
 
@@ -3467,22 +3499,24 @@ def _render_accuracy_card(data, fmt='PNG', story=False):
         # A story carries no caption, so the image has to make the ask itself.
         # The API cannot attach a link sticker, so the profile link is the
         # only route off the image -- say so explicitly.
-        cta_y = H - foot_h - cta_h + 30
+        cta_y = foot_top - cta_h + 30
         cta = 'freesurfforecast.com/accuracy'
         center(cta, fit(cta, 'sans_bold', 46, W - 2 * pad), cta_y, ACCENT)
         sub = 'Link in bio - every station, every number, downloadable.'
         center(sub, fit(sub, 'sans', 30, W - 2 * pad), cta_y + 68, TEXT_DIM)
 
-    draw.rectangle([(0, H - foot_h), (W, H)], fill=SURFACE)
-    draw.line([(0, H - foot_h), (W, H - foot_h)], fill=BORDER)
+    # The band still bleeds to the bottom edge so there is no seam under
+    # Instagram's overlay, but its text stays above the reserved strip.
+    draw.rectangle([(0, foot_top), (W, H)], fill=SURFACE)
+    draw.line([(0, foot_top), (W, foot_top)], fill=BORDER)
     if not story:
         # The story already carries the URL in its call-to-action band, so
         # repeating it here would just be the same line twice.
         foot = 'freesurfforecast.com/accuracy'
-        center(foot, fit(foot, 'sans_bold', 34, W - 2 * pad), H - foot_h + 18, TEXT)
+        center(foot, fit(foot, 'sans_bold', 34, W - 2 * pad), foot_top + 18, TEXT)
     sub = f"Rolling {data['window_days']}-day window, rescored every 6 hours"
     center(sub, fit(sub, 'sans', 26, W - 2 * pad),
-           H - foot_h + (34 if story else 60), TEXT_DIM)
+           foot_top + (34 if story else 60), TEXT_DIM)
 
     buf = io.BytesIO()
     if fmt == 'JPEG':
