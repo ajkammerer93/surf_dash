@@ -22,6 +22,12 @@ Subcommands
              from --lat/--lon, or from the candidate's suggested spot match.
     reject   Dismiss a candidate; its id is remembered so scans don't
              re-suggest it.
+    render-issue
+             Write the pending candidate list as markdown, ranked by how many
+             scans each stream has survived.
+    migrate-issues
+             Seed the persistent store from the old weekly review issues,
+             recovering their times_seen counts.
 
 Typical review loop (local):
     YOUTUBE_API_KEY=... python scripts/youtube_cam_scan.py scan
@@ -55,6 +61,60 @@ DEFAULT_QUERIES = [
 
 # A candidate must mention one of these in its title to be worth reviewing
 TITLE_KEYWORDS = re.compile(r'\b(surf|beach|pier|wave|ocean|cam)\b', re.I)
+
+
+# A candidate line as the weekly review issues render it. Titles are
+# untrusted, so the id is read from the trailing backticked field rather than
+# from anywhere a title could imitate.
+ISSUE_LINE = re.compile(
+    r'^- \[(?P<done>[ x])\] '
+    r'\[(?P<title>.*?)\]\((?P<url>[^)]*)\)'
+    r'(?: — (?P<channel>.*?))?'
+    r'(?: — suggested spot: (?P<spot>.*?))?'
+    r' — `(?P<vid>[A-Za-z0-9_-]{11})`\s*$')
+
+
+def _candidates_path(data_dir):
+    """Where the persistent candidate store lives.
+
+    Without --data-dir this is the repo-local file, which is what the local
+    review loop uses. CI passes a checkout of the data branch instead: the
+    file used to be written into an ephemeral workspace and thrown away, so
+    every scheduled scan started blank, rediscovered the same streams and
+    filed another issue. Persisting it is what makes times_seen mean anything.
+    """
+    if not data_dir:
+        return CANDIDATES_FILE
+    return os.path.join(data_dir, 'youtube_cam_candidates.json')
+
+
+def _handled_ids():
+    """Video ids that are already approved, rejected or embedded on the site,
+    and so must never reappear as candidates."""
+    cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
+    handled = {c['video_id'] for c in cams_data['cams']}
+    handled.update(cams_data.get('rejected_video_ids', []))
+    for spot in _load_json(SPOTS_FILE, []):
+        m = re.search(r'youtube\.com/embed/([A-Za-z0-9_-]{11})',
+                      spot.get('stream_url') or '')
+        if m:
+            handled.add(m.group(1))
+    return handled
+
+
+def _rank(candidates):
+    """Most-persistent first.
+
+    A stream that keeps reappearing week after week is a stable cam worth a
+    human's attention; one that showed up once was probably a passing
+    broadcast. Viewer count breaks ties, and the title only orders the
+    remainder so the list is stable between runs.
+    """
+    return sorted(candidates, key=lambda c: (
+        -int(c.get('times_seen') or 1),
+        -int(c.get('concurrent_viewers') or 0),
+        (c.get('title') or '').lower(),
+    ))
 
 
 def _load_json(path, default):
@@ -116,17 +176,12 @@ def _match_spot(text, spots):
 
 def cmd_scan(args):
     key = _api_key()
-    cams_data = _load_json(CAMS_FILE, {'cams': [], 'rejected_video_ids': []})
-    known = {c['video_id'] for c in cams_data['cams']}
-    known.update(cams_data.get('rejected_video_ids', []))
-    # The legacy hand-curated YouTube iframes in surf_cameras.json count as
-    # known too — don't re-suggest streams the site already embeds
-    for spot in _load_json(SPOTS_FILE, []):
-        m = re.search(r'youtube\.com/embed/([A-Za-z0-9_-]{11})', spot.get('stream_url') or '')
-        if m:
-            known.add(m.group(1))
-    candidates = _load_json(CANDIDATES_FILE, {'candidates': []})
-    existing = {c['video_id'] for c in candidates['candidates']}
+    # Approved, rejected, and the legacy hand-curated embeds in
+    # surf_cameras.json all count as handled -- never re-suggest them.
+    known = _handled_ids()
+    path = _candidates_path(getattr(args, 'data_dir', None))
+    candidates = _load_json(path, {'candidates': []})
+    existing = {c['video_id']: c for c in candidates['candidates']}
     spots = _load_spots()
 
     queries = args.query or DEFAULT_QUERIES
@@ -148,6 +203,8 @@ def cmd_scan(args):
                 found_ids.append(vid)
 
     new_candidates = []
+    reseen = 0
+    today = date.today().isoformat()
     skipped = {'known': 0, 'not_embeddable': 0, 'not_live': 0, 'no_keyword': 0}
     # videos.list accepts up to 50 ids per call
     for i in range(0, len(found_ids), 50):
@@ -158,8 +215,19 @@ def cmd_scan(args):
         })
         for item in data.get('items', []):
             vid = item['id']
-            if vid in known or vid in existing:
+            if vid in known:
                 skipped['known'] += 1
+                continue
+            if vid in existing:
+                # Already pending: this sighting is the signal, not noise.
+                prior = existing[vid]
+                prior['times_seen'] = int(prior.get('times_seen') or 1) + 1
+                prior['last_seen'] = today
+                live_now = (item.get('liveStreamingDetails') or {}).get(
+                    'concurrentViewers')
+                if live_now:
+                    prior['concurrent_viewers'] = live_now
+                reseen += 1
                 continue
             snippet = item.get('snippet', {})
             status = item.get('status', {})
@@ -185,30 +253,158 @@ def cmd_scan(args):
                 'suggested_lat': match['lat'] if match else None,
                 'suggested_lon': match['lon'] if match else None,
                 'suggested_state': match['state'] if match else None,
-                'first_seen': date.today().isoformat(),
+                'first_seen': today,
+                'last_seen': today,
+                'times_seen': 1,
             }
             new_candidates.append(cand)
 
     candidates['candidates'].extend(new_candidates)
-    _save_json(CANDIDATES_FILE, candidates)
+    # Drop anything approved or rejected since the last scan, so the store
+    # never carries work that is already done.
+    candidates['candidates'] = [c for c in candidates['candidates']
+                                if c['video_id'] not in known]
+    candidates['candidates'] = _rank(candidates['candidates'])
+    candidates['last_scan'] = today
+    _save_json(path, candidates)
 
     print(f'filtered out: {skipped}')
-    print(f'{len(new_candidates)} new candidate(s), '
-          f'{len(candidates["candidates"])} pending review in {os.path.basename(CANDIDATES_FILE)}')
+    print(f'{len(new_candidates)} new candidate(s), {reseen} seen again, '
+          f'{len(candidates["candidates"])} pending review in {path}')
     for c in new_candidates:
         spot = c['suggested_spot'] or 'no spot match'
         print(f'  - {c["video_id"]}  {c["title"][:70]}  [{spot}]  {c["url"]}')
     if args.markdown:
-        def md_safe(text):
-            # Titles/channels are untrusted — strip markdown link syntax
-            return re.sub(r'[\[\]()`<>]', '', text or '')
-        with open(args.markdown, 'w') as f:
-            f.write('New YouTube surf cam candidates. Review each stream, then '
-                    '`approve` or `reject` it with scripts/youtube_cam_scan.py.\n\n')
-            for c in new_candidates:
-                spot = md_safe(c['suggested_spot']) or '_no spot match_'
-                f.write(f'- [ ] [{md_safe(c["title"])}]({c["url"]}) — {md_safe(c["channel"])} — '
-                        f'suggested spot: {spot} — `{c["video_id"]}`\n')
+        _write_issue_markdown(candidates['candidates'], args.markdown)
+    return 0
+
+
+def _md_safe(text):
+    """Titles and channel names come from YouTube and are untrusted."""
+    return re.sub(r'[\[\]()`<>]', '', text or '')
+
+
+def _write_issue_markdown(candidates, path):
+    """Render the pending list, most-persistent first.
+
+    Grouped by sighting count rather than sorted flat, because the useful
+    question when reviewing is "which of these have proven they stick around",
+    and a bare ordering does not make that visible at a glance.
+    """
+    ranked = _rank(candidates)
+    tiers = [
+        (4, 'Seen in four or more scans - most likely to be stable cams'),
+        (2, 'Seen in two or three scans'),
+        (1, 'Seen once - newest, least proven'),
+    ]
+    with open(path, 'w') as f:
+        f.write('Live YouTube surf cams found by the weekly scan and still '
+                'awaiting review, ranked by how many scans each has survived. '
+                'A stream that keeps reappearing is far more likely to be a '
+                'permanent cam than a one-off broadcast, so work from the top.'
+                '\n\nApprove or reject with `scripts/youtube_cam_scan.py`; '
+                'handled entries drop off this list automatically on the next '
+                'scan. This issue is rewritten in place each week rather than '
+                'replaced, so it stays the single place to look.\n')
+        for floor, heading in tiers:
+            ceiling = tiers[tiers.index((floor, heading)) - 1][0] if floor != 4 else None
+            group = [c for c in ranked
+                     if (int(c.get('times_seen') or 1) >= floor
+                         and (ceiling is None
+                              or int(c.get('times_seen') or 1) < ceiling))]
+            if not group:
+                continue
+            f.write(f'\n## {heading}\n\n')
+            for c in group:
+                spot = _md_safe(c.get('suggested_spot')) or '_no spot match_'
+                seen = int(c.get('times_seen') or 1)
+                viewers = c.get('concurrent_viewers')
+                extra = f' - {viewers} watching' if viewers else ''
+                f.write(f'- [ ] [{_md_safe(c["title"])}]({c["url"]}) - '
+                        f'{_md_safe(c.get("channel"))} - suggested spot: {spot} - '
+                        f'seen {seen}x{extra} - `{c["video_id"]}`\n')
+        f.write(f'\n{len(ranked)} awaiting review.\n')
+
+
+def cmd_render_issue(args):
+    """Write the ranked pending list to a markdown file."""
+    path = _candidates_path(args.data_dir)
+    candidates = _load_json(path, {'candidates': []})['candidates']
+    known = _handled_ids()
+    pending = [c for c in candidates if c['video_id'] not in known]
+    _write_issue_markdown(pending, args.out)
+    print(f'Wrote {len(pending)} pending candidate(s) to {args.out}')
+    return 0
+
+
+def cmd_migrate_issues(args):
+    """Seed the persistent store from the old weekly review issues.
+
+    Those issues already record the signal we want: a stream listed in four of
+    six weekly issues has demonstrated exactly the persistence that makes it
+    worth reviewing first. Reading them back recovers that history instead of
+    starting the ranking from zero.
+    """
+    import subprocess
+    path = _candidates_path(args.data_dir)
+    store = _load_json(path, {'candidates': []})
+    by_id = {c['video_id']: c for c in store['candidates']}
+    known = _handled_ids()
+    checked_off = set()
+    seen_counts = {}
+
+    for number in args.issues:
+        raw = subprocess.run(
+            ['gh', 'issue', 'view', str(number), '--json', 'body,createdAt'],
+            capture_output=True, text=True, check=True).stdout
+        payload = json.loads(raw)
+        created = (payload.get('createdAt') or '')[:10]
+        for line in payload['body'].splitlines():
+            m = ISSUE_LINE.match(line.strip())
+            if not m:
+                continue
+            vid = m.group('vid')
+            if m.group('done') == 'x':
+                # Already handled by hand in the issue; do not resurrect it.
+                checked_off.add(vid)
+                continue
+            seen_counts[vid] = seen_counts.get(vid, 0) + 1
+            spot = m.group('spot')
+            if spot in ('_no spot match_', '', None):
+                spot = None
+            entry = by_id.setdefault(vid, {
+                'video_id': vid,
+                'title': m.group('title'),
+                'channel': m.group('channel') or '',
+                'url': m.group('url'),
+                'concurrent_viewers': None,
+                'suggested_spot': spot,
+                'suggested_lat': None,
+                'suggested_lon': None,
+                'suggested_state': None,
+                'first_seen': created,
+            })
+            if created and created < (entry.get('first_seen') or created):
+                entry['first_seen'] = created
+            entry['last_seen'] = max(entry.get('last_seen') or '', created)
+
+    for vid, count in seen_counts.items():
+        by_id[vid]['times_seen'] = max(int(by_id[vid].get('times_seen') or 0), count)
+
+    kept = [c for vid, c in by_id.items()
+            if vid not in known and vid not in checked_off]
+    store['candidates'] = _rank(kept)
+    _save_json(path, store)
+
+    tiers = {}
+    for c in store['candidates']:
+        tiers[c['times_seen']] = tiers.get(c['times_seen'], 0) + 1
+    print(f'Migrated {len(store["candidates"])} pending candidate(s) from '
+          f'issues {args.issues} into {path}')
+    print(f'  skipped {len(checked_off)} already checked off in the issues, '
+          f'{len(by_id) - len(kept)} already approved or rejected')
+    for seen in sorted(tiers, reverse=True):
+        print(f'  seen {seen}x: {tiers[seen]}')
     return 0
 
 
@@ -417,6 +613,10 @@ def main():
     p.add_argument('--query', action='append', help='override the default search queries (repeatable)')
     p.add_argument('--limit', type=int, default=25, help='max results per query (default 25)')
     p.add_argument('--markdown', help='also write a review checklist to this markdown file')
+    p.add_argument('--data-dir',
+                   help='directory holding the persistent candidate store; CI '
+                        'passes a checkout of the data branch so sightings '
+                        'accumulate across runs')
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser('verify', help='re-check approved cams; disable dead ones')
@@ -440,6 +640,17 @@ def main():
     p = sub.add_parser('reject', help='dismiss a candidate permanently')
     p.add_argument('video_id')
     p.set_defaults(func=cmd_reject)
+
+    p = sub.add_parser('render-issue', help='write the ranked pending list as markdown')
+    p.add_argument('--data-dir', help='directory holding the persistent candidate store')
+    p.add_argument('--out', required=True, help='markdown file to write')
+    p.set_defaults(func=cmd_render_issue)
+
+    p = sub.add_parser('migrate-issues',
+                       help='seed the store from the old weekly review issues')
+    p.add_argument('issues', type=int, nargs='+', help='issue numbers to mine')
+    p.add_argument('--data-dir', help='directory holding the persistent candidate store')
+    p.set_defaults(func=cmd_migrate_issues)
 
     p = sub.add_parser('sync-issue', help='check off approved/rejected cams in a review issue')
     p.add_argument('issue', type=int, help='issue number (e.g. 20)')

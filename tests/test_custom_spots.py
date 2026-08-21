@@ -398,3 +398,54 @@ class TestSeoAuditCollectors:
         for wf in self._module().WATCHED_WORKFLOWS:
             path = os.path.join(root, '.github', 'workflows', wf)
             assert os.path.exists(path), f'{wf} is watched but does not exist'
+
+
+class TestCamCandidatePersistence:
+    """The weekly scan ranks candidates by how many scans they survive, so the
+    parsing and ranking that produce that signal need pinning."""
+
+    def _module(self):
+        import importlib.util, os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            'youtube_cam_scan', os.path.join(root, 'scripts', 'youtube_cam_scan.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_parses_a_review_issue_line(self):
+        m = self._module().ISSUE_LINE.match(
+            '- [ ] [Dania Beach Pier Cam](https://www.youtube.com/watch?v=o1eTLR7Degs)'
+            ' — City of Dania Beach Pier Cam — suggested spot: Dania FL — `o1eTLR7Degs`')
+        assert m and m.group('vid') == 'o1eTLR7Degs'
+        assert m.group('done') == ' '
+        assert m.group('title') == 'Dania Beach Pier Cam'
+
+    def test_checked_lines_are_distinguishable(self):
+        m = self._module().ISSUE_LINE.match(
+            '- [x] [Handled Cam](https://www.youtube.com/watch?v=abcdefghijk)'
+            ' — Chan — suggested spot: _no spot match_ — `abcdefghijk`')
+        assert m and m.group('done') == 'x'
+
+    def test_id_comes_from_the_backticked_field_not_the_title(self):
+        """Titles are attacker-controlled; a title imitating the id field must
+        not be able to smuggle in a different video."""
+        m = self._module().ISSUE_LINE.match(
+            '- [ ] [Evil `aaaaaaaaaaa` Cam](https://www.youtube.com/watch?v=zzzzzzzzzzz)'
+            ' — Chan — suggested spot: X — `zzzzzzzzzzz`')
+        assert m and m.group('vid') == 'zzzzzzzzzzz'
+
+    def test_ranking_puts_persistent_candidates_first(self):
+        mod = self._module()
+        ranked = mod._rank([
+            {'video_id': 'a', 'times_seen': 1, 'concurrent_viewers': 900, 'title': 'a'},
+            {'video_id': 'b', 'times_seen': 6, 'concurrent_viewers': 2, 'title': 'b'},
+            {'video_id': 'c', 'times_seen': 6, 'concurrent_viewers': 50, 'title': 'c'},
+        ])
+        assert [c['video_id'] for c in ranked] == ['c', 'b', 'a']
+
+    def test_ranking_tolerates_missing_fields(self):
+        mod = self._module()
+        ranked = mod._rank([{'video_id': 'x', 'title': 'x'},
+                            {'video_id': 'y', 'times_seen': 3, 'title': 'y'}])
+        assert [c['video_id'] for c in ranked] == ['y', 'x']

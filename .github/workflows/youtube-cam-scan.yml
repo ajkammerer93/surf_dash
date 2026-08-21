@@ -1,9 +1,21 @@
 name: YouTube surf cam scan
 
-# Searches YouTube for live, embeddable surf cams and files an issue listing
-# new candidates for review (master is protected, so the workflow never
-# commits — approve/reject candidates locally with scripts/youtube_cam_scan.py).
-# Requires one repository secret (Settings -> Secrets and variables -> Actions):
+# Searches YouTube for live, embeddable surf cams and keeps ONE rolling review
+# issue up to date, ranked by how many scans each stream has survived.
+#
+# The candidate store used to be written into the CI workspace, which is
+# discarded at the end of the run. Every scheduled scan therefore started from
+# nothing, rediscovered the same streams and filed another issue -- six of them
+# had accumulated. The store now lives on the unprotected cam-data branch, the
+# same arrangement forecast-verification and seo-audit use, so sightings
+# accumulate and a stream that reappears week after week can be ranked above one
+# that turned up once.
+#
+# Master is protected, so this workflow never commits to it: approve and reject
+# still happen locally with scripts/youtube_cam_scan.py, and handled ids drop
+# out of the store on the next scan.
+#
+# Requires one repository secret:
 #   YOUTUBE_API_KEY   YouTube Data API v3 key (free tier is plenty)
 
 on:
@@ -13,17 +25,26 @@ on:
 
 permissions:
   issues: write
-  contents: read
+  contents: write
+
+concurrency:
+  group: youtube-cam-scan
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: cam-data
+          path: camdata
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install requests
+
       - name: Scan for candidates
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -32,16 +53,47 @@ jobs:
             echo "YOUTUBE_API_KEY secret not configured; skipping scan."
             exit 0
           fi
-          python scripts/youtube_cam_scan.py scan --markdown candidates.md
-      - name: File review issue
+          python scripts/youtube_cam_scan.py scan --data-dir camdata
+
+      - name: Render the review list
+        run: python scripts/youtube_cam_scan.py render-issue --data-dir camdata --out candidates.md
+
+      - name: Update the rolling review issue
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -s candidates.md ] && grep -q '\- \[ \]' candidates.md; then
-            gh issue create \
-              --title "YouTube cam candidates — $(date -u +%Y-%m-%d)" \
-              --body-file candidates.md \
-              --label "cam-review"
+          if [ ! -s candidates.md ]; then
+            echo "Nothing rendered; leaving the issue alone."
+            exit 0
+          fi
+          ISSUE=""
+          if [ -f camdata/issue-number.txt ]; then
+            ISSUE=$(tr -dc '0-9' < camdata/issue-number.txt)
+          fi
+          # Editing in place is the point: a new issue per scan is what buried
+          # the review list in the first place.
+          if [ -n "$ISSUE" ] && gh issue view "$ISSUE" --json number >/dev/null 2>&1; then
+            gh issue edit "$ISSUE" --body-file candidates.md
+            echo "Updated issue #$ISSUE"
           else
-            echo "No new candidates this run."
+            URL=$(gh issue create \
+              --title "YouTube surf cam candidates (rolling)" \
+              --body-file candidates.md \
+              --label "cam-review")
+            echo "$URL" | grep -oE '[0-9]+$' > camdata/issue-number.txt
+            echo "Created $URL"
+          fi
+
+      - name: Commit the candidate store
+        if: always()
+        run: |
+          cd camdata
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No candidate changes."
+          else
+            git commit -m "Cam candidates $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
           fi
