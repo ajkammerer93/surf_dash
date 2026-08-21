@@ -8568,7 +8568,10 @@
                 var span = document.createElement('span');
                 span.textContent = fmt(d);
                 if (d.time <= now) span.style.opacity = '0.5';
-                if (i === nextFutureIdx) { span.style.fontWeight = '600'; span.style.color = '#fff'; }
+                // var(--text), not #fff: on the light theme this span sat white
+                // on a white panel, so the next tide -- the one entry a reader
+                // is actually looking for -- was invisible.
+                if (i === nextFutureIdx) { span.style.fontWeight = '600'; span.style.color = 'var(--text)'; }
                 ctxEl.appendChild(span);
             });
             if (el) el.style.display = '';
