@@ -1,0 +1,89 @@
+name: Daily highlight post
+
+# Posts the daily highlight card: the most notable thing the NDBC buoy network
+# is measuring right now -- biggest seas, longest swell period, or strongest
+# wind, whichever clears its bar today. Everything on the card is an
+# observation, not a forecast.
+#
+# THIS WORKFLOW CANNOT FIRE ON ITS OWN. The schedule below is commented out and
+# dry_run defaults to true, so a stray "Run workflow" click prints the card
+# rather than publishing it. Before uncommenting the cron:
+#   1. Run it here with dry_run left checked and read the card it prints.
+#   2. Look at the images: /social/highlight.png and /social/highlight-story.png
+#   3. Run it once with dry_run unchecked and check both in the app.
+#   4. Decide the cadence. The account already posts twice a day from
+#      social-post.yml; this would make three, which may be more than the
+#      audience wants. Every other weekday is a defensible starting point.
+#
+# The card declines to publish when nothing is exceptional -- in mid-August the
+# whole network topped out at 9 ft, 15 s and 23 kt, all below their floors. A
+# declined day exits 0 and leaves a ::warning:: annotation, so a quiet day reads
+# as a quiet day in the Actions list rather than as a failure or a silent gap.
+#
+# Requires the same two secrets as social-post.yml:
+#   IG_USER_ID       Instagram user id
+#   IG_ACCESS_TOKEN  long-lived token with instagram_business_content_publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the card without posting'
+        type: boolean
+        default: true
+      kind:
+        description: "Force one kind instead of the day's rotation"
+        type: choice
+        default: ''
+        options:
+          - ''
+          - biggest-seas
+          - longest-period
+          - strongest-wind
+      story_only:
+        description: 'Post only the story (no feed card)'
+        type: boolean
+        default: false
+
+  # Uncomment BOTH lines below to go live. 22:07 UTC is 18:07 ET / 15:07 PT --
+  # late enough that the day's peak readings are in, and clear of the 11:07 and
+  # 16:07 regional posts. Minute 7 rather than 0 because top-of-hour is when the
+  # Actions queue is most congested.
+  # schedule:
+  #   - cron: '7 22 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-highlight-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+
+      - name: Post highlight card
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_KIND: ${{ inputs.kind }}
+          INPUT_STORY_ONLY: ${{ inputs.story_only }}
+        run: |
+          ARGS="--highlight"
+          # Compared against the literal string "true", not tested for
+          # emptiness: a scheduled run sends no inputs at all, so an emptiness
+          # test would make every scheduled post a dry run and the feed would
+          # stay silent while every run went green.
+          if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "$INPUT_STORY_ONLY" = "true" ]; then ARGS="$ARGS --story-only"; fi
+          if [ -n "$INPUT_KIND" ]; then ARGS="$ARGS --kind $INPUT_KIND"; fi
+          python scripts/instagram_publish.py $ARGS

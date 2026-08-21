@@ -3611,6 +3611,618 @@ def social_accuracy_meta():
     return resp
 
 
+
+# --- Daily highlight card ---------------------------------------------------
+# A rotating "what is remarkable on the ocean right now" card, built entirely
+# from observations rather than forecasts: every number on it was measured by an
+# instrument in the water. The whole thing costs one HTTP request, because NDBC
+# publishes the latest observation from every station on its network as a single
+# file rather than one endpoint per buoy.
+
+NDBC_LATEST_OBS_URL = 'https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt'
+NDBC_LATEST_OBS_TTL = 1800
+
+# Observations older than this are not "right now", and a thin read of the
+# network is not a superlative -- on a bad fetch a handful of stations would
+# crown whichever one happened to report.
+HIGHLIGHT_OBS_MAX_AGE_H = 6
+HIGHLIGHT_MIN_STATIONS = 40
+
+# The editorial bar. A superlative is only worth an audience's attention when it
+# is actually exceptional: "biggest seas today, 6 ft" is a fact, but posting it
+# teaches people to scroll past. Below these floors the card is skipped rather
+# than posted, and the publisher treats that as a normal quiet day. In August
+# the network tops out around 9 ft and 15 s, so quiet days are expected; in a
+# North Pacific winter these clear easily.
+# Tuned against a real mid-August read of the network (global max 8.5 ft, 15 s,
+# 23 kt -- a genuinely flat day everywhere). At a 12 ft / 16 s / 40 kt bar the
+# card would have gone silent for most of the summer. Period gets the most
+# forgiving bar on purpose: 14 s of groundswell somewhere is the reading a surf
+# audience actually cares about, and it is the one that still fires in July.
+HIGHLIGHT_FLOORS = {
+    'biggest-seas': 10.0,      # feet
+    'longest-period': 14.0,    # seconds
+    'strongest-wind': 35.0,    # knots
+}
+
+# Rotation order. The card walks this list starting at today's index and posts
+# the first kind that clears its floor, so a flat day for seas can still yield a
+# long-period card instead of nothing.
+HIGHLIGHT_ROTATION = ['biggest-seas', 'longest-period', 'strongest-wind']
+
+# A dominant period is meaningless on a flat sea: a 20 s reading under 6 inches
+# of swell is the sensor picking up background noise, not a groundswell.
+HIGHLIGHT_PERIOD_MIN_WVHT_M = 0.5
+
+_HIGHLIGHT_CARD_LAST_SKIP = None
+
+M_TO_FT = 3.28084
+MS_TO_KT = 1.94384
+
+
+def _ndbc_station_names():
+    """id -> station record, for naming a winner. Restricting the search to
+    stations we hold names for is deliberate: the aggregate file carries 843
+    stations including unnamed platforms and moorings, and a card reading
+    'biggest seas: buoy 63115' is not worth posting."""
+    global _NDBC_BY_ID
+    try:
+        return _NDBC_BY_ID
+    except NameError:
+        pass
+    _NDBC_BY_ID = {str(s.get('id')): s for s in NDBC_STATIONS if s.get('id')}
+    return _NDBC_BY_ID
+
+
+def _parse_latest_obs(text):
+    """Parse NDBC's aggregate latest_obs file.
+
+    Columns are fixed and every missing value is the literal 'MM', so field
+    positions hold on every row -- but only if the row is complete, hence the
+    length check. Getting these offsets wrong is silent and produces plausible
+    nonsense (a 350-second dominant period), so the header is asserted rather
+    than assumed.
+    """
+    names = _ndbc_station_names()
+    rows = []
+    newest = None
+    for line in text.splitlines():
+        if not line or line.startswith('#'):
+            continue
+        f = line.split()
+        if len(f) < 19:
+            continue
+        sid = f[0]
+        st = names.get(sid)
+        if not st:
+            continue
+
+        def num(i):
+            try:
+                v = float(f[i])
+            except (ValueError, IndexError):
+                return None
+            return v
+
+        try:
+            when = datetime(int(f[3]), int(f[4]), int(f[5]),
+                            int(f[6]), int(f[7]), tzinfo=timezone.utc)
+        except (ValueError, IndexError):
+            continue
+        if newest is None or when > newest:
+            newest = when
+        rows.append({
+            'id': sid,
+            'name': st.get('name') or sid,
+            'lat': num(1), 'lon': num(2),
+            'time': when,
+            'wspd_ms': num(9), 'gust_ms': num(10),
+            'wvht_m': num(11), 'dpd_s': num(12), 'apd_s': num(13),
+            'mwd_deg': num(14), 'wtmp_c': num(18),
+        })
+    return rows, newest
+
+
+def _fetch_ndbc_latest_obs():
+    try:
+        resp = requests.get(NDBC_LATEST_OBS_URL, timeout=25)
+        if not resp.ok:
+            logger.warning(f"NDBC latest_obs HTTP {resp.status_code}")
+            return None
+        header = resp.text.split('\n', 1)[0]
+        # The parser is entirely positional. If NDBC ever reorders the file,
+        # fail loudly here rather than publish confident nonsense.
+        expected = ['#STN', 'LAT', 'LON', 'YYYY', 'MM', 'DD', 'hh', 'mm',
+                    'WDIR', 'WSPD', 'GST', 'WVHT', 'DPD', 'APD', 'MWD']
+        if header.split()[:15] != expected:
+            logger.warning(f"NDBC latest_obs header changed: {header[:120]}")
+            return None
+        rows, newest = _parse_latest_obs(resp.text)
+        if not rows:
+            return None
+        return {'rows': rows, 'newest': newest}
+    except Exception as e:
+        logger.warning(f"NDBC latest_obs fetch failed: {e}")
+        return None
+
+
+def _get_ndbc_latest_obs():
+    return cached('ndbc:latest_obs', _fetch_ndbc_latest_obs,
+                  ttl=NDBC_LATEST_OBS_TTL)
+
+
+def _highlight_candidates(obs, kind):
+    """Winner for one kind, or None when nothing clears the floor.
+
+    Every reading is stamped with its own observation time, so a station that
+    stopped reporting two days ago cannot win on a stale value.
+    """
+    now = datetime.now(timezone.utc)
+    floor = HIGHLIGHT_FLOORS[kind]
+    fresh = [r for r in obs['rows']
+             if (now - r['time']).total_seconds() <= HIGHLIGHT_OBS_MAX_AGE_H * 3600]
+    if len(fresh) < HIGHLIGHT_MIN_STATIONS:
+        return None, f'only {len(fresh)} stations reporting within {HIGHLIGHT_OBS_MAX_AGE_H}h'
+
+    if kind == 'biggest-seas':
+        pool = [r for r in fresh if r['wvht_m']]
+        if not pool:
+            return None, 'no wave heights reported'
+        win = max(pool, key=lambda r: r['wvht_m'])
+        value = win['wvht_m'] * M_TO_FT
+        if value < floor:
+            return None, f'biggest seas {value:.1f} ft, below the {floor:.0f} ft bar'
+        return {'kind': kind, 'station': win, 'value': value, 'unit': 'ft'}, None
+
+    if kind == 'longest-period':
+        pool = [r for r in fresh if r['dpd_s'] and r['wvht_m']
+                and r['wvht_m'] >= HIGHLIGHT_PERIOD_MIN_WVHT_M]
+        if not pool:
+            return None, 'no usable dominant periods reported'
+        # Ties are common -- the network reports whole seconds -- so break them
+        # on wave height: a 16 s reading under 10 ft is the better story.
+        win = max(pool, key=lambda r: (r['dpd_s'], r['wvht_m']))
+        value = win['dpd_s']
+        if value < floor:
+            return None, f'longest period {value:.0f} s, below the {floor:.0f} s bar'
+        return {'kind': kind, 'station': win, 'value': value, 'unit': 's'}, None
+
+    if kind == 'strongest-wind':
+        pool = [r for r in fresh if r['wspd_ms']]
+        if not pool:
+            return None, 'no wind speeds reported'
+        win = max(pool, key=lambda r: r['wspd_ms'])
+        value = win['wspd_ms'] * MS_TO_KT
+        if value < floor:
+            return None, f'strongest wind {value:.0f} kt, below the {floor:.0f} kt bar'
+        return {'kind': kind, 'station': win, 'value': value, 'unit': 'kt'}, None
+
+    return None, f'unknown kind {kind}'
+
+
+def _highlight_headline(pick):
+    """Headline, sub-line and the supporting stat tiles for a winner."""
+    st, kind = pick['station'], pick['kind']
+    wv_ft = st['wvht_m'] * M_TO_FT if st['wvht_m'] else None
+    tiles = []
+    if kind == 'biggest-seas':
+        head = ['Biggest seas', 'on the buoy network']
+        value = f"{pick['value']:.1f}"
+        unit = 'ft'
+        label = 'SIGNIFICANT WAVE HEIGHT, MEASURED'
+        note = ('Significant wave height is the average of the highest third. '
+                'Individual waves run larger.')
+        if st['dpd_s']:
+            tiles.append((f"{st['dpd_s']:.0f} s", 'dominant period'))
+    elif kind == 'longest-period':
+        head = ['Longest swell', 'running right now']
+        value = f"{pick['value']:.0f}"
+        unit = 's'
+        label = 'DOMINANT WAVE PERIOD, MEASURED'
+        # Deep-water group velocity, g*T/(4*pi) ~ 0.78*T m/s. This is the speed
+        # the swell energy travels at, which is a fact about the reading. How
+        # far away it was generated is NOT -- that needs the swell's age, which
+        # a single observation cannot give, so the card does not claim it.
+        kt = 0.78 * pick['value'] * MS_TO_KT
+        head_note = f'That energy is moving at about {kt:.0f} knots in open water.'
+        note = ('Long period means the swell was generated far away and has '
+                'outrun the local wind. ' + head_note)
+        if wv_ft:
+            tiles.append((f'{wv_ft:.1f} ft', 'wave height'))
+    else:
+        head = ['Strongest wind', 'on the buoy network']
+        value = f"{pick['value']:.0f}"
+        unit = 'kt'
+        label = 'SUSTAINED WIND SPEED, MEASURED'
+        note = 'Sustained wind, not a gust. Gusts run higher.'
+        if st['gust_ms']:
+            tiles.append((f"{st['gust_ms'] * MS_TO_KT:.0f} kt", 'peak gust'))
+        if wv_ft:
+            tiles.append((f'{wv_ft:.1f} ft', 'seas'))
+
+    if st['wtmp_c'] is not None and len(tiles) < 2:
+        tiles.append((f"{st['wtmp_c'] * 9 / 5 + 32:.0f}F", 'water temp'))
+    tiles.append((st['time'].strftime('%H:%MZ'), 'observed'))
+    return head, value, unit, label, note, tiles[:3]
+
+
+def _highlight_card_data(kind=None):
+    """Data for the daily highlight card, or None when nothing is worth posting.
+
+    Walks the rotation from today's slot and takes the first kind that clears
+    its floor, so a flat day for one measure still yields a card from another
+    rather than a silent gap in the feed.
+    """
+    global _HIGHLIGHT_CARD_LAST_SKIP
+    obs = _get_ndbc_latest_obs()
+    if not obs:
+        _HIGHLIGHT_CARD_LAST_SKIP = 'buoy observations unavailable'
+        logger.warning('Highlight card skipped: observations unavailable')
+        return None
+
+    age_h = (datetime.now(timezone.utc) - obs['newest']).total_seconds() / 3600
+    if age_h > HIGHLIGHT_OBS_MAX_AGE_H:
+        _HIGHLIGHT_CARD_LAST_SKIP = (
+            f'newest observation is {age_h:.1f}h old '
+            f'(max {HIGHLIGHT_OBS_MAX_AGE_H}h)')
+        logger.warning(f'Highlight card skipped: {_HIGHLIGHT_CARD_LAST_SKIP}')
+        return None
+
+    if kind:
+        order = [kind] if kind in HIGHLIGHT_FLOORS else []
+        if not order:
+            _HIGHLIGHT_CARD_LAST_SKIP = f'unknown kind {kind}'
+            return None
+    else:
+        start = datetime.now(timezone.utc).timetuple().tm_yday % len(HIGHLIGHT_ROTATION)
+        order = HIGHLIGHT_ROTATION[start:] + HIGHLIGHT_ROTATION[:start]
+
+    pick, reasons = None, []
+    for k in order:
+        pick, why = _highlight_candidates(obs, k)
+        if pick:
+            break
+        reasons.append(why)
+    if not pick:
+        _HIGHLIGHT_CARD_LAST_SKIP = '; '.join(r for r in reasons if r)
+        logger.info(f'Highlight card skipped: {_HIGHLIGHT_CARD_LAST_SKIP}')
+        return None
+
+    st = pick['station']
+    head, value, unit, label, note, tiles = _highlight_headline(pick)
+    date_str = datetime.now(timezone.utc).strftime('%b %-d')
+
+    where = st['name']
+    lines = [f"{head[0]} {head[1]} - {date_str}", '']
+    if pick['kind'] == 'biggest-seas':
+        lines.append(f"{value} ft of significant wave height at {where}, "
+                     f"measured by NOAA buoy {st['id']}.")
+    elif pick['kind'] == 'longest-period':
+        lines.append(f"A {value}-second dominant period at {where}, "
+                     f"measured by NOAA buoy {st['id']}.")
+    else:
+        lines.append(f"{value} knots of sustained wind at {where}, "
+                     f"measured by NOAA buoy {st['id']}.")
+    lines.append('')
+    lines.append(note)
+    lines.append('')
+    lines.append('Every number here was measured by an instrument in the water, '
+                 'not modelled. We check our own forecasts against these same '
+                 'buoys and publish the error.')
+    lines.append('')
+    lines.append('Free 7-day forecasts for any coastline, plus live buoys, '
+                 'tides and cams: freesurfforecast.com')
+    lines.append('')
+    lines.append(f'{SOCIAL_BASE_HASHTAGS} #buoy #ndbc #swell #oceanography')
+
+    _HIGHLIGHT_CARD_LAST_SKIP = None
+    return {
+        'kind': 'highlight',
+        'highlight': pick['kind'],
+        'date': date_str,
+        'observed': st['time'].strftime('%Y-%m-%dT%H:%MZ'),
+        'station': {'id': st['id'], 'name': st['name'],
+                    'lat': st['lat'], 'lon': st['lon']},
+        'value': value, 'unit': unit,
+        'head': head, 'label': label, 'note': note, 'tiles': tiles,
+        'n_stations': len(obs['rows']),
+        'caption': '\n'.join(lines),
+        'image_url': 'https://freesurfforecast.com/social/highlight.jpg',
+        'image_url_png': 'https://freesurfforecast.com/social/highlight.png',
+        'story_image_url': 'https://freesurfforecast.com/social/highlight-story.jpg',
+    }
+
+
+def _draw_mini_map(img, x, y, w, h, lat, lon, span_deg=16,
+                   ocean=(14, 22, 30), land=(38, 42, 46),
+                   edge=(60, 66, 72), marker=(68, 255, 136)):
+    """Draw a small equirectangular map centred on a buoy.
+
+    Rendered into its own image and pasted, NOT drawn onto the card directly:
+    PIL does not clip a polygon to a region, so a landmass extending past the
+    panel is painted straight across the rest of the card. The first version did
+    exactly that and covered the headline and the hero number with Alaska.
+
+    The land polygons are already in memory for the beach-orientation code, so
+    this costs no network and no tiles. Longitude is scaled by cos(lat) so a Gulf
+    of Alaska buoy is not stretched into a smear.
+    """
+    from PIL import Image, ImageDraw
+    tile = Image.new('RGB', (int(w), int(h)), ocean)
+    if COASTLINE_DATA is None:
+        img.paste(tile, (int(x), int(y)))
+        return False
+    d = ImageDraw.Draw(tile)
+
+    lat_span = span_deg
+    lon_span = span_deg * (w / h) / max(0.25, math.cos(math.radians(lat)))
+    lat0, lat1 = lat - lat_span / 2, lat + lat_span / 2
+    lon0, lon1 = lon - lon_span / 2, lon + lon_span / 2
+
+    def project(plat, plon):
+        return ((plon - lon0) / (lon1 - lon0) * w,
+                (lat1 - plat) / (lat1 - lat0) * h)   # north is up
+
+    bboxes = COASTLINE_DATA['land_bboxes']
+    offsets = COASTLINE_DATA['land_parts_offsets']
+    verts = COASTLINE_DATA['land_vertices']
+    # bbox columns are (minlat, maxlat, minlon, maxlon)
+    mask = ((bboxes[:, 0] <= lat1) & (bboxes[:, 1] >= lat0) &
+            (bboxes[:, 2] <= lon1) & (bboxes[:, 3] >= lon0))
+    drawn = 0
+    for idx in np.where(mask)[0]:
+        ring = verts[offsets[idx]:offsets[idx + 1]]
+        if len(ring) < 3:
+            continue
+        pts = [project(float(pt[0]), float(pt[1])) for pt in ring]
+        try:
+            d.polygon(pts, fill=land, outline=edge)
+            drawn += 1
+        except Exception:
+            continue
+
+    # The buoy: a filled dot inside two rings, so it reads against land or sea.
+    mx, my = project(lat, lon)
+    for r, width in ((26, 3), (16, 3)):
+        d.ellipse([(mx - r, my - r), (mx + r, my + r)], outline=marker, width=width)
+    d.ellipse([(mx - 7, my - 7), (mx + 7, my + 7)], fill=marker)
+    img.paste(tile, (int(x), int(y)))
+    return drawn > 0
+
+
+def _render_highlight_card(data, fmt='PNG', story=False):
+    """Render the daily highlight card: 1080x1350 (feed) or 1080x1920 (story).
+
+    Shares the accuracy card's structure and safe-margin handling; see
+    STORY_SAFE_TOP for why the story insets its content.
+    """
+    from PIL import Image, ImageDraw
+    import io
+
+    W, H = 1080, (1920 if story else 1350)
+    BG = (10, 10, 10)
+    SURFACE = (20, 20, 20)
+    BORDER = (42, 42, 42)
+    TEXT = (232, 232, 232)
+    TEXT_DIM = (136, 136, 136)
+    ACCENT = (68, 255, 136)
+
+    img = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W, 10)], fill=ACCENT)
+
+    pad = 64
+    box_l, box_r = pad - 20, W - pad + 20
+    box_w = box_r - box_l
+    ins = 32
+
+    def fit(text, kind, max_size, max_width, min_size=12):
+        for size in range(max_size, min_size - 1, -2):
+            f = _load_og_font(kind, size)
+            if draw.textlength(text, font=f) <= max_width:
+                return f
+        return _load_og_font(kind, min_size)
+
+    def center(text, font, y, fill):
+        draw.text(((W - draw.textlength(text, font=font)) / 2, y),
+                  text, fill=fill, font=font)
+
+    def wrap(text, font, max_width):
+        words, lines, cur = text.split(), [], ''
+        for word in words:
+            trial = f'{cur} {word}'.strip()
+            if draw.textlength(trial, font=font) <= max_width or not cur:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = word
+        if cur:
+            lines.append(cur)
+        return lines
+
+    top = STORY_SAFE_TOP if story else 0
+    f_brand = _load_og_font('sans_bold', 28)
+    f_date = _load_og_font('sans', 28)
+    draw.text((pad, top + 52), 'FREE SURF FORECAST', fill=TEXT_DIM, font=f_brand)
+    draw.text((W - pad - draw.textlength(data['date'], font=f_date), top + 52),
+              data['date'], fill=TEXT_DIM, font=f_date)
+    draw.text((pad, top + 106), 'MEASURED TODAY', fill=ACCENT, font=f_brand)
+
+    f_head, head_size, head_lines = _fit_card_title(
+        draw, '', W - 2 * pad, max_size=68, min_size=40, lines=data['head'])
+    y = top + 154
+    for i, line in enumerate(head_lines):
+        draw.text((pad, y + i * (head_size + 8)), line,
+                  fill=(TEXT if i == 0 else ACCENT), font=f_head)
+    y += len(head_lines) * (head_size + 8)
+
+    hero_h = 290
+    map_h = 380
+    tile_h = 142 if data.get('tiles') else 0
+    foot_h = 100
+    cta_h = 150 if story else 0
+    foot_top = H - (STORY_SAFE_BOTTOM if story else 0) - foot_h
+    content_bottom = foot_top - cta_h
+    blocks = [h for h in (hero_h, map_h, tile_h) if h]
+    slack = content_bottom - y - sum(blocks)
+    gap = max(0, int(slack / (len(blocks) + 1)))
+    y += gap
+
+    # Hero: the measurement.
+    draw.rectangle([(box_l, y), (box_r, y + hero_h)], fill=SURFACE, outline=BORDER)
+    draw.text((box_l + ins, y + 22), data['label'], fill=TEXT_DIM,
+              font=fit(data['label'], 'sans', 26, box_w - 2 * ins))
+    f_val = _load_og_font('mono_bold', 150)
+    vb = draw.textbbox((0, 0), data['value'], font=f_val)
+    draw.text((box_l + ins - vb[0], y + 74 - vb[1]), data['value'],
+              fill=ACCENT, font=f_val)
+    f_unit = _load_og_font('sans_bold', 56)
+    ub = draw.textbbox((0, 0), data['unit'], font=f_unit)
+    draw.text((box_l + ins + (vb[2] - vb[0]) + 16 - ub[0],
+               y + 74 + (vb[3] - vb[1]) - (ub[3] - ub[1]) - ub[1]),
+              data['unit'], fill=TEXT_DIM, font=f_unit)
+    f_note = _load_og_font('sans', 25)
+    note_lines = wrap(data['note'], f_note, box_w - 2 * ins)[:2]
+    for i, line in enumerate(note_lines):
+        draw.text((box_l + ins, y + hero_h - 66 + i * 30), line,
+                  fill=TEXT_DIM, font=f_note)
+    y += hero_h + gap
+
+    # Where it was measured.
+    st = data['station']
+    cap_h = 86
+    _draw_mini_map(img, box_l, y, box_w, map_h - cap_h,
+                   st['lat'], st['lon'], ocean=(12, 20, 28),
+                   land=(36, 40, 44), edge=(58, 64, 70), marker=ACCENT)
+    draw.rectangle([(box_l, y), (box_r, y + map_h - cap_h)], outline=BORDER)
+    draw.rectangle([(box_l, y + map_h - cap_h), (box_r, y + map_h)],
+                   fill=SURFACE, outline=BORDER)
+    name = st['name']
+    draw.text((box_l + ins, y + map_h - cap_h + 14), name, fill=TEXT,
+              font=fit(name, 'sans_bold', 34, box_w - 2 * ins - 220))
+    sub = f"NOAA buoy {st['id']}  -  {abs(st['lat']):.1f}{'N' if st['lat'] >= 0 else 'S'}, " \
+          f"{abs(st['lon']):.1f}{'E' if st['lon'] >= 0 else 'W'}"
+    draw.text((box_l + ins, y + map_h - cap_h + 52), sub, fill=TEXT_DIM,
+              font=_load_og_font('sans', 25))
+    y += map_h + gap
+
+    # Supporting readings.
+    if tile_h:
+        tiles = data['tiles']
+        cw = (box_w - (len(tiles) - 1) * 16) // len(tiles)
+        for i, (value, label) in enumerate(tiles):
+            cx = box_l + i * (cw + 16)
+            draw.rectangle([(cx, y), (cx + cw, y + tile_h)],
+                           fill=SURFACE, outline=BORDER)
+            draw.text((cx + 24, y + 26), str(value), fill=TEXT,
+                      font=fit(str(value), 'mono_bold', 52, cw - 44))
+            draw.text((cx + 24, y + tile_h - 44), label, fill=TEXT_DIM,
+                      font=fit(label, 'sans', 25, cw - 44))
+        y += tile_h + gap
+
+    if story:
+        # A story carries no caption, so the image has to make the ask itself.
+        cta_y = foot_top - cta_h + 30
+        cta = 'freesurfforecast.com'
+        center(cta, fit(cta, 'sans_bold', 46, W - 2 * pad), cta_y, ACCENT)
+        sub = 'Link in bio - forecasts, buoys, tides and cams. Free.'
+        center(sub, fit(sub, 'sans', 30, W - 2 * pad), cta_y + 68, TEXT_DIM)
+
+    draw.rectangle([(0, foot_top), (W, H)], fill=SURFACE)
+    draw.line([(0, foot_top), (W, foot_top)], fill=BORDER)
+    if not story:
+        foot = 'freesurfforecast.com'
+        center(foot, fit(foot, 'sans_bold', 34, W - 2 * pad), foot_top + 18, TEXT)
+    obs = f"Observed {data['observed'][-6:]} - {data['n_stations']} buoys read"
+    center(obs, fit(obs, 'sans', 26, W - 2 * pad),
+           foot_top + (34 if story else 60), TEXT_DIM)
+
+    buf = io.BytesIO()
+    if fmt == 'JPEG':
+        img.save(buf, format='JPEG', quality=90, optimize=True, progressive=True)
+    else:
+        img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
+def _serve_highlight_card(fmt, story=False):
+    from flask import abort, request as _rq
+    kind = _rq.args.get('kind') or None
+    key = f'social:highlight:{kind or "auto"}'
+    data = cached(key, lambda: _highlight_card_data(kind), ttl=1800)
+    if not data:
+        resp = Response('', status=503)
+        resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        return resp
+    try:
+        img_bytes = _render_highlight_card(data, fmt=fmt, story=story)
+    except Exception as e:
+        logger.error(f"Highlight card render failed: {e}")
+        abort(500)
+    resp = Response(img_bytes,
+                    mimetype='image/jpeg' if fmt == 'JPEG' else 'image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=1800'
+    resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    return resp
+
+
+@app.route('/social/highlight.jpg')
+def social_highlight_jpg():
+    """Daily highlight card (1080x1350 JPEG) -- what Instagram is handed."""
+    return _serve_highlight_card('JPEG')
+
+
+@app.route('/social/highlight.png')
+def social_highlight_png():
+    """PNG variant, for previewing the layout."""
+    return _serve_highlight_card('PNG')
+
+
+@app.route('/social/highlight-story.jpg')
+def social_highlight_story_jpg():
+    """1080x1920 (9:16) story variant of the daily highlight card."""
+    return _serve_highlight_card('JPEG', story=True)
+
+
+@app.route('/social/highlight-story.png')
+def social_highlight_story_png():
+    """PNG story variant, for previewing the layout."""
+    return _serve_highlight_card('PNG', story=True)
+
+
+# Static rule so it wins over /api/social-card/<region_slug>; Werkzeug ranks
+# converter-free rules first, so "highlight" never reaches the region lookup.
+@app.route('/api/social-card/highlight')
+def social_highlight_meta():
+    """Caption + numbers matching /social/highlight.jpg."""
+    kind = request.args.get('kind') or None
+    key = f'social:highlight:{kind or "auto"}'
+    data = cached(key, lambda: _highlight_card_data(kind), ttl=1800)
+    if not data:
+        resp = jsonify({'error': 'highlight card not published',
+                        'reason': _HIGHLIGHT_CARD_LAST_SKIP or 'guard tripped'})
+        resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+        return resp, 503
+    resp = jsonify({
+        'kind': data['kind'],
+        'highlight': data['highlight'],
+        'date': data['date'],
+        'caption': data['caption'],
+        'image_url': data['image_url'],
+        'image_url_png': data['image_url_png'],
+        'story_image_url': data['story_image_url'],
+        'stats': {
+            'observed': data['observed'],
+            'station': data['station'],
+            'value': data['value'],
+            'unit': data['unit'],
+            'n_stations': data['n_stations'],
+        },
+    })
+    resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    return resp
+
+
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope."""

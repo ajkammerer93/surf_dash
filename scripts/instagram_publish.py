@@ -60,9 +60,12 @@ REGION_GROUPS = {
     'new-england': 'east',
 }
 
-# Not a region -- the weekly card built from the forecast-verification
-# pipeline, which scores forecasts against NDBC buoys.
+# Not regions. The weekly card built from the forecast-verification pipeline,
+# and the daily highlight card built from whatever the NDBC network is measuring
+# right now. Both can decline to publish, which the region cards cannot.
 ACCURACY_SLUG = 'accuracy'
+HIGHLIGHT_SLUG = 'highlight'
+REFUSING_SLUGS = (ACCURACY_SLUG, HIGHLIGHT_SLUG)
 
 REGION_ROTATION = [
     'outer-banks',          # Monday
@@ -77,7 +80,7 @@ REGION_ROTATION = [
 
 class CardRefused(Exception):
     """The endpoint declined to build a card on purpose, as opposed to failing
-    to build one. Only the accuracy card can refuse."""
+    to build one. Only the accuracy and highlight cards can refuse."""
 
 
 def _refusal_reason(resp):
@@ -96,7 +99,8 @@ def _refusal_reason(resp):
         return None
     if not isinstance(body, dict):
         return None
-    if body.get('error') != 'accuracy card not published' and not body.get('reason'):
+    marker = str(body.get('error') or '')
+    if not marker.endswith('card not published') and not body.get('reason'):
         return None
     for key in ('reason', 'error', 'message', 'detail'):
         if body.get(key):
@@ -108,9 +112,9 @@ def fetch_card(base_url, slug, retries=3, wait_s=25, refuse_on_503=False):
     """Fetch caption + image URL for a card. The first request after a cold
     cache can 503 while the server gathers upstream forecasts — retry.
 
-    refuse_on_503 turns that around for the accuracy card, whose 503 is the
-    publication guards saying no. Retrying a guard just asks the same question
-    three times and delays the same answer, so raise CardRefused instead.
+    refuse_on_503 turns that around for the cards that can decline, whose 503 is
+    the publication guards saying no. Retrying a guard just asks the same
+    question three times and delays the same answer, so raise CardRefused.
     """
     url = f'{base_url}/api/social-card/{slug}'
     for attempt in range(retries):
@@ -195,22 +199,36 @@ def main():
                         help='Post the weekly forecast-accuracy card instead '
                              'of a regional one; skips cleanly (exit 0) when '
                              'the endpoint refuses to publish')
+    parser.add_argument('--highlight', action='store_true',
+                        help='Post the daily highlight card (the most notable '
+                             'reading on the NDBC buoy network) instead of a '
+                             'regional one; skips cleanly (exit 0) when nothing '
+                             'clears the bar for the day')
+    parser.add_argument('--kind', choices=['biggest-seas', 'longest-period',
+                                           'strongest-wind'],
+                        help='With --highlight: force one kind instead of '
+                             'taking the day\'s rotation')
     parser.add_argument('--group', choices=['east', 'west'],
                         help='Only post if the day\'s region is in this group; '
                              'lets one schedule serve East Coast mornings and '
                              'another serve Pacific mornings')
     args = parser.parse_args()
 
-    if args.accuracy:
+    if args.accuracy and args.highlight:
+        sys.exit('--accuracy and --highlight post different cards; pick one.')
+    special = '--accuracy' if args.accuracy else ('--highlight' if args.highlight else None)
+    if special:
         # --region/--group/--week all describe the weekday region rotation,
-        # which the accuracy card is not part of.
+        # which neither of these cards is part of.
         clashes = [name for name, on in (('--region', args.region),
                                          ('--group', args.group),
                                          ('--week', args.week)) if on]
         if clashes:
-            sys.exit(f'--accuracy posts the weekly accuracy card, which is not '
-                     f'part of the region rotation, so it cannot be combined '
-                     f'with {", ".join(clashes)}.')
+            sys.exit(f'{special} posts a card that is not part of the region '
+                     f'rotation, so it cannot be combined with '
+                     f'{", ".join(clashes)}.')
+    if args.kind and not args.highlight:
+        sys.exit('--kind only applies to --highlight.')
     if args.week and not args.dry_run:
         sys.exit('--week only makes sense with --dry-run')
     if args.story_only and args.no_story:
@@ -219,6 +237,9 @@ def main():
     today = datetime.now()
     if args.accuracy:
         targets = [(today.strftime('%A %b %d'), ACCURACY_SLUG)]
+    elif args.highlight:
+        slug = HIGHLIGHT_SLUG + (f'?kind={args.kind}' if args.kind else '')
+        targets = [(today.strftime('%A %b %d'), slug)]
     elif args.week:
         days = [(today + timedelta(days=i)) for i in range(7)]
         targets = [(d.strftime('%A %b %d'), REGION_ROTATION[d.weekday()]) for d in days]
@@ -236,7 +257,8 @@ def main():
     for label, slug in targets:
         print(f'== {label}: {slug} ==')
         try:
-            card = fetch_card(args.base_url, slug, refuse_on_503=args.accuracy)
+            card = fetch_card(args.base_url, slug,
+                              refuse_on_503=slug.split('?')[0] in REFUSING_SLUGS)
         except CardRefused as e:
             # A refused week is the guards working, not a broken run. Exiting
             # non-zero here would paint the weekly job red on purpose and train
@@ -244,9 +266,9 @@ def main():
             # in Actions, because a skipped week that shows as a plain green
             # tick is indistinguishable from a week that posted.
             print(f'  endpoint refused to publish: {e}')
-            print('  nothing to post - skipping this week.')
+            print('  nothing to post - skipping this run.')
             if os.environ.get('GITHUB_ACTIONS'):
-                print(f'::warning::accuracy post skipped: {e}')
+                print(f'::warning::{slug.split("?")[0]} post skipped: {e}')
             sys.exit(0)
         if not card:
             print('  FAILED to fetch card data')
