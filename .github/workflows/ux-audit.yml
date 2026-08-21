@@ -26,11 +26,13 @@ on:
         required: false
         default: 'https://freesurfforecast.com'
   schedule:
-    # Mondays 16:40 UTC = 12:40 ET. Daytime on purpose: at the old 05:40 UTC
+    # Daily at 16:40 UTC = 12:40 ET. Daytime on purpose: at the old 05:40 UTC
     # the site was measured and photographed after dark, so every shot showed
     # the AFTER DARK badge and black cam panels rather than the state
-    # essentially every real visitor sees.
-    - cron: '40 16 * * 1'
+    # essentially every real visitor sees. That rules out an overnight slot
+    # however convenient it would be -- the review that reads this runs at
+    # 03:00 ET and looks at the previous afternoon's snapshot instead.
+    - cron: '40 16 * * *'
 
 permissions:
   contents: write

@@ -154,7 +154,7 @@ its own unprotected data branch, which the app or the next run reads back.
 | `social-post.yml` | daily, two schedules by coast | posts to Instagram |
 | `seo-audit.yml` | daily | `seo-data` |
 | `youtube-cam-scan.yml` | weekly | `cam-data` + the rolling review issue |
-| `ux-audit.yml` | weekly | `ux-data` |
+| `ux-audit.yml` | daily | `ux-data` |
 | `instagram-token-refresh.yml` | monthly | rotates the 60-day token |
 | `social-accuracy-post.yml` | manual only | posts the weekly accuracy card |
 | `seo-tests.yml` | weekly + on push | — |
@@ -168,7 +168,10 @@ than posting when those stats are stale, thin or malformed.
 Playwright at two viewports across six pages and records CLS, LCP, console and
 request failures, horizontal overflow, tap-target and font sizes, WCAG contrast,
 heading order and image alt gaps, plus a screenshot of each. It records and never
-judges; reading the snapshot happens in the review log, issue #28.
+judges; reading the snapshot happens in the review log, issue #28. It runs at
+midday rather than overnight on purpose: measured after dark, every screenshot
+showed the AFTER DARK badge and black camera panels instead of the site a real
+visitor sees.
 
 ## Deployment
 
