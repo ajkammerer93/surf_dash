@@ -1010,18 +1010,22 @@
         [data-theme="light"] .panel-badge {
             background: rgba(22, 163, 74, 0.08);
             border-color: rgba(22, 163, 74, 0.2);
+            color: #166534;  /* was --status-live #16a34a on this tint: 3.02:1, below AA */
         }
         [data-theme="light"] .panel-badge.warning {
             background: rgba(217, 119, 6, 0.08);
             border-color: rgba(217, 119, 6, 0.2);
+            color: #9a3412;  /* was --status-warning #d97706 on this tint: 2.93:1, below AA */
         }
         [data-theme="light"] .panel-badge.error {
             background: rgba(220, 38, 38, 0.08);
             border-color: rgba(220, 38, 38, 0.2);
+            color: #b91c1c;  /* was --status-error #dc2626 on this tint: 4.27:1, below AA */
         }
         [data-theme="light"] .panel-badge.stale-fresh {
             background: rgba(22, 163, 74, 0.08);
             border-color: rgba(22, 163, 74, 0.2);
+            color: #166534;
         }
         [data-theme="light"] .panel-header {
             background: rgba(0, 0, 0, 0.02);
@@ -2010,9 +2014,9 @@
         [data-theme="light"] .session-block { background: rgba(0,0,0,0.02); }
         [data-theme="light"] .session-block:hover { background: rgba(0,0,0,0.05); }
         [data-theme="light"] .session-best { background: rgba(22,163,74,0.1); }
-        [data-theme="light"] .session-score-prime { background: rgba(22,163,74,0.12); }
-        [data-theme="light"] .session-score-good { background: rgba(37,99,235,0.12); }
-        [data-theme="light"] .session-score-fair { background: rgba(217,119,6,0.12); }
+        [data-theme="light"] .session-score-prime { background: rgba(22,163,74,0.12); color: #166534; }
+        [data-theme="light"] .session-score-good { background: rgba(37,99,235,0.12); color: #1d4ed8; }
+        [data-theme="light"] .session-score-fair { background: rgba(217,119,6,0.12); color: #9a3412; }
 
         .session-summary {
             font-size: 9px;
