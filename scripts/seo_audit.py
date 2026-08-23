@@ -44,6 +44,8 @@ GITHUB_API = 'https://api.github.com'
 WATCHED_WORKFLOWS = [
     'forecast-verification.yml',
     'social-post.yml',
+    'social-highlight-post.yml',
+    'social-accuracy-post.yml',
     'seo-tests.yml',
     'youtube-cam-scan.yml',
     'instagram-token-refresh.yml',
