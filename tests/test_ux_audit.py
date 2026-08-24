@@ -147,6 +147,45 @@ def test_evaluate_contrast_counts_unparsed_rather_than_guessing():
     assert out['low_count'] == 0
 
 
+def test_evaluate_contrast_calls_image_backdrops_indeterminate():
+    """The map marker: a yellow star in a transparent Leaflet pane over tile
+    images, where the colour walk lands on .leaflet-container's #ddd default.
+    That grey is painted nowhere near the star, so the sample is counted as
+    unmeasurable rather than reported at 1.26:1 every single day."""
+    out = ux_audit.evaluate_contrast_samples([
+        _sample(color='rgb(255, 255, 0)', bg_stack=['rgb(221, 221, 221)'],
+                image_backdrop=True, bg_over_image=[], font_size=20)])
+    assert out['indeterminate'] == 1
+    assert out['low_count'] == 0
+
+
+def test_evaluate_contrast_still_fails_text_no_image_could_rescue():
+    """The cam attribution bar is 75% black over live video. The video cannot
+    be read, but the bar over it can: even against the darkest frame the link
+    reaches only 3.9:1, so the failure holds whatever is playing and must not
+    be filed away as "cannot tell"."""
+    out = ux_audit.evaluate_contrast_samples([
+        _sample(color='rgb(107, 107, 107)', font_size=9, image_backdrop=True,
+                bg_stack=['rgba(0, 0, 0, 0.75)', '#ffffff'],
+                bg_over_image=['rgba(0, 0, 0, 0.75)'])])
+    assert out['indeterminate'] == 0
+    assert out['low_count'] == 1
+    # The friendlier end of the bracket, so the reported figure is the best the
+    # element can ever manage rather than a number picked from one frame.
+    assert out['low'][0]['ratio'] == pytest.approx(3.94, abs=0.01)
+
+
+def test_evaluate_contrast_ignores_colours_painted_under_the_image():
+    """Layers below the imagery tell a reader nothing. Dropping them is what
+    separates the star (nothing above the tiles, so any backdrop is possible)
+    from the attribution bar (a known 75% black over whatever plays)."""
+    over_white = ux_audit._best_case_over_image((0, 0, 0, 1.0), [])
+    assert over_white[2] == (255, 255, 255)
+    darkened = ux_audit._best_case_over_image((255, 255, 255, 1.0),
+                                              ['rgba(0, 0, 0, 0.75)'])
+    assert darkened[2] == (0, 0, 0)
+
+
 def test_evaluate_contrast_caps_and_sorts_worst_first():
     samples = [_sample(color='#%02x%02x%02x' % (v, v, v))
                for v in range(120, 200)]
@@ -155,6 +194,58 @@ def test_evaluate_contrast_caps_and_sorts_worst_first():
     assert len(out['low']) == ux_audit.MAX_CONTRAST_REPORTED
     ratios = [x['ratio'] for x in out['low']]
     assert ratios == sorted(ratios)
+
+
+def test_evaluate_contrast_marks_bracketed_rows_as_bounded():
+    """A row whose background is an end of the black/white bracket is not a
+    colour anyone can find on the page. It has to say so, or a reader
+    comparing the snapshot against a screenshot concludes the audit is broken.
+    """
+    out = ux_audit.evaluate_contrast_samples([
+        _sample(color='rgb(107, 107, 107)', font_size=9, image_backdrop=True,
+                bg_stack=['rgba(0, 0, 0, 0.75)', '#ffffff'],
+                bg_over_image=['rgba(0, 0, 0, 0.75)'])])
+    assert out['low'][0]['bounded'] is True
+    plain = ux_audit.evaluate_contrast_samples([
+        _sample(color='#999999', bg_stack=['#ffffff'])])
+    assert plain['low'][0]['bounded'] is False
+
+
+# --- layout shift ranking -------------------------------------------------
+
+def test_rank_shift_records_puts_the_largest_first():
+    ranked = ux_audit.rank_shift_records([
+        {'value': 0.001}, {'value': 0.12}, {'value': 0.03}])
+    assert [r['value'] for r in ranked] == [0.12, 0.03, 0.001]
+
+
+def test_rank_shift_records_keeps_the_phase_the_observer_stamped():
+    """The stamp is the only witness to when a shift actually fired; ranking
+    reorders the list, so an index-based split would relabel every record."""
+    ranked = ux_audit.rank_shift_records(
+        [{'value': 0.01, 'phase': 'scroll'}, {'value': 0.02, 'phase': 'load'}],
+        load_count=1)
+    assert [(r['value'], r['phase']) for r in ranked] == [
+        (0.02, 'load'), (0.01, 'scroll')]
+
+
+def test_rank_shift_records_falls_back_to_the_load_count():
+    ranked = ux_audit.rank_shift_records(
+        [{'value': 0.02}, {'value': 0.03}], load_count=1)
+    by_value = {r['value']: r['phase'] for r in ranked}
+    assert by_value == {0.02: 'load', 0.03: 'scroll'}
+
+
+def test_rank_shift_records_leaves_the_tag_off_without_a_count():
+    ranked = ux_audit.rank_shift_records([{'value': 0.02}])
+    assert 'phase' not in ranked[0]
+
+
+def test_rank_shift_records_truncates_and_survives_junk():
+    records = [{'value': v / 1000.0} for v in range(20)] + [None, 'nonsense']
+    ranked = ux_audit.rank_shift_records(records)
+    assert len(ranked) == ux_audit.MAX_SHIFT_REPORTED
+    assert ranked[0]['value'] == 0.019
 
 
 # --- headings -------------------------------------------------------------
@@ -340,6 +431,17 @@ def test_history_row_carries_the_unparsed_colour_count():
     snap['pages'][0]['contrast'] = {'sampled': 4, 'unparsed': 3, 'low_count': 0}
     row = ux_audit.history_row(snap)
     assert row['pages']['/|mobile|dark']['contrast_unparsed'] == 3
+
+
+def test_history_row_carries_the_indeterminate_count():
+    """Text over map tiles and cam frames is counted, not scored. Like the
+    unparsed count, it has to sit next to low_contrast: a check that quietly
+    stops looking at half a page must never read as a clean result."""
+    snap = _snapshot()
+    snap['pages'][0]['contrast'] = {'sampled': 40, 'unparsed': 0,
+                                    'indeterminate': 3, 'low_count': 0}
+    row = ux_audit.history_row(snap)
+    assert row['pages']['/|mobile|dark']['contrast_indeterminate'] == 3
 
 
 def test_history_row_separates_first_party_request_failures():
