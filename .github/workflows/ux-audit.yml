@@ -189,6 +189,13 @@ jobs:
 
               low = num(page, 'contrast', 'low_count')
               unparsed = num(page, 'contrast', 'unparsed') or 0
+              # Text painted over map tiles or a cam frame has no backdrop
+              # colour to read, so it is counted rather than scored. Printed
+              # but deliberately not warned about: a map is supposed to be
+              # there, and a warning that fires every single day for a
+              # perfectly healthy page is the exact habit this number exists
+              # to break.
+              indeterminate = num(page, 'contrast', 'indeterminate') or 0
               small = num(page, 'tap_targets', 'small_count')
               total_taps = num(page, 'tap_targets', 'total')
               tap_txt = (f"{small}/{total_taps}" if small is not None else 'n/a')
@@ -200,13 +207,27 @@ jobs:
                     f"console_errors={n_errors} "
                     f"failed_requests={len(failed)} (first-party {n_first}) "
                     f"overflow={overflow_txt} "
-                    f"low_contrast={txt(low)} (unparsed {unparsed}) "
+                    f"low_contrast={txt(low)} (unparsed {unparsed}, "
+                    f"over images {indeterminate}) "
                     f"tap_small={tap_txt} "
                     f"tiny_text={txt(num(page, 'tiny_text', 'count'))} "
                     f"h1={txt(num(page, 'headings', 'h1_count'))} "
                     f"heading_skips={len(num(page, 'headings', 'skips') or [])} "
                     f"img_missing_alt={txt(num(page, 'images', 'missing_alt'))} "
                     f"img_no_dimensions={txt(num(page, 'images', 'no_dimensions'))}")
+              # The score says a page moved; only the sources say what moved.
+              # Printed under the page line because a selector will not fit in
+              # a single-line readout, and only the largest one -- the ranked
+              # rest are in ux-latest.json under cls_top_shifts.
+              worst = (page.get('cls_top_shifts') or [None])[0]
+              if worst and (worst.get('value') or 0) >= 0.01:
+                  src = (worst.get('sources') or [{}])[0].get('selector', '?')
+                  print(f"  largest shift {worst['value']:.3f} at "
+                        f"{worst.get('start_ms')}ms ({worst.get('phase')}): {src}")
+              dropped = page.get('cls_shifts_dropped') or 0
+              if dropped:
+                  print(f"  {dropped} further shift(s) fired past the "
+                        f"retention cap; their sources were not kept")
               if n_errors:
                   print(f"::warning::{name}: {n_errors} console error(s)")
               if overflows:
@@ -221,6 +242,16 @@ jobs:
                   # so a rising count means the contrast check is going blind.
                   print(f"::warning::{name}: {unparsed} colour(s) not parsed, "
                         f"excluded from the contrast check")
+              # A handful of unmeasurable samples is a map doing its job and is
+              # printed without comment above. Half the page is something else:
+              # a sample the audit declines to score is a sample nothing is
+              # watching, so the one case worth interrupting for is the day
+              # that exemption stops being a footnote and becomes the check.
+              sampled = num(page, 'contrast', 'sampled') or 0
+              if sampled and indeterminate * 2 > sampled:
+                  print(f"::warning::{name}: {indeterminate} of {sampled} text "
+                        f"samples were not contrast-checked -- the check is "
+                        f"exempting more of this page than it measures")
 
           if not pages:
               print("::warning::snapshot recorded no pages")

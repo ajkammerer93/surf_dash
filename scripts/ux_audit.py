@@ -81,6 +81,27 @@ MAX_TINY_TEXT = 40
 MAX_CONTRAST_SAMPLES = 400
 MAX_CONTRAST_REPORTED = 40
 
+# Layout shifts now keep the elements that moved, not just a running score.
+# The bounds: the observer holds the first 30 shifts of each phase it sees,
+# with the first 4 sources of each, and the snapshot reports the 8 largest of
+# those. A page that reflows in a loop -- an animated panel, a stuck spinner --
+# can fire hundreds of shifts, and an unbounded list would turn a snapshot into
+# a log file. The shifts past the cap are still scored and still counted; only
+# their sources are dropped, and the count that was dropped is reported so
+# nobody reads a short list as a complete one.
+#
+# Per phase, not per page, and that word is load-bearing. A single pool is
+# first-come-first-served, so a page that thrashes while it loads spends the
+# whole budget before the scroll pass begins and the reader is handed eight
+# load-time records on exactly the page shape this instrumentation was built
+# for -- the shifts that matter on the dashboard arrive as the lazy panels
+# build, after the scroll. Each phase gets its own allowance instead. Only the
+# 8 largest are ever written out, so a bigger retention pool costs browser
+# memory and nothing in the snapshot.
+MAX_SHIFT_RECORDS = 30
+MAX_SHIFT_SOURCES = 4
+MAX_SHIFT_REPORTED = 8
+
 
 def _utcnow():
     return datetime.now(timezone.utc)
@@ -230,24 +251,80 @@ def rgb_hex(rgb):
     return '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
 
 
+def _best_case_over_image(fg_raw, bg_over_image):
+    """The most flattering ratio an unreadable image backdrop could produce.
+
+    An image can be any colour, but the layers the page paints on top of it
+    cannot: composite them over black and over white and the two results
+    bracket every backdrop that image is able to supply. Returns the friendlier
+    end as (ratio, fg, bg), so a caller that still finds it short knows the
+    text fails against every frame, tile or photo that could appear there.
+    """
+    best = None
+    for end in ((0, 0, 0), (255, 255, 255)):
+        bg = composite_stack(bg_over_image, fallback=end)
+        fg = composite(fg_raw, bg) if fg_raw[3] < 1 else fg_raw[:3]
+        cand = (contrast_ratio(fg, bg), fg, bg)
+        if best is None or cand[0] > best[0]:
+            best = cand
+    return best
+
+
 def evaluate_contrast_samples(samples):
     """Turn raw browser colour samples into the sub-threshold list.
 
     Every sample carries its own background stack, so compositing happens here
     where it can be tested, not in page JS where it cannot.
     """
-    out = {'sampled': len(samples), 'unparsed': 0, 'low': []}
+    out = {'sampled': len(samples), 'unparsed': 0, 'indeterminate': 0, 'low': []}
     for s in samples:
         fg_raw = parse_css_color(s.get('color'))
         if not fg_raw:
             out['unparsed'] += 1
             continue
-        canvas = parse_css_color(s.get('canvas') or '') or (255, 255, 255, 1.0)
-        base = canvas[:3] if canvas[3] > 0 else (255, 255, 255)
-        bg = composite_stack(s.get('bg_stack') or [], fallback=base)
-        fg = composite(fg_raw, bg) if fg_raw[3] < 1 else fg_raw[:3]
-        ratio = contrast_ratio(fg, bg)
         need = required_contrast(s.get('font_size'), s.get('font_weight'))
+        bounded = False
+        if s.get('image_backdrop'):
+            over = s.get('bg_over_image') or []
+            best = _best_case_over_image(fg_raw, over)
+            if not over:
+                # Nothing survives above the imagery, so nothing here can be
+                # measured: the pixels behind this text are an image, and the
+                # only colour the walk could resolve is one painted somewhere
+                # the reader never sees it. Counted rather than guessed and
+                # rather than failed -- the same treatment a colour this build
+                # cannot parse gets, for the same reason.
+                #
+                # This is a plain "cannot tell" and is written as one, because
+                # the bracket cannot say otherwise: with an empty stack the two
+                # ends are plain black and plain white, and the friendlier of
+                # those never drops below 4.58:1 for ANY foreground -- the two
+                # curves cross at relative luminance 0.179. Testing best >= need
+                # here would be arithmetic that always answers yes, dressed up
+                # as a safety valve. Everything therefore rests on the page-side
+                # trigger being right about what is imagery, which is why that
+                # check refuses gradients and unpainted elements.
+                out['indeterminate'] += 1
+                continue
+            if best[0] >= need:
+                # A layer of the page's own does survive over the imagery, and
+                # even the friendliest frame beneath it clears the threshold.
+                out['indeterminate'] += 1
+                continue
+            # ...unless that surviving layer leaves the text short even at the
+            # friendlier end, in which case the failure holds whatever the
+            # image is doing and filing it under "cannot tell" would be burying
+            # a real finding. The cam attribution bar does exactly this: 75%
+            # black over live video tops out at 3.9:1 against the darkest frame
+            # it will ever show.
+            ratio, fg, bg = best
+            bounded = True
+        else:
+            canvas = parse_css_color(s.get('canvas') or '') or (255, 255, 255, 1.0)
+            base = canvas[:3] if canvas[3] > 0 else (255, 255, 255)
+            bg = composite_stack(s.get('bg_stack') or [], fallback=base)
+            fg = composite(fg_raw, bg) if fg_raw[3] < 1 else fg_raw[:3]
+            ratio = contrast_ratio(fg, bg)
         if ratio < need:
             out['low'].append({
                 'selector': s.get('selector'),
@@ -258,11 +335,46 @@ def evaluate_contrast_samples(samples):
                 'font_weight': s.get('font_weight'),
                 'ratio': round(ratio, 2),
                 'required': need,
+                # True when bg is an end of the black/white bracket rather than
+                # a colour the page actually paints, so a reader comparing this
+                # row against a screenshot knows why the two disagree -- and
+                # knows the ratio is the best case, not the observed one.
+                'bounded': bounded,
             })
     out['low_count'] = len(out['low'])
     out['low'].sort(key=lambda x: x['ratio'])
     out['low'] = out['low'][:MAX_CONTRAST_REPORTED]
     return out
+
+
+def rank_shift_records(records, load_count=None, limit=MAX_SHIFT_REPORTED):
+    """The largest layout shifts first, each tagged with when it happened.
+
+    The browser hands these over in the order they fired, which is the order
+    that answers "what happened next" and not the order that answers "what
+    should I fix" -- one 0.12 shift and forty rounding-error ones look alike in
+    a list nobody scrolls to the bottom of. Ranking by score puts the shift
+    worth a morning at the top.
+
+    A record carries the phase the observer stamped on it as it fired, which is
+    the authority here and is kept. load_count -- how many records existed at
+    the load-time read -- is the fallback for a record that has no stamp, on
+    the reasoning that anything after that point arrived during the scroll
+    pass. That split is the one the reader needs: `cls` and `cls_after_scroll`
+    are already reported apart, and a top offender is only actionable once it
+    is clear which of the two it belongs to. With neither a stamp nor a count
+    the tag is left off rather than guessed at.
+    """
+    ranked = []
+    for i, r in enumerate(records or []):
+        if not isinstance(r, dict):
+            continue
+        row = dict(r)
+        if not row.get('phase') and load_count is not None:
+            row['phase'] = 'load' if i < load_count else 'scroll'
+        ranked.append(row)
+    ranked.sort(key=lambda r: r.get('value') or 0, reverse=True)
+    return ranked[:limit]
 
 
 _VAR_RE = re.compile(r'(--[a-zA-Z0-9_-]+)\s*:\s*([^;{}]+);')
@@ -367,6 +479,12 @@ def history_row(snapshot):
             # low_contrast: one palette modernisation would otherwise zero the
             # contrast check permanently while every log line still said fine.
             'contrast_unparsed': contrast.get('unparsed'),
+            # Text painted over image content -- map tiles, a cam frame, a
+            # chart canvas -- has no readable backdrop colour, so it is counted
+            # instead of being scored against whatever colour the walk happened
+            # to land on. It travels with low_contrast for the same reason
+            # unparsed does: a check going blind must never read as a pass.
+            'contrast_indeterminate': contrast.get('indeterminate'),
             'check_errors': sorted(k[:-6] for k in p if k.endswith('_error')),
             'error': p.get('error'),
         }
@@ -509,13 +627,74 @@ const uxVisible = (el) => {
 """
 
 # CLS and LCP have to be observed from the very first paint, so this is
-# installed as an init script rather than evaluated after load.
-JS_OBSERVERS = """
-window.__ux = {cls: 0, shifts: 0, lcp: 0};
+# installed as an init script rather than evaluated after load. The prelude
+# rides along because the shift observer names the elements that moved, and
+# uxSelector is how every other check in this file names an element -- the same
+# node described two different ways in one snapshot is a snapshot nobody can
+# grep.
+JS_OBSERVERS = JS_PRELUDE + """
+window.__ux = {cls: 0, shifts: 0, lcp: 0, shift_records: [], shift_dropped: 0,
+               shift_phase: 'load', shift_kept: {}};
+// Set by the runner when it moves on to the scroll pass, so each phase draws
+// on its own retention budget instead of racing the other for one pool.
+window.__uxShiftPhase = (name) => { window.__ux.shift_phase = String(name); };
 try {
+  // A score says the page moved. It never says what moved, and that gap is the
+  // whole distance between a CLS number and a fix: issue #35 stayed open for
+  // days on nothing but a correlation between the score and an image count
+  // across three snapshots, while the observer had the offending nodes in its
+  // hands at the moment of each shift and threw them away. So every shift now
+  // keeps its sources -- the selector, plus the rectangle before and after,
+  // which together say whether something grew, appeared, or shoved its
+  // siblings down the page.
+  const uxShiftRect = (r) => (r ? {
+    x: Math.round(r.x), y: Math.round(r.y),
+    w: Math.round(r.width), h: Math.round(r.height),
+  } : null);
+  // A source node can be a text node, and can already be detached by the time
+  // this callback runs, so the nodes cannot go straight to uxSelector. Naming
+  // the nearest element keeps these selectors in the same vocabulary as the
+  // overflow and contrast lists, and says so out loud when there is no element
+  // left to name rather than emitting an empty string that reads like one.
+  const uxShiftName = (node) => {
+    if (!node) return '(detached)';
+    const el = (node.nodeType === 1) ? node : node.parentElement;
+    return el ? uxSelector(el) : '(text node)';
+  };
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
-      if (!e.hadRecentInput) { window.__ux.cls += e.value; window.__ux.shifts += 1; }
+      if (e.hadRecentInput) continue;
+      // Score first, describe second, never the other way round: whatever an
+      // exotic node does to the code below, the headline number this observer
+      // exists for is already banked by the time it runs.
+      window.__ux.cls += e.value;
+      window.__ux.shifts += 1;
+      const phase = window.__ux.shift_phase;
+      if ((window.__ux.shift_kept[phase] || 0) >= %(records)d) {
+        window.__ux.shift_dropped += 1;
+        continue;
+      }
+      window.__ux.shift_kept[phase] = (window.__ux.shift_kept[phase] || 0) + 1;
+      try {
+        const src = e.sources || [];
+        window.__ux.shift_records.push({
+          value: Number(e.value.toFixed(5)),
+          start_ms: Math.round(e.startTime),
+          phase: phase,
+          source_count: src.length,
+          sources: Array.from(src).slice(0, %(sources)d).map((s) => ({
+            selector: uxShiftName(s.node),
+            previous_rect: uxShiftRect(s.previousRect),
+            current_rect: uxShiftRect(s.currentRect),
+          })),
+        });
+      } catch (err) {
+        // Recorded, not swallowed, and for a second reason beyond the usual
+        // one: a throw inside an observer callback escapes as an uncaught page
+        // error, so a bug in this describing code would be counted in the
+        // page's own console_errors and read as a bug in the site.
+        window.__ux.shift_source_error = String(err);
+      }
     }
   }).observe({type: 'layout-shift', buffered: true});
 } catch (e) { window.__ux.cls_error = String(e); }
@@ -525,7 +704,7 @@ try {
     if (es.length) window.__ux.lcp = es[es.length - 1].startTime;
   }).observe({type: 'largest-contentful-paint', buffered: true});
 } catch (e) { window.__ux.lcp_error = String(e); }
-"""
+""" % {'records': MAX_SHIFT_RECORDS, 'sources': MAX_SHIFT_SOURCES}
 
 JS_TIMINGS = """() => {
   const n = performance.getEntriesByType('navigation')[0];
@@ -664,6 +843,124 @@ JS_HEADINGS = JS_PRELUDE + """
 
 JS_CONTRAST_SAMPLES = JS_PRELUDE + """
 (max) => {
+  // Walking up for the first non-transparent backgroundColor answers "what
+  // colour did CSS put behind this text", which is not the same question as
+  // "what does a reader see behind this text". Where pixels come from an image
+  // -- a map tile, a cam frame, a chart canvas, a CSS background-image -- the
+  // colour the walk lands on was never painted at that spot, and this script
+  // cannot read the image to find out what was. The map marker is the case
+  // that forced the point: the star sits in a transparent Leaflet pane above
+  // the tile <img>s, so the walk climbs past marker pane and map pane and
+  // stops at .leaflet-container, whose Leaflet stylesheet default is #ddd. It
+  // reported a yellow star at 1.26:1 against a grey that is nowhere on the
+  // screen, every single run, while the star is in fact bright yellow on a
+  // dark basemap with a black text-shadow under it. A failure that is wrong
+  // every day is worse than no check at all, because it teaches the reader to
+  // skim past the contrast line -- including the days it is right. So those
+  // samples are reported as "cannot tell" and counted, exactly the way a
+  // colour this build cannot parse already is. This returns the element
+  // painting the imagery, or null when the resolved colour really is what is
+  // behind the text.
+  //
+  // Everything downstream of this function trusts it completely: a sample it
+  // calls imagery is never contrast-checked again, because with no layer of
+  // the page's own left over the picture there is nothing to bound the ratio
+  // with. So the bar for saying yes has to be pixels the audit genuinely
+  // cannot see, and two things that look like imagery to a naive test are not:
+  //
+  //  - A CSS gradient. backgroundImage is not 'none' for a gradient either,
+  //    but a gradient is drawn from colours declared in the stylesheet, in the
+  //    same palette as everything around it -- .cam-link-card is a plain dark
+  //    blue-to-black ramp with no background-colour of its own. Exempting it
+  //    would quietly switch the contrast check off for every word inside it.
+  //    Gradients therefore fall through to the colour walk, which measures
+  //    against the nearest declared background-colour behind them. That is an
+  //    approximation of a ramp by one of its neighbours, and it is the right
+  //    trade: an approximate number that can be wrong is worth far more here
+  //    than no number at all.
+  //  - Anything that paints nothing. A hidden image, a zero-opacity overlay or
+  //    a full-bleed transparent canvas -- the Chart.js shape, a canvas pinned
+  //    over a panel with a DOM label on top of it -- all sit in the geometry
+  //    exactly where real imagery would and all leave the background the
+  //    reader sees completely unchanged.
+  const uxPaintsImage = (bgi) => {
+    const v = bgi || '';
+    return v.indexOf('url(') >= 0 || v.indexOf('image-set(') >= 0;
+  };
+  const uxImageBackdrop = (el, supplier) => {
+    // Start at the text and climb no further than the element that supplied
+    // the colour: a background-image anywhere on that chain paints on top of
+    // the colour the same chain contributed.
+    const stop = supplier || document.documentElement;
+    for (let n = el; n; n = n.parentElement) {
+      if (uxPaintsImage(getComputedStyle(n).backgroundImage)) return n;
+      if (n === stop) break;
+    }
+    // Content sitting beside the text inside that same container also paints
+    // over the container's colour -- tiles under a marker, a video frame under
+    // an overlay label. Only tags that carry their own pixels are considered,
+    // because a getComputedStyle call on every descendant of every sample is
+    // far too slow to run a few hundred times a page. document.elementsFromPoint
+    // would be the natural way to ask this and is not usable here: the audit
+    // scrolls back to the top before sampling, so anything below the fold is
+    // out of the viewport by then and the call answers with an empty list.
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    for (const c of stop.querySelectorAll('img, canvas, svg, video, iframe')) {
+      if (c === el || c.contains(el)) continue;
+      const cr = c.getBoundingClientRect();
+      if (cr.width < 1 || cr.height < 1) continue;
+      if (x < cr.left || x > cr.right || y < cr.top || y > cr.bottom) continue;
+      // Believing that rectangle on its own is what makes this check
+      // over-fire: a Leaflet tile is a 256px square that hangs well outside
+      // the map it belongs to and is clipped back by the container's
+      // overflow, so its raw box swallows the panel headings either side of
+      // the map. Clip the candidate against every ancestor that clips before
+      // accepting that it is painted under this text.
+      let left = cr.left, top = cr.top, right = cr.right, bottom = cr.bottom;
+      for (let a = c.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+          const ar = a.getBoundingClientRect();
+          left = Math.max(left, ar.left);
+          top = Math.max(top, ar.top);
+          right = Math.min(right, ar.right);
+          bottom = Math.min(bottom, ar.bottom);
+        }
+      }
+      if (x < left || x > right || y < top || y > bottom) continue;
+      // Geometry is not paint. Checked here rather than in the loop header
+      // because it costs a getComputedStyle call and only a candidate that has
+      // already passed the point test is worth one -- which on a real page is
+      // a handful per sample, not the per-descendant sweep the cheap
+      // rectangle test exists to avoid.
+      const ccs = getComputedStyle(c);
+      if (ccs.visibility === 'hidden' || ccs.display === 'none') continue;
+      if (parseFloat(ccs.opacity || '1') < 0.02) continue;
+      if (c.tagName === 'IMG' && c.complete && c.naturalWidth === 0) continue;
+      // A canvas is the one candidate whose emptiness is invisible from the
+      // outside: it reports a full-sized box whether it has been drawn to or
+      // not. One pixel under the text answers it. A cross-origin draw taints
+      // the canvas and a WebGL context returns no 2d one, and both of those
+      // throw or come back null -- in which case the canvas really is showing
+      // something this audit cannot read, and it counts as imagery.
+      if (c.tagName === 'CANVAS') {
+        try {
+          const ctx = c.getContext('2d');
+          if (ctx && cr.width > 0 && cr.height > 0) {
+            const px = Math.min(c.width - 1, Math.max(0,
+              Math.round((x - cr.left) / cr.width * c.width)));
+            const py = Math.min(c.height - 1, Math.max(0,
+              Math.round((y - cr.top) / cr.height * c.height)));
+            if (ctx.getImageData(px, py, 1, 1).data[3] < 8) continue;
+          }
+        } catch (err) { /* unreadable, so treat it as imagery */ }
+      }
+      return c;
+    }
+    return null;
+  };
   const samples = [];
   const seen = new Set();
   const canvas = getComputedStyle(document.documentElement).backgroundColor;
@@ -677,15 +974,27 @@ JS_CONTRAST_SAMPLES = JS_PRELUDE + """
     if (!uxVisible(el)) continue;
     const st = getComputedStyle(el);
     const stack = [];
+    const owners = [];
     let n = el;
+    let supplier = null;
     while (n && n.nodeType === 1 && stack.length < 8) {
       const bg = getComputedStyle(n).backgroundColor;
       if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
         stack.push(bg);
+        owners.push(n);
+        supplier = n;
         if (!/rgba\\([^)]*,\\s*0?\\.\\d+\\s*\\)/.test(bg)) break;
       }
       n = n.parentElement;
     }
+    // Layers contributed by an element that contains the imagery are painted
+    // under it and tell a reader nothing; the ones above it still do. The cam
+    // attribution bar is the case that matters: it is 75% black laid over a
+    // live video, so what survives here is enough to bound the ratio even
+    // though the video itself never can be read.
+    const backdrop = uxImageBackdrop(el, supplier);
+    const overImage = backdrop
+      ? stack.filter((bg, i) => !owners[i].contains(backdrop)) : [];
     const key = uxSelector(el) + '|' + st.color + '|' + stack.join(',');
     if (seen.has(key)) continue;
     seen.add(key);
@@ -697,6 +1006,8 @@ JS_CONTRAST_SAMPLES = JS_PRELUDE + """
       canvas: canvas,
       font_size: parseFloat(st.fontSize),
       font_weight: st.fontWeight,
+      image_backdrop: !!backdrop,
+      bg_over_image: overImage,
     });
   }
   return samples;
@@ -850,20 +1161,40 @@ def measure(browser, base_url, path, viewport, theme, shots_dir, timeout_ms):
                 entry[k] = entry['timings'][k]
         entry.pop('timings', None)
 
+        load_shift_count = None
         try:
             ux = page.evaluate('() => window.__ux || {}')
             entry['cls'] = round(float(ux.get('cls') or 0), 4)
             entry['cls_shifts'] = ux.get('shifts')
+            # What moved, not just how much. Read here as well as after the
+            # scroll pass so that a page which fails between the two reads
+            # still leaves its load-time offenders behind, and so the count
+            # taken here can split the two phases apart below.
+            load_records = ux.get('shift_records') or []
+            load_shift_count = len(load_records)
+            entry['cls_top_shifts'] = rank_shift_records(
+                load_records, load_count=load_shift_count)
+            entry['cls_shifts_dropped'] = ux.get('shift_dropped') or 0
             entry['lcp_ms'] = round(float(ux.get('lcp') or 0))
             for k in ('cls_error', 'lcp_error'):
                 if ux.get(k):
                     entry[k] = ux[k]
+            if ux.get('shift_source_error'):
+                entry['cls_sources_error'] = str(ux['shift_source_error'])[:300]
         except Exception as e:
             entry['webvitals_error'] = str(e)[:300]
 
         # Walk the page before the DOM checks run. Everything below counts
         # what is in the DOM at the moment it runs, and the dashboard's
         # largest panel does not exist until it has been scrolled into view.
+        try:
+            # Hand the observer its second retention budget. Best effort: a
+            # page that failed to install the observer at all still has to be
+            # scrolled, because every DOM check below depends on it.
+            page.evaluate(
+                "() => window.__uxShiftPhase && window.__uxShiftPhase('scroll')")
+        except Exception as e:
+            entry['cls_phase_error'] = str(e)[:300]
         _eval(page, entry, 'scroll', JS_SCROLL, 150)
         page.wait_for_timeout(LAZY_SETTLE_MS)
         try:
@@ -872,6 +1203,20 @@ def measure(browser, base_url, path, viewport, theme, shots_dir, timeout_ms):
             # history has always carried, this one includes shifts a reader
             # provokes by scrolling.
             entry['cls_after_scroll'] = round(float(ux2.get('cls') or 0), 4)
+            entry['cls_shifts_after_scroll'] = ux2.get('shifts')
+            # This list supersedes the load-time one because it is a superset
+            # of it, phase-tagged so nothing is lost by the replacement. It is
+            # also where the answer usually lives: the shifts that put this
+            # site over its mobile budget arrive while the lazy panels build,
+            # which is after the scroll and invisible to the first read.
+            entry['cls_top_shifts'] = rank_shift_records(
+                ux2.get('shift_records') or [], load_count=load_shift_count)
+            # Sources the browser-side cap refused to keep. Reported even when
+            # zero: a top-eight list drawn from a truncated set has to say so,
+            # or a reader takes an empty tail for a quiet page.
+            entry['cls_shifts_dropped'] = ux2.get('shift_dropped') or 0
+            if ux2.get('shift_source_error'):
+                entry['cls_sources_error'] = str(ux2['shift_source_error'])[:300]
         except Exception as e:
             entry['cls_after_scroll_error'] = str(e)[:300]
 
