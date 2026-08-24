@@ -25,7 +25,13 @@ venv/
 Thumbs.db
 
 # Claude Code
-.claude/
+# Ignore local Claude Code state, but share ONE file: settings.json carries the
+# attribution config, which has to reach every environment that commits from
+# this repo -- including the scheduled cloud routines, which is the whole point.
+# A directory pattern cannot be re-included from inside, so this ignores the
+# CONTENTS rather than the directory.
+.claude/*
+!.claude/settings.json
 CLAUDE.md
 
 # Reports
