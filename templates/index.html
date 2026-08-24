@@ -433,12 +433,38 @@
             cursor: grabbing;
         }
 
+        /* A panel header is a single flex row that cannot wrap, so when it
+           runs out of room its children wrap internally instead: the title
+           breaks "SWELL MAP" over two lines, the layers button follows, and
+           the header grows from 32px to 44px on mobile. That happens well
+           after first paint, because a header only fills up once its
+           timestamp, badge and location text arrive -- the swell map's header
+           re-wrapping when the map time landed measured 0.07 CLS on its own,
+           two thirds of the whole mobile budget, and the buoy and chart
+           headers do the same thing while safely off-screen.
+
+           white-space: nowrap is what buys the stable height, and it is the
+           only thing that does -- flex-shrink has nothing to do with how tall
+           a line box is. So the title stays shrinkable and truncates like the
+           timestamp already does, because refusing to shrink does not stop the
+           overflow, it only moves it sideways into .panel, which is
+           overflow: hidden -- at 320-375px that silently ate 16-71px off the
+           right of the header, taking the fullscreen button with it. The
+           squeeze is steered instead: the timestamp and the location carry a
+           large shrink factor so they give up their width first and the title
+           only starts truncating once they are gone. Let the title wrap again
+           and every panel header grows a second line the moment its data
+           arrives. */
         .panel-title {
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1px;
             color: var(--text-dim);
+            white-space: nowrap;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .panel-timestamp {
@@ -447,6 +473,10 @@
             margin-left: 8px;
             margin-right: auto;
             min-width: 0;
+            /* Absorbs the header's width shortfall ahead of the title: the
+               time is also shown in full on the badge beside it, so it is the
+               cheapest thing on the row to lose. */
+            flex-shrink: 100;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -459,6 +489,10 @@
             margin-left: 8px;
             margin-right: auto;
             min-width: 0;
+            /* Same shrink priority as the timestamp: the location is named in
+               the page heading as well, so the header gives it up before it
+               gives up the panel's own title. */
+            flex-shrink: 100;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -612,12 +646,34 @@
             font-size: 10px;
             color: var(--text-muted);
         }
+        /* The verdict strip needs the tides as well as the forecast, so it
+           lands after the six rows underneath it have already painted -- and
+           the markup puts it above them, so filling it in shoved the rows down
+           72px and the whole dashboard with them. That was 0.06 CLS on mobile,
+           roughly half the budget, and it is why the strip is hidden with
+           visibility rather than display: it has to hold the height it settles
+           at from the very first paint, whether or not there is ever anything
+           to put in it. Desktop reserves one line for the same reason and wins
+           a smaller prize, about 25px of movement. Swap either of these back to
+           display: none and the shift returns exactly as it was.
+
+           The mobile figure is two lines' worth, because the badge and the
+           "Best window" sentence wrap under flex-wrap at phone widths, and it
+           has to be the tallest of the states rather than the commonest: a
+           reservation that only fits the short ones is not a reservation. So
+           in the two short states -- after dark with nothing booked, and a
+           best window that is the one running right now -- the badge sits
+           centred in a strip taller than it needs, which reads as padding
+           because align-items keeps it centred. That is the trade being made
+           here, deliberately, and there is no version of it that reserves the
+           tall state and hugs the short one. */
         .hero-verdict {
             display: flex;
             align-items: center;
             gap: 10px;
             margin: 0 0 8px;
             font-size: 12px;
+            min-height: 26px;
         }
         .hero-verdict-badge {
             padding: 3px 12px;
@@ -638,7 +694,10 @@
         [data-theme="light"] .hero-verdict-badge.verdict-fair { color: #d97706; }
         .hero-verdict-text { color: var(--text-dim); }
         @media (max-width: 700px) {
-            .hero-verdict { flex-wrap: wrap; gap: 6px; }
+            /* 65, not 64: the two-line state settles at 64.4px, so a 64px
+               floor is 0.4px short of it and leaves a sliver of the shift it
+               was put here to remove. */
+            .hero-verdict { flex-wrap: wrap; gap: 6px; min-height: 65px; }
         }
 
         .forecast-hero-rows {
@@ -869,6 +928,10 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            /* Never squeezed, for the same reason the panel title is never
+               wrapped: a header that reflows after its text arrives is a
+               layout shift the user sees. */
+            flex-shrink: 0;
         }
 
         .panel-btn {
@@ -1274,6 +1337,10 @@
 
         .basin-layer-btn {
             font-family: var(--font-body);
+            /* "LAYERS" must not break over two lines -- it sits in the swell
+               map's header, and the header's height is what the rest of the
+               panel is measured against. */
+            white-space: nowrap;
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -2912,7 +2979,7 @@
             <h2>Next 6 Hours</h2>
             <span class="forecast-hero-sub" id="forecast-hero-sub"></span>
         </header>
-        <div class="hero-verdict" id="hero-verdict" style="display:none" aria-live="polite"></div>
+        <div class="hero-verdict" id="hero-verdict" style="visibility:hidden" aria-live="polite"></div>
         <div class="forecast-hero-rows" id="forecast-hero-rows"></div>
     </section>
     <script>
@@ -9161,7 +9228,9 @@
         function updateHeroVerdict(windows) {
             var el = document.getElementById('hero-verdict');
             if (!el) return;
-            if (!windows || !windows.length) { el.style.display = 'none'; return; }
+            // Hidden, not removed: the strip keeps its reserved height so the
+            // rows below it never move. See the .hero-verdict rule above.
+            if (!windows || !windows.length) { el.style.visibility = 'hidden'; return; }
 
             var now = Date.now();
             var current = null, best = null;
@@ -9203,7 +9272,7 @@
 
             el.appendChild(badge);
             el.appendChild(text);
-            el.style.display = '';
+            el.style.visibility = '';
         }
 
         function renderSessionPlanner() {
