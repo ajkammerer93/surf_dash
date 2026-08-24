@@ -39,14 +39,27 @@ def _stub_graphql(monkeypatch, *responses):
 
 
 def _ok_payload():
-    q = {'clsP75': 0.004, 'lcpP75': 1800, 'inpP75': 90}
+    q = {'cumulativeLayoutShiftP75': 0.004,
+         'largestContentfulPaintP75': 1800,
+         'interactionToNextPaintP75': 90}
     return {'viewer': {'accounts': [{
         'sitewide_7d': [{'count': 250, 'quantiles': q}],
-        'sitewide_1d': [{'count': 40, 'quantiles': dict(q, clsP75=0.003)}],
+        'sitewide_1d': [{'count': 40,
+                         'quantiles': dict(q, cumulativeLayoutShiftP75=0.003)}],
         'by_path_7d': [
             {'count': 150, 'quantiles': q, 'dimensions': {'requestPath': '/'}},
-            {'count': 100, 'quantiles': dict(q, clsP75=0.42),
+            {'count': 100, 'quantiles': dict(q, cumulativeLayoutShiftP75=0.42),
              'dimensions': {'requestPath': '/forecast/x'}},
+        ],
+        'by_device_7d': [
+            {'count': 200, 'quantiles': dict(q, cumulativeLayoutShiftP75=0.09),
+             'dimensions': {'deviceType': 'mobile'}},
+            {'count': 50, 'quantiles': q, 'dimensions': {'deviceType': 'desktop'}},
+        ],
+        'cls_elements_7d': [
+            {'count': 80, 'quantiles': {'cumulativeLayoutShiftP75': 0.31},
+             'dimensions': {'cumulativeLayoutShiftElement': 'div#hero-verdict',
+                            'cumulativeLayoutShiftPath': '/'}},
         ],
     }]}}
 
@@ -63,11 +76,12 @@ def test_happy_path_reports_both_windows_and_per_path(monkeypatch, cf_env):
     _stub_graphql(monkeypatch, (_ok_payload(), None))
     out = seo_audit.collect_web_vitals()
     assert out['percentile'] == 'p75'
-    assert out['sitewide_7d'] == {'samples': 250, 'clsP75': 0.004,
-                                  'lcpP75': 1800, 'inpP75': 90}
-    assert out['sitewide_1d']['clsP75'] == 0.003
-    assert [r['path'] for r in out['by_path_7d']] == ['/', '/forecast/x']
-    assert out['by_path_7d'][1]['clsP75'] == 0.42
+    assert out['sitewide_7d'] == {
+        'samples': 250, 'cumulativeLayoutShiftP75': 0.004,
+        'largestContentfulPaintP75': 1800, 'interactionToNextPaintP75': 90}
+    assert out['sitewide_1d']['cumulativeLayoutShiftP75'] == 0.003
+    assert [r['requestPath'] for r in out['by_path_7d']] == ['/', '/forecast/x']
+    assert out['by_path_7d'][1]['cumulativeLayoutShiftP75'] == 0.42
 
 
 def test_both_windows_are_collected_not_just_the_stable_one(monkeypatch, cf_env):
@@ -102,6 +116,38 @@ def test_a_failed_query_introspects_and_reports_the_real_schema(monkeypatch, cf_
     assert sh['rum_datasets_on_account'] == [
         'rumPageloadEventsAdaptiveGroups', 'rumWebVitalsEventsAdaptiveGroups']
     assert 'httpRequests1dGroups' not in sh['rum_datasets_on_account']
+
+
+def test_unresolved_account_probe_reports_none_not_empty(monkeypatch, cf_env):
+    """[] would read as "this account has no RUM datasets", which is a lie.
+
+    The live run on 2026-08-24 hit exactly this: the probe did not resolve
+    while the dataset name was in fact correct.
+    """
+    _stub_graphql(monkeypatch,
+                  (None, 'unknown field'),
+                  ({'account': None, 'group': None,
+                    'quantiles': None, 'dimensions': None}, None))
+    sh = seo_audit.collect_web_vitals()['schema_hint']
+    assert sh['rum_datasets_on_account'] is None
+
+
+def test_cls_elements_carry_the_element_and_the_path(monkeypatch, cf_env):
+    """The whole reason for querying this dataset instead of reading the UI."""
+    _stub_graphql(monkeypatch, (_ok_payload(), None))
+    els = seo_audit.collect_web_vitals()['cls_elements_7d']
+    assert els[0]['cumulativeLayoutShiftElement'] == 'div#hero-verdict'
+    assert els[0]['cumulativeLayoutShiftPath'] == '/'
+    assert els[0]['cumulativeLayoutShiftP75'] == 0.31
+
+
+def test_device_breakdown_separates_mobile_from_desktop(monkeypatch, cf_env):
+    # CLS on this site has always been a mobile defect; a blended figure hides it.
+    _stub_graphql(monkeypatch, (_ok_payload(), None))
+    by_dev = {r['deviceType']: r for r in
+              seo_audit.collect_web_vitals()['by_device_7d']}
+    assert by_dev['mobile']['cumulativeLayoutShiftP75'] == 0.09
+    assert by_dev['desktop']['cumulativeLayoutShiftP75'] == 0.004
 
 
 def test_failure_never_returns_a_clean_looking_empty_result(monkeypatch, cf_env):

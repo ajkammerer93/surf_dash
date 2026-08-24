@@ -112,11 +112,24 @@ jobs:
                   print(f"Web Vitals p75 {window}: n={m.get('samples')} {vals}")
               if wv.get('low_sample_warning'):
                   print(f"::warning::Web Vitals: {wv['low_sample_warning']}")
-              for row in (wv.get('by_path_7d') or [])[:5]:
-                  cls = row.get('clsP75')
+              for row in (wv.get('by_path_7d') or [])[:8]:
+                  cls = row.get('cumulativeLayoutShiftP75')
                   if cls is not None and cls > 0.1:
-                      print(f"::warning::CLS p75 over budget on {row['path']}: "
-                            f"{cls} (n={row.get('samples')})")
+                      print(f"::warning::CLS p75 over budget on "
+                            f"{row.get('requestPath')}: {cls} "
+                            f"(n={row.get('samples')})")
+              # The elements real visitors saw move, worst first. This is the
+              # line that turns "CLS is bad" into a file and a selector, so it
+              # prints whether or not anything is over budget.
+              worst = sorted(
+                  (r for r in (wv.get('cls_elements_7d') or [])
+                   if r.get('cumulativeLayoutShiftP75')),
+                  key=lambda r: -r['cumulativeLayoutShiftP75'])[:5]
+              for r in worst:
+                  print(f"CLS p75 {r['cumulativeLayoutShiftP75']:.4f} "
+                        f"n={r.get('samples')} "
+                        f"{r.get('cumulativeLayoutShiftElement') or '(unattributed)'} "
+                        f"on {r.get('cumulativeLayoutShiftPath') or '(any path)'}")
           for w in a['ci'].get('failing', []):
               print(f"::warning::workflow failing: {w}")
           for p in a['site'].get('problems', []):
