@@ -86,6 +86,37 @@ jobs:
                   print(f"{name}: OK")
           line('Search Console', sc, 'search_analytics')
           line('Cloudflare', cf, 'cloudflare')
+
+          # Web Vitals is a Beta dataset, so a renamed field is a live
+          # possibility rather than a hypothetical. The collector records the
+          # real schema when its query fails; print that here, because the
+          # failure mode to avoid is a missing section that reads as a clean
+          # run. The p75 pair is printed with its sample count attached: at
+          # this site's traffic a 7-day p75 can rest on very few pageloads,
+          # and a number without its n invites acting on one visitor's phone.
+          wv = a.get('web_vitals', {})
+          if wv.get('unavailable'):
+              print(f"::warning::Web Vitals unavailable: {wv['unavailable']}")
+          elif wv.get('error'):
+              print(f"::warning::Web Vitals errored: {wv['error']}")
+              hint = wv.get('schema_hint') or {}
+              for k, v in hint.items():
+                  print(f"::warning::  schema {k}: {v}")
+          else:
+              for window in ('sitewide_1d', 'sitewide_7d'):
+                  m = wv.get(window) or {}
+                  if not m:
+                      continue
+                  vals = ' '.join(f"{k}={v}" for k, v in sorted(m.items())
+                                  if k != 'samples')
+                  print(f"Web Vitals p75 {window}: n={m.get('samples')} {vals}")
+              if wv.get('low_sample_warning'):
+                  print(f"::warning::Web Vitals: {wv['low_sample_warning']}")
+              for row in (wv.get('by_path_7d') or [])[:5]:
+                  cls = row.get('clsP75')
+                  if cls is not None and cls > 0.1:
+                      print(f"::warning::CLS p75 over budget on {row['path']}: "
+                            f"{cls} (n={row.get('samples')})")
           for w in a['ci'].get('failing', []):
               print(f"::warning::workflow failing: {w}")
           for p in a['site'].get('problems', []):
