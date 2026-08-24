@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.51
+**Current version:** v0.11.66
 
 ## Dashboard
 
@@ -39,8 +39,8 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 | Data | Source | Cost |
 |---|---|---|
-| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 via ERDDAP (CoastWatch + PacIOOS mirrors) | Free |
-| Wind speed, direction, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with NOAA CoastWatch ERDDAP (GFS) fallback | Free |
+| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 via ERDDAP (upwell + PacIOOS mirrors) | Free |
+| Wind speed, direction, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with NOAA GFS via ERDDAP (CoastWatch + upwell mirrors) fallback | Free |
 | Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged) | Free |
 | Buoy observations | [NDBC](https://www.ndbc.noaa.gov/) / [CDIP](https://cdip.ucsd.edu/) | Free |
 | Surf cameras | Curated YouTube live embeds + [Windy Webcams API](https://api.windy.com/) + provider link-outs | Free tier |
@@ -70,7 +70,7 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (476 tests)
+pytest tests/                                          # full suite (516 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -103,7 +103,7 @@ LOG_LEVEL=DEBUG python app.py
 | `scripts/forecast_verification.py` | Snapshots the site's own forecasts at NDBC buoys and scores them; publishes to the `verification-data` branch |
 | `scripts/seo_audit.py` | Collects CI, site-health, Search Console and Cloudflare metrics into a daily snapshot on the `seo-data` branch |
 | `scripts/instagram_publish.py` | Social pipeline publisher (Graph API or dry-run) |
-| `tests/` | 182 tests across SEO, pure functions, and mocked upstream failures |
+| `tests/` | 516 tests across SEO, pure functions, mocked upstream failures, the ERDDAP mirror chain, and the UX/SEO audit collectors |
 | `static/sw.js` | Service worker (network-first HTML, 24h offline API fallback) |
 | `render.yaml` | Render deploy config (Gunicorn `--workers 1 --threads 8 --preload`) |
 
@@ -141,7 +141,9 @@ Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 
 | `GET /api/health-upstreams` | Diagnostic: probes each weather source from the server's vantage |
 
-All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully: the wave chain falls from Open-Meteo Marine to WW3 across two independent ERDDAP servers, wind and air-temp have ERDDAP backfills, tides degrade to hourly-only, and if every wave source fails at once the API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
+All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully: the wave chain falls from Open-Meteo Marine to WW3, and every ERDDAP fetch -- point forecast, local grid and ocean basin alike -- walks an ordered list of independent mirrors hosting the same model, with a per-host timeout budget. Wind and air-temp have the same treatment, tides degrade to hourly-only, and if every wave source fails at once the API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
+
+The mirror lists live in one place (`WW3_WAVE_MIRRORS`, `GFS_WIND_MIRRORS`) because they were once inline per call site, and the two grid endpoints were left single-homed on a server that went slow -- the swell map returned 500 for hours while the point forecast rode the same outage out. A test asserts no call site names a host directly.
 
 ### Scheduled jobs
 
@@ -172,6 +174,15 @@ forecast. It has an editorial floor as well as the usual data guards: a day wher
 nothing is exceptional is skipped rather than posted. Expect it to skip fairly
 often through the summer, when the whole network can sit below the floors for
 days at a time.
+
+`seo-audit.yml` collects CI health, sitemap and indexing status, Search
+Console figures and Cloudflare RUM, including Core Web Vitals at p75 over
+both a 1-day and a 7-day window. Two windows because the site's traffic is
+low enough that a 7-day percentile is still mostly pre-change samples the day
+after a fix ships, so on its own it reads as a flat line. The timing metrics
+arrive in microseconds and are converted on the way in; the keys carry an
+`_ms` suffix to say so. Cloudflare's CLS figure is deliberately not treated
+as a score - see the note in `collect_web_vitals`.
 
 `ux-audit.yml` runs `scripts/ux_audit.py`, which measures the live site with
 Playwright at two viewports across six pages and records CLS, LCP, console and
