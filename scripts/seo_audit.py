@@ -318,14 +318,19 @@ def _cf_graphql(token, query, variables=None, timeout=60):
         return None, f'{type(e).__name__}: {str(e)[:200]}'
 
 
-# Field names for the Web Vitals dataset, which is documented as Beta and whose
-# schema is not published in a form that can be checked without a token. They
-# are a starting guess, NOT an assumption: if the query fails, the collector
-# introspects the live schema and records what is actually there, so a wrong
-# name shows up as the real field list in the snapshot instead of a zero that
-# reads like a fast site. Update these from that hint and the guess is spent.
+# Read off the live schema by introspection on 2026-08-24, not from docs --
+# the dataset is Beta and its fields are not published anywhere checkable. The
+# short names you would guess (clsP75, lcpP75) do not exist; the metric names
+# are spelled out in full. The schema hint below is what produced this list and
+# stays wired up, because a Beta dataset can rename a field again.
 CF_VITALS_DATASET = 'rumWebVitalsEventsAdaptiveGroups'
-CF_VITALS_QUANTILE_FIELDS = ['clsP75', 'lcpP75', 'inpP75']
+CF_VITALS_QUANTILE_FIELDS = [
+    'cumulativeLayoutShiftP75',
+    'largestContentfulPaintP75',
+    'interactionToNextPaintP75',
+    'firstContentfulPaintP75',
+    'timeToFirstByteP75',
+]
 
 
 def _cf_vitals_schema_hint(token):
@@ -350,10 +355,16 @@ def _cf_vitals_schema_hint(token):
         node = (data or {}).get(key)
         return [f['name'] for f in (node or {}).get('fields', [])] if node else None
 
-    account_fields = names('account') or []
+    # This came back empty on the 2026-08-24 run even though the dataset name
+    # was right, so its silence means "probe did not resolve", not "no RUM
+    # datasets". Reported as None rather than [] so the two cannot be confused
+    # -- an empty list here would read as a missing dataset and send the next
+    # reader hunting for the wrong thing.
+    account_fields = names('account')
+    rum = (sorted(f for f in account_fields if 'rum' in f.lower())
+           if account_fields else None)
     return {
-        'rum_datasets_on_account': sorted(
-            f for f in account_fields if 'rum' in f.lower()),
+        'rum_datasets_on_account': rum,
         'group_fields': names('group'),
         'quantile_fields': names('quantiles'),
         'dimension_fields': names('dimensions'),
@@ -399,6 +410,15 @@ def collect_web_vitals():
             limit: 20, orderBy: [count_DESC],
             filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
           ) { count quantiles { %(q)s } dimensions { requestPath } }
+          by_device_7d: %(ds)s(
+            limit: 5, orderBy: [count_DESC],
+            filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
+          ) { count quantiles { %(q)s } dimensions { deviceType } }
+          cls_elements_7d: %(ds)s(
+            limit: 15, orderBy: [count_DESC],
+            filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
+          ) { count quantiles { cumulativeLayoutShiftP75 }
+              dimensions { cumulativeLayoutShiftElement cumulativeLayoutShiftPath } }
         }
       }
     }""" % {'ds': CF_VITALS_DATASET, 'q': quantile_selection}
@@ -429,15 +449,33 @@ def collect_web_vitals():
         out.update(row.get('quantiles') or {})
         return out
 
-    by_path = []
-    for row in (acc.get('by_path_7d') or []):
-        entry = {'path': (row.get('dimensions') or {}).get('requestPath'),
-                 'samples': row.get('count')}
-        entry.update(row.get('quantiles') or {})
-        by_path.append(entry)
+    def grouped(key, *dims):
+        out = []
+        for row in (acc.get(key) or []):
+            d = row.get('dimensions') or {}
+            entry = {dim: d.get(dim) for dim in dims}
+            entry['samples'] = row.get('count')
+            entry.update(row.get('quantiles') or {})
+            out.append(entry)
+        return out
 
-    result = {'percentile': 'p75', 'sitewide_7d': one('sitewide_7d'),
-              'sitewide_1d': one('sitewide_1d'), 'by_path_7d': by_path}
+    result = {
+        'percentile': 'p75',
+        'sitewide_7d': one('sitewide_7d'),
+        'sitewide_1d': one('sitewide_1d'),
+        'by_path_7d': grouped('by_path_7d', 'requestPath'),
+        'by_device_7d': grouped('by_device_7d', 'deviceType'),
+        # The reason this dataset is worth querying at all rather than reading
+        # the dashboard: Cloudflare records WHICH element shifted, for real
+        # visitors on real devices. Every CLS number in this project until now
+        # came from driving one machine on a fast connection and inferring the
+        # cause; this is the page telling us directly. Keep it even when the
+        # score is healthy -- it is what makes the next regression a lookup
+        # instead of an investigation.
+        'cls_elements_7d': grouped('cls_elements_7d',
+                                   'cumulativeLayoutShiftElement',
+                                   'cumulativeLayoutShiftPath'),
+    }
 
     # A sample count is not decoration here. P75 over a handful of pageloads is
     # one visitor's phone, and acting on it is how a fine page gets "fixed".
