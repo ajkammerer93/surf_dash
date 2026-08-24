@@ -293,6 +293,161 @@ def _cf_site_tags(token, account):
         return {'error': str(e)[:200]}
 
 
+def _cf_graphql(token, query, variables=None, timeout=60):
+    """POST one GraphQL query. Returns (data, error_string); exactly one is None.
+
+    A GraphQL endpoint answers HTTP 200 with an "errors" array, so checking the
+    status code alone reports success for a query that returned nothing. Both
+    failure shapes are collapsed here so no caller can accidentally check only
+    the easy one.
+    """
+    try:
+        r = requests.post(
+            'https://api.cloudflare.com/client/v4/graphql',
+            headers={'Authorization': f'Bearer {token}',
+                     'Content-Type': 'application/json'},
+            json={'query': query, 'variables': variables or {}},
+            timeout=timeout)
+        body = r.json()
+        if body.get('errors'):
+            return None, str(body['errors'])[:400]
+        if not r.ok:
+            return None, f'HTTP {r.status_code}'
+        return body.get('data'), None
+    except (requests.RequestException, ValueError) as e:
+        return None, f'{type(e).__name__}: {str(e)[:200]}'
+
+
+# Field names for the Web Vitals dataset, which is documented as Beta and whose
+# schema is not published in a form that can be checked without a token. They
+# are a starting guess, NOT an assumption: if the query fails, the collector
+# introspects the live schema and records what is actually there, so a wrong
+# name shows up as the real field list in the snapshot instead of a zero that
+# reads like a fast site. Update these from that hint and the guess is spent.
+CF_VITALS_DATASET = 'rumWebVitalsEventsAdaptiveGroups'
+CF_VITALS_QUANTILE_FIELDS = ['clsP75', 'lcpP75', 'inpP75']
+
+
+def _cf_vitals_schema_hint(token):
+    """Ask the live schema what this dataset actually offers.
+
+    Only runs when the real query failed, so it costs nothing on a healthy day.
+    The Account probe is the one that matters: it finds the dataset even if the
+    name above is wrong, which is the failure the rest of this cannot detect.
+    """
+    q = """
+    query {
+      account: __type(name: "Account") { fields { name } }
+      group: __type(name: "AccountRumWebVitalsEventsAdaptiveGroups") { fields { name } }
+      quantiles: __type(name: "AccountRumWebVitalsEventsAdaptiveGroupsQuantiles") { fields { name } }
+      dimensions: __type(name: "AccountRumWebVitalsEventsAdaptiveGroupsDimensions") { fields { name } }
+    }"""
+    data, err = _cf_graphql(token, q, timeout=45)
+    if err:
+        return {'introspection_error': err}
+
+    def names(key):
+        node = (data or {}).get(key)
+        return [f['name'] for f in (node or {}).get('fields', [])] if node else None
+
+    account_fields = names('account') or []
+    return {
+        'rum_datasets_on_account': sorted(
+            f for f in account_fields if 'rum' in f.lower()),
+        'group_fields': names('group'),
+        'quantile_fields': names('quantiles'),
+        'dimension_fields': names('dimensions'),
+    }
+
+
+def collect_web_vitals():
+    """Core Web Vitals at P75 from Cloudflare RUM, 7-day and 1-day windows.
+
+    Two windows on purpose. Cloudflare reports a percentile over whatever range
+    is asked for, and this site takes roughly 40 pageviews a day, so a 7-day
+    P75 is still about 90% pre-change samples the day after a fix ships -- long
+    enough that a real improvement looks like no improvement and gets undone.
+    The 1-day number moves first and is noisy; the 7-day number is stable and
+    late. Recording both is the only way the pair tells you which you are
+    looking at.
+
+    Reported per page as well as sitewide, because a single bad route drags a
+    sitewide P75 that is fine everywhere else, and the fix is route-specific.
+    """
+    token = os.environ.get('CF_API_TOKEN')
+    account = os.environ.get('CF_ACCOUNT_ID')
+    site_tag = os.environ.get('CF_SITE_TAG')
+    missing = [n for n, v in (('CF_API_TOKEN', token), ('CF_ACCOUNT_ID', account),
+                              ('CF_SITE_TAG', site_tag)) if not v]
+    if missing:
+        return {'unavailable': f'not set: {", ".join(missing)}'}
+
+    quantile_selection = ' '.join(CF_VITALS_QUANTILE_FIELDS)
+    gql = """
+    query($account: String!, $tag: String!, $d1: Time!, $d7: Time!, $end: Time!) {
+      viewer {
+        accounts(filter: {accountTag: $account}) {
+          sitewide_7d: %(ds)s(
+            limit: 1,
+            filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
+          ) { count quantiles { %(q)s } }
+          sitewide_1d: %(ds)s(
+            limit: 1,
+            filter: {siteTag: $tag, datetime_geq: $d1, datetime_leq: $end}
+          ) { count quantiles { %(q)s } }
+          by_path_7d: %(ds)s(
+            limit: 20, orderBy: [count_DESC],
+            filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
+          ) { count quantiles { %(q)s } dimensions { requestPath } }
+        }
+      }
+    }""" % {'ds': CF_VITALS_DATASET, 'q': quantile_selection}
+
+    end = _utcnow()
+    data, err = _cf_graphql(token, gql, {
+        'account': account, 'tag': site_tag,
+        'd1': (end - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'd7': (end - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'end': end.strftime('%Y-%m-%dT%H:%M:%SZ')})
+
+    if err:
+        # The whole point of the hint: a Beta schema that renamed a field must
+        # not degrade into a missing section that reads as "no problems".
+        return {'error': err, 'schema_hint': _cf_vitals_schema_hint(token)}
+
+    accounts = ((data or {}).get('viewer') or {}).get('accounts') or []
+    if not accounts:
+        return {'error': 'no account matched CF_ACCOUNT_ID for web vitals'}
+    acc = accounts[0]
+
+    def one(key):
+        rows = acc.get(key) or []
+        if not rows:
+            return None
+        row = rows[0]
+        out = {'samples': row.get('count')}
+        out.update(row.get('quantiles') or {})
+        return out
+
+    by_path = []
+    for row in (acc.get('by_path_7d') or []):
+        entry = {'path': (row.get('dimensions') or {}).get('requestPath'),
+                 'samples': row.get('count')}
+        entry.update(row.get('quantiles') or {})
+        by_path.append(entry)
+
+    result = {'percentile': 'p75', 'sitewide_7d': one('sitewide_7d'),
+              'sitewide_1d': one('sitewide_1d'), 'by_path_7d': by_path}
+
+    # A sample count is not decoration here. P75 over a handful of pageloads is
+    # one visitor's phone, and acting on it is how a fine page gets "fixed".
+    samples_7d = (result['sitewide_7d'] or {}).get('samples') or 0
+    if samples_7d < 100:
+        result['low_sample_warning'] = (
+            f'{samples_7d} pageloads in 7d -- p75 is not meaningful yet')
+    return result
+
+
 def collect_cloudflare():
     """Web Analytics pageviews and top paths.
 
@@ -382,6 +537,7 @@ def build_audit(state):
         'site': collect_site(),
         'search_console': collect_search_console(state),
         'cloudflare': collect_cloudflare(),
+        'web_vitals': collect_web_vitals(),
     }
 
 
@@ -426,6 +582,11 @@ def main():
         'gsc_totals_28d': sc.get('totals_28d'),
         'inspection_summary': sc.get('inspection_summary'),
         'cf_pageviews': (audit.get('cloudflare') or {}).get('pageviews'),
+        # Both windows in the row, not just the stable one: the 7-day figure
+        # lags a fix by about a week at this traffic level, and a trend line
+        # built only from it says a change did nothing for six days.
+        'cwv_p75_7d': (audit.get('web_vitals') or {}).get('sitewide_7d'),
+        'cwv_p75_1d': (audit.get('web_vitals') or {}).get('sitewide_1d'),
     }
     with open(os.path.join(args.data_dir, 'audit-history.jsonl'), 'a') as f:
         f.write(json.dumps(row) + '\n')
