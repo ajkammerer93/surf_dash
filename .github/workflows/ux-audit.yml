@@ -17,6 +17,18 @@ name: UI/UX audit
 # anything, recording a top-level "unavailable" reason instead, so a site or
 # browser problem shows up as a warning in the log and a published snapshot
 # rather than a red run with no data.
+#
+# Authorship policy, binding on anything that writes this snapshot up.
+# Every artifact that lands on GitHub -- commit messages, issue bodies, pull
+# request titles and descriptions, review and issue comments -- is written in
+# the first person as the repository owner, with no tooling attribution of any
+# kind. No co-author trailers, no generated-by footers, no note of what
+# produced the text, no emoji. The audience is future maintainers, and the
+# provenance of the prose is not useful to them.
+#
+# The job below emits no prose of its own; it only publishes JSON and
+# screenshots to a data branch. The rule therefore constrains whatever reads
+# that snapshot afterwards and files the findings.
 
 on:
   workflow_dispatch:
