@@ -333,6 +333,37 @@ CF_VITALS_QUANTILE_FIELDS = [
 ]
 
 
+# Timing metrics come back in MICROSECONDS. Cloudflare's own dashboard renders
+# the same figure in milliseconds -- its p75 LCP of 2,492ms is this API's
+# 2492000 -- so a raw value read next to the UI is off by a thousand and looks
+# like a page that took twenty minutes to paint. Converted on the way in, with
+# the unit in the key so nobody has to remember this again.
+CF_TIMING_METRIC_HINTS = ('Paint', 'Delay', 'Byte', 'Time', 'Load')
+
+
+def _scale_quantiles(quantiles):
+    """Microseconds to milliseconds for timings. CLS is unitless and untouched."""
+    out = {}
+    for key, value in (quantiles or {}).items():
+        if value is None:
+            out[key] = None
+        elif any(hint in key for hint in CF_TIMING_METRIC_HINTS):
+            # A suffix, not an infix: replacing the first "P" would turn
+            # largestContentfulPaintP75 into largestContentfulMsPaintP75,
+            # which is not a name anyone could look up.
+            out[f'{key}_ms'] = round(value / 1000.0, 1)
+        else:
+            out[key] = value
+    return out
+
+
+def _vitals_group(row):
+    """One result row as a flat dict: sample count plus its scaled quantiles."""
+    out = {'samples': row.get('count')}
+    out.update(_scale_quantiles(row.get('quantiles')))
+    return out
+
+
 def _cf_vitals_schema_hint(token):
     """Ask the live schema what this dataset actually offers.
 
@@ -394,6 +425,16 @@ def collect_web_vitals():
         return {'unavailable': f'not set: {", ".join(missing)}'}
 
     quantile_selection = ' '.join(CF_VITALS_QUANTILE_FIELDS)
+    # The whole CLS distribution, sitewide. The first real run returned p75 = 1
+    # for four separate elements and -1 for others, and a CLS score cannot be
+    # negative -- so whatever this field is, it is not simply the score, and a
+    # single percentile cannot tell the difference. A distribution can: values
+    # varying smoothly across the percentiles mean it is a score, values pinned
+    # to -1/0/1 with interpolated fractions between them mean it is a per-event
+    # rating being read as if it were one. Nothing should act on a CLS figure
+    # from this API until that is settled.
+    cls_spread = ' '.join(f'cumulativeLayoutShiftP{p}'
+                          for p in (25, 50, 75, 90, 95, 99, 999))
     gql = """
     query($account: String!, $tag: String!, $d1: Time!, $d7: Time!, $end: Time!) {
       viewer {
@@ -410,6 +451,10 @@ def collect_web_vitals():
             limit: 20, orderBy: [count_DESC],
             filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
           ) { count quantiles { %(q)s } dimensions { requestPath } }
+          cls_spread_7d: %(ds)s(
+            limit: 1,
+            filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
+          ) { count quantiles { %(spread)s } }
           by_device_7d: %(ds)s(
             limit: 5, orderBy: [count_DESC],
             filter: {siteTag: $tag, datetime_geq: $d7, datetime_leq: $end}
@@ -421,7 +466,8 @@ def collect_web_vitals():
               dimensions { cumulativeLayoutShiftElement cumulativeLayoutShiftPath } }
         }
       }
-    }""" % {'ds': CF_VITALS_DATASET, 'q': quantile_selection}
+    }""" % {'ds': CF_VITALS_DATASET, 'q': quantile_selection,
+             'spread': cls_spread}
 
     end = _utcnow()
     data, err = _cf_graphql(token, gql, {
@@ -442,20 +488,14 @@ def collect_web_vitals():
 
     def one(key):
         rows = acc.get(key) or []
-        if not rows:
-            return None
-        row = rows[0]
-        out = {'samples': row.get('count')}
-        out.update(row.get('quantiles') or {})
-        return out
+        return _vitals_group(rows[0]) if rows else None
 
     def grouped(key, *dims):
         out = []
         for row in (acc.get(key) or []):
             d = row.get('dimensions') or {}
             entry = {dim: d.get(dim) for dim in dims}
-            entry['samples'] = row.get('count')
-            entry.update(row.get('quantiles') or {})
+            entry.update(_vitals_group(row))
             out.append(entry)
         return out
 
@@ -463,6 +503,7 @@ def collect_web_vitals():
         'percentile': 'p75',
         'sitewide_7d': one('sitewide_7d'),
         'sitewide_1d': one('sitewide_1d'),
+        'cls_spread_7d': one('cls_spread_7d'),
         'by_path_7d': grouped('by_path_7d', 'requestPath'),
         'by_device_7d': grouped('by_device_7d', 'deviceType'),
         # The reason this dataset is worth querying at all rather than reading

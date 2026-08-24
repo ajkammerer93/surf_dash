@@ -78,7 +78,7 @@ def test_happy_path_reports_both_windows_and_per_path(monkeypatch, cf_env):
     assert out['percentile'] == 'p75'
     assert out['sitewide_7d'] == {
         'samples': 250, 'cumulativeLayoutShiftP75': 0.004,
-        'largestContentfulPaintP75': 1800, 'interactionToNextPaintP75': 90}
+        'largestContentfulPaintP75_ms': 1.8, 'interactionToNextPaintP75_ms': 0.1}
     assert out['sitewide_1d']['cumulativeLayoutShiftP75'] == 0.003
     assert [r['requestPath'] for r in out['by_path_7d']] == ['/', '/forecast/x']
     assert out['by_path_7d'][1]['cumulativeLayoutShiftP75'] == 0.42
@@ -202,3 +202,60 @@ def test_graphql_helper_treats_a_200_with_errors_as_failure(monkeypatch):
     # A GraphQL endpoint returns 200 with an errors array; checking the status
     # code alone would call this a success and hand back None as data.
     assert data is None and 'nope' in err
+
+
+def test_timing_metrics_are_converted_from_microseconds(monkeypatch, cf_env):
+    """Cloudflare's UI shows ms; this API returns us. Its own dashboard rendered
+    p75 LCP as 2,492ms while the API returned 2492000 for the same window."""
+    out = seo_audit._scale_quantiles({'largestContentfulPaintP75': 2492000})
+    assert out == {'largestContentfulPaintP75_ms': 2492.0}
+
+
+def test_the_unit_suffix_does_not_corrupt_the_metric_name(monkeypatch):
+    # Replacing the first "P" gives largestContentfulMsPaintP75, which is not a
+    # field anyone could look up.
+    out = seo_audit._scale_quantiles({'largestContentfulPaintP75': 1000})
+    assert 'largestContentfulMsPaintP75' not in out
+    assert 'largestContentfulPaintP75_ms' in out
+
+
+def test_cls_is_left_unscaled(monkeypatch):
+    # CLS is unitless. Dividing it by 1000 would have hidden a real regression.
+    out = seo_audit._scale_quantiles({'cumulativeLayoutShiftP75': 0.25})
+    assert out == {'cumulativeLayoutShiftP75': 0.25}
+
+
+def test_timing_metrics_are_converted_from_microseconds():
+    """Cloudflare's UI shows ms; the API returns us for the same window.
+
+    Its dashboard rendered p75 LCP as 2,492ms while this API returned 2492000.
+    Read raw next to the dashboard, every timing is wrong by a factor of 1000.
+    """
+    assert seo_audit._scale_quantiles({'largestContentfulPaintP75': 2492000}) == {
+        'largestContentfulPaintP75_ms': 2492.0}
+
+
+def test_the_unit_suffix_does_not_corrupt_the_metric_name():
+    out = seo_audit._scale_quantiles({'largestContentfulPaintP75': 1000})
+    assert 'largestContentfulMsPaintP75' not in out
+    assert 'largestContentfulPaintP75_ms' in out
+
+
+def test_cls_is_never_scaled():
+    # CLS is unitless. Dividing it by 1000 would turn a failing 0.25 into a
+    # spotless 0.00025 and the metric would never fire again.
+    assert seo_audit._scale_quantiles({'cumulativeLayoutShiftP75': 0.25}) == {
+        'cumulativeLayoutShiftP75': 0.25}
+
+
+def test_a_none_quantile_survives_scaling():
+    assert seo_audit._scale_quantiles({'largestContentfulPaintP75': None}) == {
+        'largestContentfulPaintP75': None}
+
+
+def test_cls_spread_is_requested_across_percentiles(monkeypatch, cf_env):
+    """One percentile cannot distinguish a score from a rating; a spread can."""
+    sent = _stub_graphql(monkeypatch, (_ok_payload(), None))
+    seo_audit.collect_web_vitals()
+    for p in (25, 50, 90, 99, 999):
+        assert f'cumulativeLayoutShiftP{p}' in sent[0]

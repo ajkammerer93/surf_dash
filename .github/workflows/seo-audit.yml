@@ -103,6 +103,28 @@ jobs:
               for k, v in hint.items():
                   print(f"::warning::  schema {k}: {v}")
           else:
+              # Until the CLS field's meaning is settled, print the whole
+              # distribution. A score varies smoothly; a per-event rating
+              # interpolated between ranks clusters on -1/0/1. The first run
+              # returned p75=1 for four elements and -1 for others, and a CLS
+              # score cannot be negative, so one percentile cannot decide it.
+              spread = wv.get('cls_spread_7d') or {}
+              if spread:
+                  vals = ' '.join(
+                      f"{k.replace('cumulativeLayoutShift','')}={v}"
+                      for k, v in sorted(spread.items()) if k != 'samples')
+                  print(f"CLS spread 7d (n={spread.get('samples')}): {vals}")
+              # Print the whole CLS distribution until the field's meaning
+              # is settled. A score varies smoothly across percentiles; a
+              # per-event rating pins to -1/0/1 with interpolated fractions
+              # between. The first real run gave p75 = 1 for four elements and
+              # -1 for others, and a CLS score cannot be negative.
+              spread = wv.get('cls_spread_7d') or {}
+              if spread:
+                  vals = ' '.join(
+                      f"{k.replace('cumulativeLayoutShift', '')}={v}"
+                      for k, v in sorted(spread.items()) if k != 'samples')
+                  print(f"CLS spread 7d (n={spread.get('samples')}): {vals}")
               for window in ('sitewide_1d', 'sitewide_7d'):
                   m = wv.get(window) or {}
                   if not m:
