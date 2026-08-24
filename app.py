@@ -709,25 +709,21 @@ def _enrich_wind_from_erddap(forecast, latitude, longitude):
         lat_range = f"({latitude - 0.5}):({latitude + 0.5})"
         lon_range = f"({lon_360 - 0.5}):({lon_360 + 0.5})"
 
-        wind_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                start = datetime.now(timezone.utc).replace(
-                    minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                time_range = f"({start.isoformat()}Z):(last)"
-                wind_json = _fetch_erddap_grid(
-                    server="coastwatch.pfeg.noaa.gov",
-                    dataset="NCEP_Global_Best",
-                    variables=["ugrd10m", "vgrd10m", "tmp2m"],
-                    time_range=time_range,
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    continue
-                raise
+        # This is the path that carries us through an Open-Meteo 429, so it is
+        # the last thing that should be single-homed: on 2026-08-24 the rate
+        # limit and a degraded CoastWatch landed on the same afternoon and the
+        # wind column had nowhere left to go. Small slice, so modest budgets.
+        try:
+            wind_json = _fetch_erddap_grid_chain(
+                GFS_WIND_MIRRORS, (30, 45),
+                variables=["ugrd10m", "vgrd10m", "tmp2m"],
+                lat_range=lat_range,
+                lon_range=lon_range,
+                depth=None,
+                label="Wind enrichment GFS",
+            )
+        except Exception:
+            return
         if not wind_json:
             return
 
@@ -906,11 +902,9 @@ def _get_point_from_erddap(latitude, longitude):
         # step. Sequentially this chain measured 198s during the 2026-07-16
         # outage; in parallel the slower leg dominates (~110s worst case).
         def _fetch_wind_json():
-            wind_servers = [
-                ("coastwatch.pfeg.noaa.gov", 30),
-                ("upwell.pfeg.noaa.gov", 75),
-            ]
-            for server, server_timeout in wind_servers:
+            wind_servers = [(host, dataset, budget) for (host, dataset), budget
+                            in zip(GFS_WIND_MIRRORS, (30, 75))]
+            for server, wind_dataset, server_timeout in wind_servers:
                 for hours_back in [6, 12, 24]:
                     w_now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
                     w_start = w_now.isoformat() + "Z"
@@ -919,7 +913,7 @@ def _get_point_from_erddap(latitude, longitude):
                         logger.info(f"Point forecast: fetching GFS wind from {server}, start={w_start}...")
                         return _fetch_erddap_grid(
                             server=server,
-                            dataset="NCEP_Global_Best",
+                            dataset=wind_dataset,
                             variables=["ugrd10m", "vgrd10m"],
                             time_range=w_range,
                             lat_range=lat_range,
@@ -948,10 +942,11 @@ def _get_point_from_erddap(latitude, longitude):
         # incident (needs the 100s budget) while pae-paha's granule store was
         # pinned at ~100s or 503ing outright. On healthy days both answer in
         # a few seconds, so the ordering costs nothing.
-        wave_servers = [
-            ("upwell.pfeg.noaa.gov", "NWW3_Global_Best", 100),
-            ("pae-paha.pacioos.hawaii.edu", "ww3_global", 45),
-        ]
+        # Same mirrors as the grid endpoints, its own budgets: this is the
+        # LAST wave source in the chain, so a slow success still beats no
+        # forecast and it can afford to wait where the map cannot.
+        wave_servers = [(host, dataset, budget) for (host, dataset), budget
+                        in zip(WW3_WAVE_MIRRORS, (100, 45))]
         wave_json = None
         for server, dataset, server_timeout in wave_servers:
             # Retry with progressively older start times to handle ERDDAP
@@ -1117,6 +1112,87 @@ def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_ra
     response = requests.get(url, timeout=timeout)
     response.raise_for_status()
     return response.json()
+
+
+# The same model, mirrored on independent hosts. Ordered by how they have
+# actually behaved in the outages we have had, not by preference: PacIOOS was
+# the pinned one on 2026-07-16 and again on 2026-08-24, when it took 20s to
+# serve a static index page and never finished a global wave query at all,
+# while upwell answered the same query in under a second. upwell therefore goes
+# first for waves.
+#
+# These live at module scope because the point forecast and both grid endpoints
+# all draw from them. Delisting a bad mirror should be one edit, not four --
+# the reason the swell map died on 2026-08-24 while the point forecast stayed
+# up is that only the point forecast had a chain at all, and the grid paths had
+# PacIOOS hardcoded with nowhere to go.
+WW3_WAVE_MIRRORS = [
+    ("upwell.pfeg.noaa.gov", "NWW3_Global_Best"),
+    ("pae-paha.pacioos.hawaii.edu", "ww3_global"),
+]
+GFS_WIND_MIRRORS = [
+    ("coastwatch.pfeg.noaa.gov", "NCEP_Global_Best"),
+    ("upwell.pfeg.noaa.gov", "NCEP_Global_Best"),
+]
+
+
+def _fetch_erddap_grid_chain(mirrors, timeouts, variables, lat_range, lon_range,
+                             depth, label, time_stride=None,
+                             hours_back_options=(6, 12, 24)):
+    """Fetch a grid from the first mirror in `mirrors` that answers.
+
+    `timeouts` runs parallel to `mirrors` and gives each host its own budget,
+    because the fallback is usually the slower box and a budget tight enough
+    for the healthy one would reject it on arrival.
+
+    Two different failures are being handled here and they need opposite
+    responses. A 404 means this host is fine but has not published the hour we
+    asked for yet, so we walk the start time backwards on the SAME host. A
+    timeout or a connection error means the host itself is no good, so we stop
+    walking and move to the next one -- retrying an older start against a box
+    that is not answering just spends the whole request budget proving it three
+    times.
+
+    Raises the last error if every mirror failed, so the caller sees a real
+    exception rather than a None it has to re-interpret.
+    """
+    last_error = None
+    for (server, dataset), timeout in zip(mirrors, timeouts):
+        for hours_back in hours_back_options:
+            now = datetime.now(timezone.utc).replace(
+                minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
+            t_start = now.isoformat() + "Z"
+            time_range = (f"({t_start}):{time_stride}:(last)" if time_stride
+                          else f"({t_start}):(last)")
+            try:
+                logger.info(f"{label}: fetching from {server}/{dataset}, start={t_start}...")
+                return _fetch_erddap_grid(
+                    server=server,
+                    dataset=dataset,
+                    variables=variables,
+                    time_range=time_range,
+                    lat_range=lat_range,
+                    lon_range=lon_range,
+                    depth=depth,
+                    timeout=timeout,
+                )
+            except requests.exceptions.HTTPError as e:
+                last_error = e
+                code = e.response.status_code if e.response is not None else None
+                if code == 404:
+                    logger.info(f"  404 with start {t_start}, trying an older start...")
+                    continue
+                logger.warning(f"  {label} from {server} failed: HTTP {code or '?'}")
+                break
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = e
+                logger.warning(f"  {label} from {server} failed: {type(e).__name__}")
+                break
+    logger.warning(f"{label}: every mirror failed")
+    if last_error is not None:
+        raise last_error
+    return None
+
 
 def _parse_erddap_to_grids(erddap_json, variable_names):
     """
@@ -1750,59 +1826,32 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
         lat_range = f"({lat_min}):({lat_max})"
         lon_range = f"({lon_min_360}):({lon_max_360})"
 
-        # Retry with progressively older start times to handle ERDDAP model update gaps
-        wave_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                t_start = now.isoformat() + "Z"
-                time_range = f"({t_start}):(last)"
-
-                # Fetch WW3 wave data (native 0.5° resolution)
-                logger.info(f"Grid forecast: fetching WW3 waves for ({lat_min},{lon_min}) to ({lat_max},{lon_max}), start={t_start}...")
-                wave_json = _fetch_erddap_grid(
-                    server="pae-paha.pacioos.hawaii.edu",
-                    dataset="ww3_global",
-                    variables=["Thgt", "Tper", "Tdir"],
-                    time_range=time_range,
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=0
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
-                    continue
-                raise
+        # Budget arithmetic matters here, because this runs sequentially with
+        # the wind fetch below and gunicorn cuts the request at 180s: waves
+        # 55+40 plus wind 30+40 is 165s worst case, and that only happens when
+        # all four mirrors are dead, in which case the panel was lost anyway.
+        # Give a chain more than the worker budget and one degraded mirror
+        # stops being a slow panel and starts being a killed worker.
+        wave_json = _fetch_erddap_grid_chain(
+            WW3_WAVE_MIRRORS, (55, 40),
+            variables=["Thgt", "Tper", "Tdir"],
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=0,
+            label=f"Grid forecast WW3 waves ({lat_min},{lon_min})-({lat_max},{lon_max})",
+        )
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
         wave_dts = [_parse_erddap_time(t) for t in wave['times']]
         logger.info(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
 
-        # Fetch GFS wind data (also retry on 404)
-        wind_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                t_start = now.isoformat() + "Z"
-                time_range = f"({t_start}):(last)"
-
-                logger.info(f"Grid forecast: fetching GFS wind, start={t_start}...")
-                wind_json = _fetch_erddap_grid(
-                    server="coastwatch.pfeg.noaa.gov",
-                    dataset="NCEP_Global_Best",
-                    variables=["ugrd10m", "vgrd10m"],
-                    time_range=time_range,
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=None
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
-                    continue
-                raise
+        wind_json = _fetch_erddap_grid_chain(
+            GFS_WIND_MIRRORS, (30, 40),
+            variables=["ugrd10m", "vgrd10m"],
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=None,
+            label="Grid forecast GFS wind",
+        )
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
         logger.info(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
 
@@ -5083,28 +5132,22 @@ def get_ocean_basin_data():
     # --- Fetch WW3 wave data (required) ---
     # Retry with progressively older start times to handle ERDDAP model update gaps
     try:
-        wave_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                t_start = now.isoformat() + "Z"
-
-                logger.info(f"Fetching global wave data from ERDDAP (WW3), start={t_start}...")
-                wave_json = _fetch_erddap_grid(
-                    server="pae-paha.pacioos.hawaii.edu",
-                    dataset="ww3_global",
-                    variables=["Thgt", "Tper", "Tdir"],
-                    time_range=f"({t_start}):{time_stride}:(last)",
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=0
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 with start {t_start}, retrying with older start...")
-                    continue
-                raise
+        # This slice is global rather than a local patch, so it is the heaviest
+        # request the app makes and the mirrors are given more room than the
+        # local grid gets. Same 180s worker ceiling though: 70+50 for waves and
+        # 35+45 for wind is 200s if every mirror times out, which is over
+        # budget on paper -- acceptable only because wind below is optional and
+        # skipped entirely once waves have failed, so the real all-dead path is
+        # the 120s wave chain and then a return.
+        wave_json = _fetch_erddap_grid_chain(
+            WW3_WAVE_MIRRORS, (70, 50),
+            variables=["Thgt", "Tper", "Tdir"],
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=0,
+            time_stride=time_stride,
+            label="Ocean basin WW3 waves (global)",
+        )
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
         logger.info(f"  Wave data: {len(wave['times'])} times, {len(wave['lats'])}x{len(wave['lons'])} grid")
     except Exception as e:
@@ -5115,28 +5158,15 @@ def get_ocean_basin_data():
     # --- Fetch GFS wind data (optional — degrade gracefully) ---
     wind = None
     try:
-        wind_json = None
-        for hours_back in [6, 12, 24]:
-            try:
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None) - timedelta(hours=hours_back)
-                t_start = now.isoformat() + "Z"
-
-                logger.info(f"Fetching global wind data from ERDDAP (GFS), start={t_start}...")
-                wind_json = _fetch_erddap_grid(
-                    server="coastwatch.pfeg.noaa.gov",
-                    dataset="NCEP_Global_Best",
-                    variables=["ugrd10m", "vgrd10m"],
-                    time_range=f"({t_start}):{time_stride}:(last)",
-                    lat_range=lat_range,
-                    lon_range=lon_range,
-                    depth=None
-                )
-                break
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404 and hours_back < 24:
-                    logger.info(f"  ERDDAP 404 for wind with start {t_start}, retrying with older start...")
-                    continue
-                raise
+        wind_json = _fetch_erddap_grid_chain(
+            GFS_WIND_MIRRORS, (35, 45),
+            variables=["ugrd10m", "vgrd10m"],
+            lat_range=lat_range,
+            lon_range=lon_range,
+            depth=None,
+            time_stride=time_stride,
+            label="Ocean basin GFS wind (global)",
+        )
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
         logger.info(f"  Wind data: {len(wind['times'])} times, {len(wind['lats'])}x{len(wind['lons'])} grid")
     except Exception as e:
@@ -5808,6 +5838,17 @@ def health_upstreams():
     Diagnostic endpoint for incidents: rate limits and egress problems are
     per-IP, so what fails from Render often works from a dev machine and
     vice versa. Cheap probes (~1KB responses, 8s timeouts), cached 60s.
+
+    The ERDDAP probes ask for dataset metadata rather than griddap's
+    time[(last)]. They used to ask for the latter, and it is not a cheap
+    query: on 2026-08-24 CoastWatch answered it in 47.8s while serving its
+    index page in 0.55s and a full global wind grid in 108s. Against an 8s
+    budget that reported ReadTimeout for a server that was up and returning
+    data, so the page called a three-server outage when one mirror was slow
+    and the other two were fine -- and the one number you look at during an
+    incident was the one actively misleading you. The info endpoint answers
+    in well under a second on a healthy host and still takes 17s on a
+    degraded one, so it separates them without the false alarm.
     """
     def _probe_all():
         probes = {
@@ -5822,13 +5863,13 @@ def health_upstreams():
                         'hourly': 'wind_speed_10m', 'forecast_days': 1},
                 timeout=8),
             'erddap-pacioos-ww3': lambda: requests.get(
-                'https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ww3_global.json?time[(last)]',
+                'https://pae-paha.pacioos.hawaii.edu/erddap/info/ww3_global/index.json',
                 timeout=8),
             'erddap-upwell-ww3': lambda: requests.get(
-                'https://upwell.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json?time[(last)]',
+                'https://upwell.pfeg.noaa.gov/erddap/info/NWW3_Global_Best/index.json',
                 timeout=8),
             'erddap-coastwatch-gfs': lambda: requests.get(
-                'https://coastwatch.pfeg.noaa.gov/erddap/griddap/NCEP_Global_Best.json?time[(last)]',
+                'https://coastwatch.pfeg.noaa.gov/erddap/info/NCEP_Global_Best/index.json',
                 timeout=8),
         }
         results = {}
