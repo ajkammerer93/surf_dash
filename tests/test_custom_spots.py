@@ -314,37 +314,47 @@ class TestDistantTideStation:
         surf_app._cache_key_locks.clear()
 
     def test_far_station_not_reported_as_the_station(self, client, monkeypatch):
-        monkeypatch.setattr(surf_app, 'find_nearest_tide_station', lambda lat, lon: {
+        monkeypatch.setattr(surf_app, 'find_nearest_tide_stations',
+                            lambda lat, lon, limit=None: [{
             'id': '1234567', 'name': 'Djakarta, Java',
             'lat': 6.1, 'lon': 106.8, 'distance_km': 1169.0,
-        })
+        }])
         data = client.get('/api/tides', query_string=BALI).get_json()
         assert data['non_tidal'] is True
         assert data['station'] is None
         assert 'Djakarta' not in json.dumps(data)
 
     def test_distance_kept_as_diagnostic(self, client, monkeypatch):
-        monkeypatch.setattr(surf_app, 'find_nearest_tide_station', lambda lat, lon: {
+        monkeypatch.setattr(surf_app, 'find_nearest_tide_stations',
+                            lambda lat, lon, limit=None: [{
             'id': '1234567', 'name': 'Djakarta, Java',
             'lat': 6.1, 'lon': 106.8, 'distance_km': 1169.0,
-        })
+        }])
         data = client.get('/api/tides', query_string=BALI).get_json()
         assert data['nearest_station_km'] == 1169.0
 
     def test_non_tidal_payload_shape_unchanged_for_frontend(self, client, monkeypatch):
         """loadTideData() reads non_tidal/hourly/high_low and never station."""
-        monkeypatch.setattr(surf_app, 'find_nearest_tide_station', lambda lat, lon: {
+        monkeypatch.setattr(surf_app, 'find_nearest_tide_stations',
+                            lambda lat, lon, limit=None: [{
             'id': '1234567', 'name': 'Djakarta, Java',
             'lat': 6.1, 'lon': 106.8, 'distance_km': 1169.0,
-        })
+        }])
         data = client.get('/api/tides', query_string=BALI).get_json()
         assert data['hourly'] == []
         assert data['high_low'] == []
 
+    # These patch find_nearest_tide_stations (plural), which is what the route
+    # calls. They previously patched the singular helper; when the route moved
+    # to the ranked version the patch became a no-op and the tests silently
+    # went to the live NOAA API instead. Two of them still passed, which is the
+    # part worth remembering -- a test that passes for the wrong reason is
+    # indistinguishable from one that works.
     def test_nearby_station_still_reported(self, client, monkeypatch):
         station = {'id': '8658163', 'name': 'Wrightsville Beach',
                    'lat': 34.21, 'lon': -77.79, 'distance_km': 12.4}
-        monkeypatch.setattr(surf_app, 'find_nearest_tide_station', lambda lat, lon: station)
+        monkeypatch.setattr(surf_app, 'find_nearest_tide_stations',
+                            lambda lat, lon, limit=None: [station])
         monkeypatch.setattr(surf_app, 'get_tide_data', lambda sid: {
             'hourly': [{'time': '2026-01-01T00:00:00', 'height': 1.0}],
             'high_low': [],
@@ -358,7 +368,8 @@ class TestDistantTideStation:
         station = {'id': '8658163', 'name': 'Edge Station',
                    'lat': 34.21, 'lon': -77.79,
                    'distance_km': float(surf_app.NON_TIDAL_STATION_KM)}
-        monkeypatch.setattr(surf_app, 'find_nearest_tide_station', lambda lat, lon: station)
+        monkeypatch.setattr(surf_app, 'find_nearest_tide_stations',
+                            lambda lat, lon, limit=None: [station])
         monkeypatch.setattr(surf_app, 'get_tide_data', lambda sid: {
             'hourly': [], 'high_low': [],
         })
