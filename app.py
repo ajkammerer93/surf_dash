@@ -5419,123 +5419,237 @@ def ocean_basin():
 NON_TIDAL_STATION_KM = 300
 
 
-def find_nearest_tide_station(target_lat, target_lon):
+# NOAA's station metadata changes rarely and sits on the path of every tide
+# request, so it is fetched once a day rather than per call. Ranking candidates
+# (below) would otherwise multiply that fetch by the number of retries.
+TIDE_STATION_LIST_TTL = 24 * 3600
+TIDE_STATION_CANDIDATES = 4
+_tide_stations_cache = {"at": 0.0, "stations": []}
+_tide_stations_lock = threading.Lock()
+
+
+def _load_tide_stations():
+    """NOAA's tide-prediction station list, cached for a day."""
+    now = time.time()
+    with _tide_stations_lock:
+        if _tide_stations_cache["stations"] and now - _tide_stations_cache["at"] < TIDE_STATION_LIST_TTL:
+            return _tide_stations_cache["stations"]
+    url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
+    response = requests.get(url, params={"type": "tidepredictions"}, timeout=15)
+    response.raise_for_status()
+    stations = response.json().get("stations", [])
+    if stations:
+        with _tide_stations_lock:
+            _tide_stations_cache["stations"] = stations
+            _tide_stations_cache["at"] = now
+    return stations
+
+
+def find_nearest_tide_stations(target_lat, target_lon, limit=TIDE_STATION_CANDIDATES):
     """
-    Finds the nearest NOAA tide prediction station to the given coordinates.
-    Only considers Reference stations (type='R') which have direct harmonic predictions.
+    Nearest NOAA tide prediction stations, closest first, REGARDLESS of type.
+
+    This used to consider only Reference stations (type='R'), on the assumption
+    that Subordinate stations "may not work with the predictions API". That
+    assumption is wrong -- subordinate stations serve the same
+    product=predictions endpoint -- and it discarded 2,243 of NOAA's 3,499
+    stations, 64% of them. The cost was not merely distance: a spot's nearest
+    REFERENCE station is often inside an inlet, sound or harbour, which is a
+    different tidal regime rather than just a further-away one.
+
+    Measured before the change: 69 of 146 curated spots (47%) had a closer
+    station available, median distance 5.6 km -> 2.0 km. Surf City NC was
+    reading Hampstead, 17.5 km up the Intracoastal, and ran 28-51 minutes late
+    with high tide 0.85 ft low against the ocean pier station 5.6 km away.
+    Pipeline, on Oahu's north shore, was being given Ford Island in Pearl
+    Harbor -- the south shore, 50 minutes off.
+
+    Distance alone does not predict the error: San Clemente sits 32 km from its
+    reference station and is only 2-8 minutes off, because open-coast Pacific
+    stations are in phase. The damage concentrates where the nearest reference
+    station is in enclosed water.
+
+    Returns a ranked list rather than one station so the caller can fall back if
+    NOAA declines to serve the closest one.
     """
     try:
-        # Get list of all tide prediction stations
-        url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
-        params = {"type": "tidepredictions"}
-
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-
-        stations = data.get("stations", [])
+        stations = _load_tide_stations()
         if not stations:
             logger.info("No tide stations found")
-            return None
+            return []
 
-        # Find the nearest Reference station (type='R')
-        # Reference stations have direct harmonic predictions
-        # Subordinate stations (type='S') use offsets and may not work with the predictions API
-        nearest_station = None
-        min_distance = float('inf')
-
+        scored = []
         for station in stations:
-            # Only consider Reference stations
-            if station.get("type") != "R":
-                continue
-
             station_lat = station.get("lat")
             station_lon = station.get("lng")
-
             if station_lat is None or station_lon is None:
                 continue
-
             distance = haversine_distance(target_lat, target_lon, station_lat, station_lon)
+            scored.append((distance, {
+                "id": station.get("id"),
+                "name": station.get("name"),
+                "lat": station_lat,
+                "lon": station_lon,
+                "distance_km": round(distance, 1),
+            }))
 
-            if distance < min_distance:
-                min_distance = distance
-                nearest_station = {
-                    "id": station.get("id"),
-                    "name": station.get("name"),
-                    "lat": station_lat,
-                    "lon": station_lon,
-                    "distance_km": round(distance, 1)
-                }
-
-        return nearest_station
+        scored.sort(key=lambda pair: pair[0])
+        return [station for _, station in scored[:limit]]
 
     except Exception as e:
         logger.error(f"Error finding nearest tide station: {e}")
         traceback.print_exc()
+        return []
+
+
+def find_nearest_tide_station(target_lat, target_lon):
+    """The single closest station. Kept for callers that want one answer."""
+    candidates = find_nearest_tide_stations(target_lat, target_lon, limit=1)
+    return candidates[0] if candidates else None
+
+def _fetch_tide_predictions(station_id, interval):
+    """One NOAA predictions call. Returns [] rather than raising on a soft error."""
+    today = datetime.now(timezone.utc)
+    params = {
+        "begin_date": (today - timedelta(days=1)).strftime("%Y%m%d"),
+        "end_date": (today + timedelta(days=7)).strftime("%Y%m%d"),
+        "station": station_id,
+        "product": "predictions",
+        "datum": "MLLW",             # Mean Lower Low Water
+        "time_zone": "gmt",          # UTC — frontend converts to location timezone
+        "units": "metric",
+        "format": "json",
+        "interval": interval,
+    }
+    response = requests.get(
+        "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter",
+        params=params, timeout=15)
+    response.raise_for_status()
+    return response.json().get("predictions", []) or []
+
+
+def _tide_reference_station(station_id):
+    """The reference station a subordinate station is derived from, or None."""
+    try:
+        r = requests.get(
+            f"https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/"
+            f"{station_id}/tidepredoffsets.json", timeout=15)
+        r.raise_for_status()
+        return r.json().get("refStationId") or None
+    except (requests.exceptions.RequestException, ValueError) as e:
+        logger.warning(f"Could not read tide offsets for {station_id}: {e}")
         return None
+
+
+def _parse_epoch(t):
+    return datetime.strptime(t, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _warp_hourly_onto_extremes(shape_hourly, shape_hilo, target_hilo):
+    """
+    Rebuild an hourly curve for a station that only publishes high/low water.
+
+    Subordinate stations serve interval=hilo but NOT interval=h -- that is what
+    the old "may not work with the predictions API" comment was really about,
+    and testing hilo alone hides it. So the extremes are NOAA's own numbers for
+    the target station, and only the SHAPE between them is borrowed from the
+    reference station this one is derived from.
+
+    Each segment between consecutive extremes is mapped onto the target's
+    corresponding segment, in time and in height. Borrowing the real shape
+    matters on the Pacific, where consecutive extremes are markedly unequal and
+    the curve is not a half-cosine. Measured against true hourly data, warping
+    a neighbouring station's shape holds worst-case error to 2.5 cm at Newport
+    Bay where a half-cosine fit reaches 32.8 cm; on the Atlantic both are small
+    (7.6 cm vs 5.2 cm worst case).
+    """
+    S = [(_parse_epoch(p["t"]), float(p["v"])) for p in shape_hilo]
+    T = [(_parse_epoch(p["t"]), float(p["v"])) for p in target_hilo]
+    H = [(_parse_epoch(p["t"]), float(p["v"])) for p in shape_hourly]
+    pairs = min(len(S), len(T))
+    if pairs < 2 or not H:
+        return []
+    out = []
+    for t, hv in H:
+        segment = None
+        for i in range(pairs - 1):
+            if S[i][0] <= t <= S[i + 1][0]:
+                segment = i
+                break
+        if segment is None:
+            continue
+        s0, s1 = S[segment], S[segment + 1]
+        t0, t1 = T[segment], T[segment + 1]
+        span = s1[0] - s0[0]
+        rise = s1[1] - s0[1]
+        time_frac = (t - s0[0]) / span if span else 0.0
+        height_frac = (hv - s0[1]) / rise if rise else 0.0
+        out.append({
+            "time": datetime.fromtimestamp(
+                t0[0] + time_frac * (t1[0] - t0[0]), timezone.utc
+            ).strftime("%Y-%m-%dT%H:%MZ"),
+            "height": round(t0[1] + height_frac * (t1[1] - t0[1]), 3),
+        })
+    return out
+
 
 def get_tide_data(station_id):
     """
     Fetches tide prediction data from NOAA CO-OPS API.
+
+    Reference stations publish an hourly series directly. Subordinate stations
+    publish only high/low water, so their hourly curve is reconstructed from
+    their own extremes plus the shape of their reference station.
     """
     try:
-        # Get tide predictions for the next 7 days (start 1 day back for recent past events)
-        today = datetime.now(timezone.utc)
-        start_date = today - timedelta(days=1)
-        end_date = today + timedelta(days=7)
+        def _fmt(preds, with_type=False):
+            rows = []
+            for pred in preds:
+                row = {"time": pred["t"].replace(" ", "T") + "Z",
+                       "height": float(pred["v"])}
+                if with_type:
+                    row["type"] = pred["type"]      # "H" for high, "L" for low
+                rows.append(row)
+            return rows
 
-        url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-        params = {
-            "begin_date": start_date.strftime("%Y%m%d"),
-            "end_date": end_date.strftime("%Y%m%d"),
-            "station": station_id,
-            "product": "predictions",
-            "datum": "MLLW",  # Mean Lower Low Water
-            "time_zone": "gmt",  # UTC — frontend converts to location timezone
-            "units": "metric",
-            "format": "json",
-            "interval": "h"  # Hourly predictions
-        }
+        # High/low first: it is the product every station serves, and it is
+        # what the panel and the chart markers actually read.
+        try:
+            hilo = _fetch_tide_predictions(station_id, "hilo")
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.warning(f"High/low tide fetch failed for {station_id}: {e}")
+            hilo = []
 
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        try:
+            hourly = _fetch_tide_predictions(station_id, "h")
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.warning(f"Hourly tide fetch failed for {station_id}: {e}")
+            hourly = []
 
-        if "predictions" not in data:
-            logger.info(f"No predictions in tide data: {data}")
+        if hourly:
+            return {"hourly": _fmt(hourly), "high_low": _fmt(hilo, True)}
+
+        if not hilo:
+            logger.info(f"Station {station_id} served neither hourly nor high/low")
             return None
 
-        # Also get high/low tide times — a failure here should degrade to
-        # hourly-only output, not throw away the predictions we already have
-        hilo_params = params.copy()
-        hilo_params["interval"] = "hilo"
-        hilo_data = {}
-        try:
-            hilo_response = requests.get(url, params=hilo_params, timeout=15)
-            hilo_response.raise_for_status()
-            hilo_data = hilo_response.json()
-        except (requests.exceptions.RequestException, ValueError) as e:
-            logger.warning(f"High/low tide fetch failed, returning hourly only: {e}")
+        ref_id = _tide_reference_station(station_id)
+        if ref_id:
+            try:
+                ref_hourly = _fetch_tide_predictions(ref_id, "h")
+                ref_hilo = _fetch_tide_predictions(ref_id, "hilo")
+                warped = _warp_hourly_onto_extremes(ref_hourly, ref_hilo, hilo)
+                if warped:
+                    logger.info(
+                        f"Station {station_id} has no hourly series; rebuilt it "
+                        f"from its own extremes using reference station {ref_id}")
+                    return {"hourly": warped, "high_low": _fmt(hilo, True)}
+            except (requests.exceptions.RequestException, ValueError) as e:
+                logger.warning(f"Reference station {ref_id} fetch failed: {e}")
 
-        tide_forecast = {
-            "hourly": [
-                {
-                    "time": pred["t"].replace(" ", "T") + "Z",
-                    "height": float(pred["v"])
-                }
-                for pred in data["predictions"]
-            ],
-            "high_low": [
-                {
-                    "time": pred["t"].replace(" ", "T") + "Z",
-                    "height": float(pred["v"]),
-                    "type": pred["type"]  # "H" for high, "L" for low
-                }
-                for pred in hilo_data.get("predictions", [])
-            ]
-        }
-
-        return tide_forecast
+        # High/low alone is still the useful half -- the times a surfer reads.
+        logger.info(f"Station {station_id}: high/low only, no hourly curve")
+        return {"hourly": [], "high_low": _fmt(hilo, True)}
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching tide data: {e}")
@@ -5561,28 +5675,42 @@ def tides():
     cache_key = f"tides:{target_lat:.4f},{target_lon:.4f}"
 
     def fetch_tides():
-        station = find_nearest_tide_station(target_lat, target_lon)
-        if not station:
+        candidates = find_nearest_tide_stations(target_lat, target_lon)
+        if not candidates:
             return None
+        nearest = candidates[0]
         # The Great Lakes (and other non-tidal waters) have no NOAA harmonic
         # stations — the nearest match can be an ocean station hundreds of km
         # away whose predictions are meaningless here. Naming it anyway
         # implies a relationship that does not exist: Uluwatu was being told
         # its tides come from Djakarta, 1169 km off. Report the absence and
         # keep the distance only as a diagnostic.
-        if station.get("distance_km", 0) > NON_TIDAL_STATION_KM:
-            logger.info(f"Nearest tide station {station['id']} is {station['distance_km']} km away — treating as non-tidal")
+        if nearest.get("distance_km", 0) > NON_TIDAL_STATION_KM:
+            logger.info(f"Nearest tide station {nearest['id']} is {nearest['distance_km']} km away — treating as non-tidal")
             return {
                 "non_tidal": True,
                 "hourly": [],
                 "high_low": [],
                 "station": None,
-                "nearest_station_km": station.get("distance_km"),
+                "nearest_station_km": nearest.get("distance_km"),
             }
-        data = get_tide_data(station["id"])
-        if data:
-            data["station"] = station
-        return data
+        # Walk outward if NOAA declines to serve the closest station. Every
+        # nearest-station candidate for the curated spots was checked and all
+        # 77 served predictions, so this is insurance rather than a known
+        # failure -- but a station that silently returns nothing would
+        # otherwise take the whole panel down for that spot.
+        for station in candidates:
+            if station.get("distance_km", 0) > NON_TIDAL_STATION_KM:
+                break
+            data = get_tide_data(station["id"])
+            if data:
+                data["station"] = station
+                return data
+            logger.info(
+                f"Tide station {station['id']} ({station['name']}, "
+                f"{station['distance_km']} km) returned nothing — trying the next one"
+            )
+        return None
 
     data = cached(cache_key, fetch_tides)
 

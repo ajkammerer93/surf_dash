@@ -137,14 +137,22 @@ class TestCachedHelper:
 
 
 class TestTideDataDegradation:
+    """Tide fetch degrades in the order the panel actually needs.
+
+    The call order is high/low FIRST, then hourly. That is deliberate: high/low
+    is the product every NOAA station serves and the times a surfer reads,
+    while subordinate stations serve no hourly series at all. An hourly failure
+    is therefore no longer fatal -- the curve gets rebuilt from the extremes,
+    or is dropped while the extremes survive.
+    """
     HOURLY = {'predictions': [{'t': '2026-06-10 00:00', 'v': '0.51'}]}
     HILO = {'predictions': [{'t': '2026-06-10 03:12', 'v': '1.21', 'type': 'H'}]}
 
     @patch('app.requests.get')
     def test_full_success(self, mock_get):
         mock_get.side_effect = [
-            make_response(200, json_data=self.HOURLY),
             make_response(200, json_data=self.HILO),
+            make_response(200, json_data=self.HOURLY),
         ]
         data = get_tide_data('8658163')
         assert len(data['hourly']) == 1
@@ -153,8 +161,8 @@ class TestTideDataDegradation:
     @patch('app.requests.get')
     def test_hilo_http_error_degrades_to_hourly_only(self, mock_get):
         mock_get.side_effect = [
-            make_response(200, json_data=self.HOURLY),
             make_response(503),
+            make_response(200, json_data=self.HOURLY),
         ]
         data = get_tide_data('8658163')
         assert data is not None
@@ -164,21 +172,35 @@ class TestTideDataDegradation:
     @patch('app.requests.get')
     def test_hilo_timeout_degrades_to_hourly_only(self, mock_get):
         mock_get.side_effect = [
-            make_response(200, json_data=self.HOURLY),
             requests.Timeout('slow'),
+            make_response(200, json_data=self.HOURLY),
         ]
         data = get_tide_data('8658163')
         assert data is not None
         assert data['high_low'] == []
 
+    @patch('app._tide_reference_station', lambda sid: None)
     @patch('app.requests.get')
-    def test_hourly_failure_returns_none(self, mock_get):
-        mock_get.side_effect = [make_response(500)]
+    def test_hourly_failure_keeps_the_high_low_times(self, mock_get):
+        """The regression this guards: an hourly 500 used to bin the extremes."""
+        mock_get.side_effect = [
+            make_response(200, json_data=self.HILO),
+            make_response(500),
+        ]
+        data = get_tide_data('8658163')
+        assert data is not None
+        assert data['hourly'] == []
+        assert data['high_low'][0]['type'] == 'H'
+
+    @patch('app.requests.get')
+    def test_both_products_failing_returns_none(self, mock_get):
+        mock_get.side_effect = [make_response(500), make_response(500)]
         assert get_tide_data('8658163') is None
 
     @patch('app.requests.get')
     def test_missing_predictions_returns_none(self, mock_get):
         mock_get.side_effect = [
+            make_response(200, json_data={'error': 'station not found'}),
             make_response(200, json_data={'error': 'station not found'}),
         ]
         assert get_tide_data('0000000') is None
