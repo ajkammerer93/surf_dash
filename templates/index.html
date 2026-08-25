@@ -5173,6 +5173,9 @@
         // === Unified Map Data Globals ===
         let basinGridData = null;
         let localGridData = null;
+        // Basin wind arrives separately and only if the user zooms out far
+        // enough to need it -- see loadBasinWind().
+        let basinWindPending = false;
 
         // === Persistent rectangle/marker caches for slider reuse ===
 
@@ -6488,6 +6491,7 @@
 
             basinDataReady = false;
             localDataReady = false;
+            basinWindPending = false;
             basinRendered = false;
             localRendered = false;
             // Reset session planner state
@@ -7626,11 +7630,44 @@
             }
         }
 
+        // Map a slider position onto the frame of another grid by TIME rather
+        // than by index. The two grids are fetched independently and each walks
+        // its own start time backwards when a mirror 404s, so their axes can
+        // begin an hour or three apart even though both are 3-hourly. Matching
+        // on the index assumes an alignment nobody enforces; matching on the
+        // timestamp is true whatever the upstreams did.
+        //
+        // This is the defence that was missing: the local grid used to come back
+        // hourly against the basin's 3-hourly, so slider position i drew hour i
+        // locally and hour 3i on the basin, and the badge showed the local time
+        // for both. The server now emits one stride for both grids, and this
+        // keeps that from mattering again.
+        function frameIndexForTime(times, targetIso) {
+            if (!times || !times.length) return 0;
+            if (!targetIso) return 0;
+            const target = Date.parse(targetIso);
+            if (isNaN(target)) return 0;
+            let best = 0;
+            let bestGap = Infinity;
+            for (let i = 0; i < times.length; i++) {
+                const gap = Math.abs(Date.parse(times[i]) - target);
+                if (gap < bestGap) { bestGap = gap; best = i; }
+            }
+            return best;
+        }
+
+        // The slider's authoritative clock: whichever grid drives slider.max.
+        function sliderTimeIso(timeIndex) {
+            const times = (localGridData && localGridData.times) ||
+                          (basinGridData && basinGridData.times);
+            return times && times[timeIndex] ? times[timeIndex] : null;
+        }
+
         function buildVelocityData(timeIndex, gridData) {
             if (!gridData || !gridData.wind_speed) return null;
             const lats = gridData.lats;
             const lons = gridData.lons;
-            const bTimeIndex = Math.min(timeIndex, gridData.times.length - 1);
+            const bTimeIndex = frameIndexForTime(gridData.times, sliderTimeIso(timeIndex));
             const nx = lons.length;
             const ny = lats.length;
             const lo1 = lons[0];
@@ -7667,6 +7704,40 @@
             ];
         }
 
+        // Fetch the global wind grids, once, the first time something actually
+        // needs them. They are two thirds of the basin payload and they only
+        // drive the particle animation while zoomed out past SWELL_LOCAL_ZOOM --
+        // the map opens at zoom 8, where local wind drives the particles, so for
+        // most visits this request never happens at all.
+        //
+        // Served from the same cache entry and the same upstream fetch as the
+        // wave grids, so the extra request costs the origin nothing beyond
+        // serialising a slice it already holds in memory.
+        function loadBasinWind() {
+            if (basinWindPending || !basinGridData || basinGridData.wind_speed) return;
+            basinWindPending = true;
+            const params = new URLSearchParams({
+                lat: currentLocation.lat, lon: currentLocation.lon, wind: '1'
+            });
+            fetch(`/api/ocean-basin?${params}`)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(staleGuard(function(data) {
+                    basinWindPending = false;
+                    // staleGuard covers a location change; this covers the case
+                    // where the basin object itself was replaced mid-flight.
+                    if (!data || !data.wind_speed || !basinGridData) return;
+                    basinGridData.wind_speed = data.wind_speed;
+                    basinGridData.wind_direction = data.wind_direction;
+                    const slider = document.getElementById('time-slider');
+                    updateSwellVelocity(slider ? (parseInt(slider.value) || 0) : 0, true);
+                }))
+                .catch(staleGuard(function() {
+                    // Particles are decorative. A failure here leaves the map as
+                    // it is rather than surfacing an error nobody can act on.
+                    basinWindPending = false;
+                }));
+        }
+
         function updateSwellVelocity(timeIndex, visible) {
             if (!mapSwell) return;
             if (!visible) {
@@ -7681,6 +7752,10 @@
             const localMode = mapSwell.getZoom() >= SWELL_LOCAL_ZOOM;
             const source = (localMode && localGridData) ? localGridData : basinGridData;
             const sourceName = source === localGridData ? 'local' : 'basin';
+            if (source === basinGridData && basinGridData && !basinGridData.wind_speed) {
+                loadBasinWind();  // re-enters this function when it lands
+                return;
+            }
             const velocityData = buildVelocityData(timeIndex, source);
             if (!velocityData) return;
             if (basinVelocityLayer && basinVelocityLayer._fsfSource !== sourceName) {
@@ -7984,7 +8059,7 @@
             // --- Basin (global) layers ---
             if (basinGridData) {
                 const bLats = basinGridData.lats;
-                const t = Math.min(timeIndex, basinGridData.times.length - 1);
+                const t = frameIndexForTime(basinGridData.times, sliderTimeIso(timeIndex));
                 if (!basinLonOrder) {
                     basinLonOrder = lonColumnOrder(basinGridData.lons);
                     basinLonsSorted = basinLonOrder.map(function(j) {
@@ -8239,6 +8314,7 @@
             clearRasterCache();
             basinDataReady = false;
             localDataReady = false;
+            basinWindPending = false;
             basinRendered = false;
             localRendered = false;
 
