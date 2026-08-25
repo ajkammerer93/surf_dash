@@ -438,3 +438,47 @@ class TestStaleForecastFallback:
         resp = client.get('/api/forecast?lat=43.5&lon=-68.5')
         assert resp.status_code == 500
         surf_app._cache.pop(key, None)
+
+
+class TestWindEnrichmentBudget:
+    """The wind fallback must stay cheap enough to run inside a request.
+
+    On 2026-08-25 it did not. Open-Meteo's weather API rate-limits per IP and
+    Render's shared egress sits over that limit chronically, so the ERDDAP
+    fallback was not a rare incident path -- it ran on every cold forecast.
+    With per-host budgets of (30, 45) a cold /api/forecast took 97.8 seconds,
+    and with one worker and eight threads, eight cold requests took the whole
+    site down: Render's router returned 502 for everything, including /healthz,
+    which performs no I/O.
+
+    Wind is enrichment. Waves, tides and scoring have already succeeded before
+    this runs.
+    """
+
+    def test_budget_is_bounded(self):
+        total = sum(surf_app.WIND_ENRICHMENT_TIMEOUTS)
+        assert total <= 25, (
+            f"wind enrichment worst case is {total}s across "
+            f"{len(surf_app.WIND_ENRICHMENT_TIMEOUTS)} hosts — at 8 threads this "
+            f"is how the site went down")
+
+    def test_budget_is_smaller_than_the_grid_endpoints(self):
+        """It runs inside a user request; the grid endpoints do not."""
+        assert max(surf_app.WIND_ENRICHMENT_TIMEOUTS) < 30
+
+    def test_one_timeout_per_host_not_three(self):
+        """hours_back walking multiplies the budget by the number of options."""
+        import inspect
+        src = inspect.getsource(surf_app._enrich_wind_from_erddap)
+        assert 'hours_back_options=(6,)' in src, (
+            "the enrichment chain must not walk the clock back on a host that "
+            "is already timing out — that multiplies the worst case")
+
+    def test_enrichment_failure_leaves_the_forecast_intact(self, monkeypatch):
+        """A miss here must cost the wind column, never the forecast."""
+        def boom(*a, **kw):
+            raise requests.Timeout('erddap slow')
+        monkeypatch.setattr(surf_app, '_fetch_erddap_grid_chain', boom)
+        forecast = [{'time': '2026-08-25T12:00', 'wave_height': 1.0}]
+        surf_app._enrich_wind_from_erddap(forecast, 34.43, -77.55)
+        assert forecast[0]['wave_height'] == 1.0
