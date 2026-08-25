@@ -1,0 +1,75 @@
+name: Wave artifacts
+
+# Decodes NOAA gfswave.global.0p25 grib2 (NODD S3) into compact npz artifacts
+# on the orphan wave-data branch, which the app syncs into RAM and serves.
+#
+# Why this exists: on 2026-08-25 NOAA consolidated the West Coast ERDDAP
+# family into redirect shims and every model query the site depends on landed
+# on one degraded server (~55s for a 1.5 KB answer). The site 502'd. The same
+# model publishes to S3 within hours of each cycle and downloads in fractions
+# of a second; grib decoding is the only hard part, and it happens HERE so the
+# web process needs no grib dependencies at all.
+#
+# Publishing deviates from the verification-data pattern deliberately: this
+# branch is FORCE-PUSHED as a single fresh commit each build. Appending would
+# grow git history by ~160 MB/day (4 builds x ~40 MB); nothing consumes the
+# history, only the tip.
+#
+# Hourly cron, but only ~4 real builds/day: the script exits early when the
+# manifest already names the newest complete cycle. Wave model cycles land
+# ~4-5h after 00/06/12/18Z.
+#
+# Authorship: anything this workflow writes to GitHub is authored in the
+# repository owner's voice. No tooling, automation or assistant is named in a
+# commit message, branch, or artifact.
+
+on:
+  schedule:
+    - cron: '25 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wave-artifacts
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the data branch (tolerating its absence)
+        run: |
+          if git fetch origin wave-data 2>/dev/null; then
+            git worktree add wdata origin/wave-data
+          else
+            mkdir wdata
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install numpy eccodes
+
+      - name: Build artifacts for the newest complete cycle
+        run: python scripts/build_wave_artifacts.py --out wdata | tee /tmp/build.txt
+
+      - name: Publish as a single fresh commit
+        run: |
+          if ! grep -q "wrote basin.npz" /tmp/build.txt; then
+            echo "no new cycle -- nothing to publish"
+            exit 0
+          fi
+          cd wdata
+          rm -rf .git
+          git init -q -b wave-data
+          git config user.name  "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Wave artifacts: $(python3 -c "import json;print(json.load(open('manifest.json'))['cycle'])")"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" wave-data:wave-data

@@ -38,10 +38,14 @@ def _clean_cache():
     with surf_app._cache_lock:
         surf_app._cache.clear()
         surf_app._cache_bytes = 0
+    # A warm wave store would let the endpoint answer 200 from RAM and mask
+    # every cold-path assertion below.
+    surf_app._wave_basin = None
     yield
     with surf_app._cache_lock:
         surf_app._cache.clear()
         surf_app._cache_bytes = 0
+    surf_app._wave_basin = None
 
 
 def _seed(key, data, age_s):

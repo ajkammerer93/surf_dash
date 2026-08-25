@@ -35,7 +35,16 @@ jobs:
         # regression in either would have reached master green. Nothing here
         # needs playwright -- the collector imports it lazily, inside the
         # function that launches a browser.
-        run: pytest tests/ -v
+        #
+        # SSR_WARM=0 is the documented invocation and it is load-bearing: the
+        # background workers (SSR warmer, basin warmer, wave-store sync) all
+        # gate on it, and without it the first test-client request starts
+        # them for real. The wave sync's immediate first pass then fetches
+        # the live wave-data branch mid-suite and arms the store, which is
+        # exactly how a cooldown test failed here while passing locally --
+        # the SSR warmer had been quietly making live NOAA calls in CI all
+        # along, just too slowly to land inside a 40-second suite.
+        run: SSR_WARM=0 pytest tests/ -v
 
       - name: Generate SEO report
         if: always()

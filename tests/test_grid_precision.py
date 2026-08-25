@@ -74,16 +74,23 @@ def test_nan_free_grids_survive_the_round_trip():
 def test_no_grid_producer_bypasses_the_shared_helper():
     """The regression that would silently restore several megabytes.
 
-    All three producers -- NOMADS local, ERDDAP local, and the global basin --
-    must build their field block with _grid_fields rather than calling .tolist()
-    on the arrays directly.
+    All five producers -- NOMADS local, ERDDAP local, the ERDDAP basin, and
+    the two wave-store producers (basin and tile) -- must build their field
+    block with _grid_fields rather than calling .tolist() on the arrays
+    directly.
+
+    Both call shapes count. The original pin grepped only for
+    '**_grid_fields(' and the wave-store producers used
+    '.update(_grid_fields(...))' -- same helper, same precision, invisible to
+    the count. A pin that can be satisfied by accident is not pinning.
     """
     src = open(APP_SRC).read()
     offenders = re.findall(r'"(?:wave_height|wave_period|wave_direction|'
                            r'wind_speed|wind_direction)":\s*\w+\.tolist\(\)', src)
     assert offenders == [], f"raw .tolist() on a grid field: {offenders}"
-    # and the helper really is used by all three producers
-    assert src.count('**_grid_fields(') == 3
+    # and the helper really is used by all five producers, in either form
+    uses = src.count('**_grid_fields(') + src.count('.update(_grid_fields(')
+    assert uses == 5, f"expected 5 producers through _grid_fields, found {uses}"
 
 
 def test_precision_actually_shrinks_a_realistic_payload():
