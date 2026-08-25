@@ -450,6 +450,10 @@ def _deep_size(obj, _seen=None):
 # down (observed 2026-07-16: Open-Meteo rate limit + NOMADS gap + degraded
 # ERDDAP simultaneously). A day-old 7-day forecast beats a blank dashboard.
 STALE_FORECAST_MAX_AGE = 24 * 3600
+# Same reasoning for the two grid endpoints: a day-old swell map is a swell
+# map; a 500 is a blank panel. Served with stale/stale_at so the client can
+# say so.
+BASIN_STALE_MAX_AGE = 24 * 3600
 
 def _cache_get_fresh(key, ttl):
     with _cache_lock:
@@ -663,6 +667,31 @@ def get_point_weather_data(latitude, longitude):
     return None
 
 
+# Open-Meteo's WEATHER API rate-limits per IP, and Render's shared egress
+# sits over that limit chronically — 200 from a residential IP and 429 from
+# the server in the same minute is the documented signature. The marine API
+# is a separate pool and keeps working. A chronic 429 is not worth re-paying
+# ~10s per cold forecast to rediscover, so after any 429 the weather API is
+# skipped entirely for a cooldown and the fallbacks run immediately.
+OPENMETEO_WEATHER_COOLDOWN_S = 600
+_om_weather_block = {'until': 0.0}
+_om_weather_lock = threading.Lock()
+
+
+def _om_weather_available():
+    with _om_weather_lock:
+        return time.monotonic() >= _om_weather_block['until']
+
+
+def _om_weather_note(resp):
+    """Record a weather-API response; a 429 starts the cooldown."""
+    if resp is not None and resp.status_code == 429:
+        with _om_weather_lock:
+            _om_weather_block['until'] = time.monotonic() + OPENMETEO_WEATHER_COOLDOWN_S
+        logger.warning("Open-Meteo weather returned 429 — skipping it for "
+                       f"{OPENMETEO_WEATHER_COOLDOWN_S}s")
+
+
 def _enrich_with_temperatures(forecast, latitude, longitude):
     """
     Fetch current air temperature (Open-Meteo Weather) and sea surface
@@ -672,18 +701,23 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     """
     location_tz = "UTC"
     try:
-        # Air temperature (also resolves IANA timezone via timezone=auto)
+        # Air temperature (also resolves IANA timezone via timezone=auto).
+        # Skipped during a 429 cooldown — water temp below is the marine
+        # pool and still runs; the timezone falls back to UTC, which the
+        # ERDDAP enrichment path also tolerates.
         air_temp = None
-        resp = _retry_request(lambda: requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={"latitude": latitude, "longitude": longitude,
-                    "current": "temperature_2m", "timezone": "auto"},
-            timeout=10
-        ))
-        if resp.ok:
-            air_data = resp.json()
-            air_temp = air_data.get("current", {}).get("temperature_2m")
-            location_tz = air_data.get("timezone", "UTC")
+        if _om_weather_available():
+            resp = _retry_request(lambda: requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={"latitude": latitude, "longitude": longitude,
+                        "current": "temperature_2m", "timezone": "auto"},
+                timeout=10
+            ))
+            _om_weather_note(resp)
+            if resp.ok:
+                air_data = resp.json()
+                air_temp = air_data.get("current", {}).get("temperature_2m")
+                location_tz = air_data.get("timezone", "UTC")
 
         # Sea surface temperature
         water_temp = None
@@ -717,6 +751,11 @@ def _enrich_with_wind(forecast, latitude, longitude):
     Non-critical — silently skips on failure.
     """
     try:
+        if not _om_weather_available():
+            # Chronic 429 window: do not pay ~10s to rediscover it — go
+            # straight to the fallback.
+            _enrich_wind_from_erddap(forecast, latitude, longitude)
+            return
         resp = _retry_request(lambda: requests.get(
             "https://api.open-meteo.com/v1/forecast",
             params={
@@ -728,6 +767,7 @@ def _enrich_with_wind(forecast, latitude, longitude):
             },
             timeout=10,
         ))
+        _om_weather_note(resp)
         if not resp.ok:
             logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), trying ERDDAP fallback")
             _enrich_wind_from_erddap(forecast, latitude, longitude)
@@ -1178,10 +1218,153 @@ def _get_point_from_erddap(latitude, longitude):
         traceback.print_exc()
         return None
 
+class ErddapRedirect(requests.ConnectionError):
+    """The host 302'd a griddap DATA query — it no longer serves data itself.
+
+    On 2026-08-25 upwell and coastwatch.pfeg became redirect shims pointing
+    every data query at pae-paha.pacioos.hawaii.edu, while still serving
+    dataset PAGES locally — so metadata probes said "healthy" while every
+    real query landed on the one sick box. requests follows redirects
+    silently by default, which made the mirror chain PacIOOS twice and spent
+    both budgets proving one server sick. Subclasses ConnectionError
+    DELIBERATELY: the chain and the point-forecast bypass loops already
+    treat ConnectionError as "host dead, move on", so the pinned
+    404-walk-vs-timeout semantics hold without touching them.
+    """
+
+    def __init__(self, server, location):
+        self.server = server
+        self.location = location
+        super().__init__(f"{server} redirected the data query to {location}")
+
+
+class ErddapCircuitOpen(requests.ConnectionError):
+    """The breaker is open for this host; the call failed without a socket."""
+
+    def __init__(self, server, retry_at):
+        self.server = server
+        self.retry_at = retry_at
+        super().__init__(f"circuit open for {server} until {retry_at:.0f}")
+
+
+def _get_json_with_deadline(url, deadline_s):
+    """GET with a WALL-CLOCK bound, redirects never followed.
+
+    requests' read timeout is between-bytes, not end-to-end: a server
+    drip-feeding at 120 KB/s never trips it. That is how the basin fetch ran
+    177s against a nominal 70s "budget" on 2026-08-25 and held request
+    threads long enough to 502 the whole site. Every budget in this file is
+    decorative without this function.
+    """
+    start = time.monotonic()
+    response = requests.get(url, timeout=min(deadline_s, 30),
+                            allow_redirects=False, stream=True)
+    try:
+        if not (300 <= response.status_code < 400):
+            chunks = []
+            for chunk in response.iter_content(chunk_size=65536):
+                if time.monotonic() - start > deadline_s:
+                    raise requests.Timeout(
+                        f"wall-clock deadline of {deadline_s}s exceeded")
+                chunks.append(chunk)
+            response._content = b"".join(chunks)
+        return response
+    finally:
+        response.close()
+
+
+# Circuit breaker, keyed by host. It protects THREAD TIME, not data
+# availability: with 1 worker x 8 threads, eight requests waiting out a sick
+# server is a site outage, so once a host has proven slow-dead we fail the
+# next calls in microseconds instead of re-proving it at full budget.
+#
+# 404s and 500s count as the host ANSWERING — the chain's walk-the-clock-back
+# behaviour on 404 must keep working, and a host that answers quickly is not
+# costing threads. Only Timeout / ConnectionError / a redirect-shim response
+# count against the host.
+ERDDAP_BREAKER_THRESHOLD = 3
+ERDDAP_BREAKER_COOLDOWN_S = 600
+_erddap_breakers = {}
+_erddap_breaker_lock = threading.Lock()
+# Background workers set .active = True: they bypass the preflight (their
+# generous budgets are the only calls that can SUCCEED against a server that
+# needs 130s+, so they must not be locked out) but still record outcomes —
+# a warmer success is what closes the breaker. Without this, short-budget
+# request probes would claim the half-open slot, fail, and re-open forever.
+_BREAKER_EXEMPT = threading.local()
+
+
+class _breaker_exempt:
+    def __enter__(self):
+        _BREAKER_EXEMPT.active = True
+        return self
+
+    def __exit__(self, *exc):
+        _BREAKER_EXEMPT.active = False
+        return False
+
+
+def _breaker_preflight(server):
+    """Raise ErddapCircuitOpen when the host's breaker is open.
+
+    Returns True when this call has claimed the single half-open probe slot
+    (the caller's outcome then decides close vs re-open).
+    """
+    now = time.monotonic()
+    with _erddap_breaker_lock:
+        b = _erddap_breakers.get(server)
+        if b is None or b.get('opened_at') is None:
+            return False
+        elapsed = now - b['opened_at']
+        if elapsed < ERDDAP_BREAKER_COOLDOWN_S:
+            raise ErddapCircuitOpen(server, b['opened_at'] + ERDDAP_BREAKER_COOLDOWN_S)
+        if b.get('probe_inflight'):
+            raise ErddapCircuitOpen(server, now + 30)
+        b['probe_inflight'] = True
+        return True
+
+
+def _breaker_record(server, ok, probe=False):
+    with _erddap_breaker_lock:
+        b = _erddap_breakers.setdefault(
+            server, {'failures': 0, 'opened_at': None, 'probe_inflight': False})
+        if probe:
+            b['probe_inflight'] = False
+        if ok:
+            b['failures'] = 0
+            b['opened_at'] = None
+        else:
+            b['failures'] += 1
+            if b['opened_at'] is not None or b['failures'] >= ERDDAP_BREAKER_THRESHOLD:
+                b['opened_at'] = time.monotonic()
+                b['failures'] = ERDDAP_BREAKER_THRESHOLD
+
+
+def _breaker_snapshot():
+    """Live breaker states for /api/health-upstreams."""
+    now = time.monotonic()
+    out = {}
+    with _erddap_breaker_lock:
+        for server, b in _erddap_breakers.items():
+            if b.get('opened_at') is not None:
+                remaining = ERDDAP_BREAKER_COOLDOWN_S - (now - b['opened_at'])
+                state = 'open' if remaining > 0 else 'half-open'
+                out[server] = {'state': state,
+                               'retry_in_s': max(0, round(remaining))}
+            else:
+                out[server] = {'state': 'closed', 'failures': b['failures']}
+    return out
+
+
 def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_range, depth=None, timeout=30):
     """
     Fetch gridded data from an ERDDAP griddap server in JSON format.
     Returns the parsed JSON response containing a table of rows.
+
+    timeout is a WALL-CLOCK deadline (see _get_json_with_deadline), the call
+    is breaker-gated per host, and redirects are never followed — a 302 on a
+    data query means this host is a shim for another server, which must be
+    treated as "this mirror is gone", not silently obeyed.
     """
     var_parts = []
     for var in variables:
@@ -1196,34 +1379,42 @@ def _fetch_erddap_grid(server, dataset, variables, time_range, lat_range, lon_ra
     url = f"https://{server}/erddap/griddap/{dataset}.json?{query}"
     logger.info(f"  ERDDAP request: {url[:150]}...")
 
-    # Default 30s, not longer: with 1 gunicorn worker x 4 threads, a hung
-    # upstream pins a thread and starves other requests; most callers fall
-    # back anyway. The point-forecast WW3 fetch overrides this — it is the
-    # LAST fallback, and a degraded PacIOOS routinely answers in 25-35s.
-    response = requests.get(url, timeout=timeout)
+    exempt = getattr(_BREAKER_EXEMPT, 'active', False)
+    probe = False if exempt else _breaker_preflight(server)
+    try:
+        response = _get_json_with_deadline(url, timeout)
+    except (requests.Timeout, requests.ConnectionError):
+        _breaker_record(server, ok=False, probe=probe)
+        raise
+    if 300 <= response.status_code < 400:
+        location = response.headers.get('Location', '(no Location header)')
+        logger.warning(f"  {server} redirected the data query to {location} — "
+                       f"treating this mirror as gone")
+        _breaker_record(server, ok=False, probe=probe)
+        raise ErddapRedirect(server, location)
+    # Any completed HTTP response — 200, 404, 500 — means the host answered
+    # fast. 404 must not open the breaker or the chain's clock-walk dies.
+    _breaker_record(server, ok=True, probe=probe)
     response.raise_for_status()
     return response.json()
 
 
-# The same model, mirrored on independent hosts. Ordered by how they have
-# actually behaved in the outages we have had, not by preference: PacIOOS was
-# the pinned one on 2026-07-16 and again on 2026-08-24, when it took 20s to
-# serve a static index page and never finished a global wave query at all,
-# while upwell answered the same query in under a second. upwell therefore goes
-# first for waves.
+# One entry each, and that is the truth. Until 2026-08-25 these listed
+# upwell/coastwatch first as "mirrors" of PacIOOS — then NOAA consolidated
+# the West Coast ERDDAP family into redirect shims, and every data query on
+# every listed host landed on pae-paha anyway. Keeping the shims listed
+# doubled the worst case (two budgets spent proving one sick server sick)
+# and lied to the breaker (two "hosts" that are one box). The redirect guard
+# in _fetch_erddap_grid is what turns any future consolidation into a loud
+# ErddapRedirect instead of a silent slowdown.
 #
-# These live at module scope because the point forecast and both grid endpoints
-# all draw from them. Delisting a bad mirror should be one edit, not four --
-# the reason the swell map died on 2026-08-24 while the point forecast stayed
-# up is that only the point forecast had a chain at all, and the grid paths had
-# PacIOOS hardcoded with nowhere to go.
+# These live at module scope because the point forecast and both grid
+# endpoints all draw from them; delisting or adding a host is one edit.
 WW3_WAVE_MIRRORS = [
-    ("upwell.pfeg.noaa.gov", "NWW3_Global_Best"),
     ("pae-paha.pacioos.hawaii.edu", "ww3_global"),
 ]
 GFS_WIND_MIRRORS = [
-    ("coastwatch.pfeg.noaa.gov", "NCEP_Global_Best"),
-    ("upwell.pfeg.noaa.gov", "NCEP_Global_Best"),
+    ("pae-paha.pacioos.hawaii.edu", "ncep_global"),
 ]
 
 
@@ -5175,8 +5366,19 @@ def map_forecast():
 
     if data:
         return jsonify(data)
-    else:
-        return jsonify({"error": "Could not retrieve gridded weather data."}), 500
+
+    # Upstream failed (with the breaker open that took milliseconds, not
+    # minutes). A day-old local grid still shows the right ocean; mirror the
+    # /api/forecast stale contract so the map keeps rendering with an honest
+    # timestamp instead of going blank.
+    stale_entry = _cache_get_stale(cache_key, BASIN_STALE_MAX_AGE)
+    if stale_entry is not None:
+        stale = dict(stale_entry['data'])
+        stale["stale"] = True
+        stale["stale_at"] = datetime.fromtimestamp(
+            stale_entry['time'], timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        return jsonify(stale)
+    return jsonify({"error": "Could not retrieve gridded weather data."}), 500
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     """
@@ -5302,10 +5504,15 @@ def find_nearest_cameras(lat, lon, count=2):
 
     return results
 
-def get_ocean_basin_data():
+def get_ocean_basin_data(wave_timeouts=(75,), wind_timeouts=(45,)):
     """
-    Fetches global wave and wind data using NOAA ERDDAP.
-    Uses WW3 global wave model (PacIOOS) and GFS wind model (CoastWatch).
+    Fetches global wave and wind data via the ERDDAP mirror list.
+
+    The timeout kwargs exist because this now has two callers with opposite
+    needs: the background basin warmer passes (600,)/(240,) because it has
+    all day and is the only caller that can outlast a degraded PacIOOS,
+    while anything on a request thread keeps the tight defaults and relies
+    on the breaker + stale cache instead of waiting.
     """
     # WW3 global at 3° effective resolution (stride=6 on native 0.5°)
     # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
@@ -5316,15 +5523,12 @@ def get_ocean_basin_data():
     # --- Fetch WW3 wave data (required) ---
     # Retry with progressively older start times to handle ERDDAP model update gaps
     try:
-        # This slice is global rather than a local patch, so it is the heaviest
-        # request the app makes and the mirrors are given more room than the
-        # local grid gets. Same 180s worker ceiling though: 70+50 for waves and
-        # 35+45 for wind is 200s if every mirror times out, which is over
-        # budget on paper -- acceptable only because wind below is optional and
-        # skipped entirely once waves have failed, so the real all-dead path is
-        # the 120s wave chain and then a return.
+        # These budgets are wall-clock (see _get_json_with_deadline) and
+        # sized for ONE host, because there is only one: the mirror list
+        # collapsed to pae-paha on 2026-08-25. The request path is protected
+        # by the breaker and the stale cache rather than by generous waits.
         wave_json = _fetch_erddap_grid_chain(
-            WW3_WAVE_MIRRORS, (70, 50),
+            WW3_WAVE_MIRRORS, wave_timeouts,
             variables=["Thgt", "Tper", "Tdir"],
             lat_range=lat_range,
             lon_range=lon_range,
@@ -5343,7 +5547,7 @@ def get_ocean_basin_data():
     wind = None
     try:
         wind_json = _fetch_erddap_grid_chain(
-            GFS_WIND_MIRRORS, (35, 45),
+            GFS_WIND_MIRRORS, wind_timeouts,
             variables=["ugrd10m", "vgrd10m"],
             lat_range=lat_range,
             lon_range=lon_range,
@@ -5424,18 +5628,36 @@ def ocean_basin():
     center_lat, center_lon = result
     include_wind = request.args.get('wind') == '1'
 
-    # Global data is the same for all locations — single cache entry
-    cache_key = "basin:global"
-    data = cached(cache_key, get_ocean_basin_data, ttl=BASIN_CACHE_TTL)
+    # This endpoint NEVER fetches upstream on a request thread. The global
+    # fetch takes minutes against a degraded PacIOOS, and eight such requests
+    # took the whole site down on 2026-08-25 (every thread pinned, /healthz
+    # 502). The background warmer is the only writer of this key; requests
+    # read whatever it last produced: fresh, then stale up to a day, then an
+    # honest fast "warming" answer.
+    data = _cache_get_fresh("basin:global", BASIN_CACHE_TTL)
+    stale_entry = None
+    if data is None:
+        stale_entry = _cache_get_stale("basin:global", BASIN_STALE_MAX_AGE)
+        if stale_entry is None:
+            # `error` rides along for visitors still running edge-cached JS
+            # that predates the warming state — they land in the existing
+            # error path instead of rendering an unexpected shape.
+            resp = jsonify({"warming": True,
+                            "error": "Ocean basin data is warming after a restart."})
+            resp.status_code = 503
+            resp.headers['Retry-After'] = '60'
+            return resp
+        data = stale_entry['data']
 
-    if data:
-        result = {k: v for k, v in data.items()
-                  if include_wind or k not in BASIN_WIND_FIELDS}
-        result["center"] = {"lat": round(center_lat, 2), "lon": round(center_lon, 2)}
-        result["has_wind"] = include_wind
-        return jsonify(result)
-    else:
-        return jsonify({"error": "Could not retrieve ocean basin data."}), 500
+    result = {k: v for k, v in data.items()
+              if include_wind or k not in BASIN_WIND_FIELDS}
+    result["center"] = {"lat": round(center_lat, 2), "lon": round(center_lon, 2)}
+    result["has_wind"] = include_wind
+    if stale_entry is not None:
+        result["stale"] = True
+        result["stale_at"] = datetime.fromtimestamp(
+            stale_entry['time'], timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return jsonify(result)
 
 # Beyond this, NOAA has no harmonic station covering the point and the nearest
 # match is an unrelated body of water.
@@ -6220,16 +6442,20 @@ def health_upstreams():
     per-IP, so what fails from Render often works from a dev machine and
     vice versa. Cheap probes (~1KB responses, 8s timeouts), cached 60s.
 
-    The ERDDAP probes ask for dataset metadata rather than griddap's
-    time[(last)]. They used to ask for the latter, and it is not a cheap
-    query: on 2026-08-24 CoastWatch answered it in 47.8s while serving its
-    index page in 0.55s and a full global wind grid in 108s. Against an 8s
-    budget that reported ReadTimeout for a server that was up and returning
-    data, so the page called a three-server outage when one mirror was slow
-    and the other two were fine -- and the one number you look at during an
-    incident was the one actively misleading you. The info endpoint answers
-    in well under a second on a healthy host and still takes 17s on a
-    degraded one, so it separates them without the false alarm.
+    This probe has now been deceived twice, in opposite directions, and its
+    current shape is the synthesis. First (2026-08-24) it asked griddap for
+    time[(last)] on an 8s budget -- an expensive query that took 47.8s on a
+    server serving its index in 0.55s, so healthy hosts read as dead. The
+    fix probed dataset METADATA -- cheap, but served locally even by a host
+    that has become a redirect shim, so on 2026-08-25 upwell read "200 in
+    0.26s" while 302ing every real data query to a degraded PacIOOS and the
+    site was down. The probes now ask for ONE CELL BY INDEX
+    (Thgt[0][0][0][0]): it exercises the actual data path, costs no
+    time-dimension resolution, cannot 404, finishes in under a second on a
+    healthy host -- and a shim answers it with an instant 302, reported
+    below as redirects_to instead of a fake 200. Redirects are never
+    followed here for the same reason they are never followed in
+    _fetch_erddap_grid.
     """
     def _probe_all():
         probes = {
@@ -6237,36 +6463,50 @@ def health_upstreams():
                 'https://marine-api.open-meteo.com/v1/marine',
                 params={'latitude': 34.43, 'longitude': -77.55,
                         'hourly': 'wave_height', 'forecast_days': 1},
-                timeout=8),
+                timeout=8, allow_redirects=False),
             'open-meteo-weather': lambda: requests.get(
                 'https://api.open-meteo.com/v1/forecast',
                 params={'latitude': 34.43, 'longitude': -77.55,
                         'hourly': 'wind_speed_10m', 'forecast_days': 1},
-                timeout=8),
+                timeout=8, allow_redirects=False),
             'erddap-pacioos-ww3': lambda: requests.get(
-                'https://pae-paha.pacioos.hawaii.edu/erddap/info/ww3_global/index.json',
-                timeout=8),
+                'https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ww3_global.json'
+                '?Thgt%5B0%5D%5B0%5D%5B0%5D%5B0%5D',
+                timeout=8, allow_redirects=False),
             'erddap-upwell-ww3': lambda: requests.get(
-                'https://upwell.pfeg.noaa.gov/erddap/info/NWW3_Global_Best/index.json',
-                timeout=8),
+                'https://upwell.pfeg.noaa.gov/erddap/griddap/NWW3_Global_Best.json'
+                '?Thgt%5B0%5D%5B0%5D%5B0%5D%5B0%5D',
+                timeout=8, allow_redirects=False),
             'erddap-coastwatch-gfs': lambda: requests.get(
-                'https://coastwatch.pfeg.noaa.gov/erddap/info/NCEP_Global_Best/index.json',
-                timeout=8),
+                'https://coastwatch.pfeg.noaa.gov/erddap/griddap/NCEP_Global_Best.json'
+                '?ugrd10m%5B0%5D%5B0%5D%5B0%5D',
+                timeout=8, allow_redirects=False),
         }
         results = {}
         for name, fn in probes.items():
             started = time.time()
             try:
                 resp = fn()
-                results[name] = {'status': resp.status_code,
-                                 'seconds': round(time.time() - started, 2)}
+                entry = {'status': resp.status_code,
+                         'seconds': round(time.time() - started, 2)}
+                if 300 <= resp.status_code < 400:
+                    location = resp.headers.get('Location', '')
+                    entry['redirects_to'] = (
+                        location.split('/')[2] if '://' in location else location)
+                results[name] = entry
             except Exception as e:
                 results[name] = {'status': type(e).__name__,
                                  'seconds': round(time.time() - started, 2)}
         results['checked_at'] = datetime.now(timezone.utc).isoformat()
         return results
 
-    return jsonify(cached('health-upstreams', _probe_all, ttl=60))
+    # Breaker states are appended LIVE, outside the 60s probe cache -- a
+    # breaker that opened 10 seconds ago must not hide behind a cached
+    # "closed" for the rest of the minute. Copy before mutating so the
+    # cached dict itself is never polluted with a stale snapshot.
+    payload = dict(cached('health-upstreams', _probe_all, ttl=60))
+    payload['breakers'] = _breaker_snapshot()
+    return jsonify(payload)
 
 
 ORIENTATION_CACHE_TTL = 86400  # 24 hours (coastline doesn't change)
@@ -6495,14 +6735,19 @@ def add_cache_headers(response):
         # An endpoint still has to opt in by appearing in API_EDGE_TTL; it just
         # has to opt out explicitly too, now that silence means "cache it".
         response.headers['Cache-Control'] = 'no-store'
-    elif response.status_code == 200 and request.path in API_EDGE_TTL:
-        # 200 only. A 500 from an upstream outage carries no header, so the
-        # edge bypasses it and the next request gets a real attempt -- caching
-        # a failure for ten minutes would turn a blip into an outage, and this
-        # app already serves a stale-but-flagged forecast rather than erroring
-        # when it can.
-        response.headers['Cache-Control'] = (
-            f'public, max-age={API_EDGE_TTL[request.path]}')
+    elif request.path in API_EDGE_TTL:
+        if response.status_code == 200:
+            response.headers['Cache-Control'] = (
+                f'public, max-age={API_EDGE_TTL[request.path]}')
+        else:
+            # Explicit no-store, never silence. This branch used to leave
+            # non-200s header-less on the theory the edge would bypass them
+            # -- true of Cloudflare, false of Render, which default-caches
+            # unheaded responses. An edge-cached 503 "warming" answer would
+            # pin the outage for every visitor after the cache had actually
+            # warmed. Same silence-disagreement as the fail-closed branch
+            # above, applied to errors.
+            response.headers['Cache-Control'] = 'no-store'
     # /embed/* must be frameable by third-party sites; everything else
     # keeps clickjacking protection.
     if request.path.startswith('/embed/'):
@@ -6580,18 +6825,76 @@ def _ssr_cache_warmer():
         time.sleep(SSR_WARM_INTERVAL_S)
 
 
+# The basin warmer is the ONLY writer of the basin:global cache entry; the
+# /api/ocean-basin request path only ever reads. Rationale is thread
+# arithmetic: the global fetch takes minutes against a degraded PacIOOS, and
+# with 1 worker x 8 threads, letting requests pay that cost is how the site
+# went down on 2026-08-25. One background thread pays it instead, with a
+# budget no request could ever be allowed.
+#
+# BASIN_WARM defaults to SSR_WARM's value, deliberately: the pinned test
+# command is `SSR_WARM=0 pytest`, and a warmer gated on its own flag alone
+# would start a live PacIOOS fetch inside CI the first time a test touched
+# the Flask client. An explicit BASIN_WARM=1/0 still wins.
+BASIN_WARM_ENABLED = os.environ.get(
+    'BASIN_WARM', os.environ.get('SSR_WARM', '1')) == '1'
+BASIN_WARM_CHECK_S = 60
+BASIN_WARM_RETRY_S = 300
+BASIN_WARM_WAVE_TIMEOUTS = (600,)
+BASIN_WARM_WIND_TIMEOUTS = (240,)
+
+
+def _basin_cache_warmer():
+    time.sleep(15)  # let the worker finish booting before upstream calls
+    logger.info("Basin warmer running: refreshing basin:global in the background")
+    while True:
+        # Refresh when under ~2 min of freshness remain so requests never
+        # observe an expired entry during normal operation.
+        if _cache_get_fresh('basin:global', BASIN_CACHE_TTL - 120) is not None:
+            time.sleep(BASIN_WARM_CHECK_S)
+            continue
+        result = None
+        try:
+            # Breaker-exempt: these generous budgets are the only call shape
+            # that can SUCCEED against a server that needs 130s+, and its
+            # outcome still feeds the breaker — a warmer success is what
+            # closes it for everyone else.
+            with _breaker_exempt():
+                result = get_ocean_basin_data(
+                    wave_timeouts=BASIN_WARM_WAVE_TIMEOUTS,
+                    wind_timeouts=BASIN_WARM_WIND_TIMEOUTS)
+        except Exception as e:
+            logger.warning(f"Basin warmer fetch failed: {e}")
+        if result is not None:
+            # No lock is held during the minutes-long fetch above, and
+            # _deep_size walks outside the lock for the same reason cached()
+            # does; only the O(1) store runs under _cache_lock.
+            size = _deep_size(result)
+            with _cache_lock:
+                _cache_store('basin:global', result, size)
+            logger.info("Basin warmer refreshed basin:global")
+            time.sleep(BASIN_WARM_CHECK_S)
+        else:
+            time.sleep(BASIN_WARM_RETRY_S)
+
+
 @app.before_request
-def _start_ssr_warmer():
-    # Started lazily on first request (not at import) so the thread lives in
+def _start_background_workers():
+    # Started lazily on first request (not at import) so the threads live in
     # the gunicorn worker process, not the preload master.
     global _ssr_warmer_started
-    if not SSR_WARM_ENABLED or _ssr_warmer_started:
+    if _ssr_warmer_started:
+        return
+    if not SSR_WARM_ENABLED and not BASIN_WARM_ENABLED:
         return
     with _ssr_warmer_lock:
         if _ssr_warmer_started:
             return
         _ssr_warmer_started = True
-        threading.Thread(target=_ssr_cache_warmer, daemon=True, name='ssr-warmer').start()
+        if SSR_WARM_ENABLED:
+            threading.Thread(target=_ssr_cache_warmer, daemon=True, name='ssr-warmer').start()
+        if BASIN_WARM_ENABLED:
+            threading.Thread(target=_basin_cache_warmer, daemon=True, name='basin-warmer').start()
 
 
 if __name__ == '__main__':

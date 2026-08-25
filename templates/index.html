@@ -1163,6 +1163,15 @@
             pointer-events: none;
             white-space: nowrap;
         }
+        .map-stale-note {
+            background: rgba(30, 30, 30, 0.85);
+            color: #d0a94a;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            max-width: 230px;
+            cursor: pointer;
+        }
 
         .chart-unavailable {
             display: flex;
@@ -5182,6 +5191,7 @@
         // Basin wind arrives separately and only if the user zooms out far
         // enough to need it -- see loadBasinWind().
         let basinWindPending = false;
+        let basinWarmRetries = 0;   // warming-state retry budget, reset per location
 
         // === Persistent rectangle/marker caches for slider reuse ===
 
@@ -5571,6 +5581,25 @@
             ctrl.addTo(map);
         }
 
+        // Honest-staleness note for grid data served from an expired cache
+        // entry while the upstream is down. One per map (replaces itself),
+        // dismissible by click.
+        function addMapStaleNote(map, staleAtIso) {
+            if (!map) return;
+            if (map._staleNoteCtrl) { map.removeControl(map._staleNoteCtrl); map._staleNoteCtrl = null; }
+            var ageH = Math.max(1, Math.round((Date.now() - Date.parse(staleAtIso)) / 3600000));
+            var ctrl = L.control({ position: 'topright' });
+            ctrl.onAdd = function() {
+                var div = L.DomUtil.create('div', 'map-stale-note');
+                div.textContent = 'Ocean data from ' + ageH + 'h ago \u2014 upstream source is down';
+                div.title = 'Dismiss';
+                div.onclick = function() { map.removeControl(ctrl); map._staleNoteCtrl = null; };
+                return div;
+            };
+            ctrl.addTo(map);
+            map._staleNoteCtrl = ctrl;
+        }
+
         function showChartUnavailable(canvasId, message, retryFn) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;  // panel not present (e.g. retired tides panel)
@@ -5609,6 +5638,13 @@
 
         function initEmptyMap(containerId, center, zoom, errorMessage) {
             const el = document.getElementById(containerId);
+            // The basin narrative div lives INSIDE the map container and is
+            // never recreated, so clearing the container here used to delete
+            // it permanently — the narrative then silently never rendered
+            // again for the session. Same detach/re-append dance as
+            // renderSwellMap and resetSwellMap.
+            const narrativeKeep = el.querySelector('#basin-narrative');
+            if (narrativeKeep) narrativeKeep.remove();
             el.innerHTML = '';
             const map = L.map(containerId).setView(center, zoom);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -5617,6 +5653,7 @@
             }).addTo(map);
             addHomeButton(map, center, zoom);
             addMapDataError(map, errorMessage);
+            if (narrativeKeep) el.appendChild(narrativeKeep);
             setTimeout(() => map.invalidateSize(), 100);
             return map;
         }
@@ -6518,8 +6555,17 @@
             resetCompareForLocationChange();
             // Show loading state on maps (skip buoy map — managed separately)
             document.querySelectorAll('.map-container:not(.buoy-map)').forEach(el => {
+                // Keep #basin-narrative alive across the wipe — it is never
+                // recreated, so innerHTML here used to delete it for good.
+                const narrativeKeep = el.querySelector('#basin-narrative');
+                if (narrativeKeep) narrativeKeep.remove();
                 el.innerHTML = '<div class="map-loading">Loading data for new location...</div>';
+                if (narrativeKeep) {
+                    narrativeKeep.style.display = 'none';
+                    el.appendChild(narrativeKeep);
+                }
             });
+            basinWarmRetries = 0;
             // Show loading state on current conditions
             document.getElementById('current-conditions-stats').style.display = 'none';
             document.getElementById('current-conditions-error').style.display = '';
@@ -7907,6 +7953,19 @@
             return fetch(`/api/ocean-basin?${params}`)
                 .then(response => response.json())
                 .then(staleGuard(data => {
+                    if (data.warming) {
+                        // Server cache is empty after a restart and the
+                        // background warmer is fetching. Self-heal: retry a
+                        // few times instead of showing a dead error for the
+                        // 5-10 minutes the first fetch can take.
+                        swellMapDataError('Ocean data warming after a restart \u2014 retrying shortly');
+                        if (basinWarmRetries++ < 8) {
+                            setTimeout(function() {
+                                staleGuard(loadOceanBasinMaps)();
+                            }, 45000);
+                        }
+                        return;
+                    }
                     if (data.error) {
                         console.error('API Error (Basin Data):', data.error);
                         swellMapDataError('Ocean data unavailable');
@@ -7919,6 +7978,7 @@
                         const slider = document.getElementById('time-slider');
                         onMapDataReady();
                     }
+                    if (data.stale_at && mapSwell) addMapStaleNote(mapSwell, data.stale_at);
                 }))
                 .catch(staleGuard(error => {
                     console.error('Error fetching ocean basin data:', error);
@@ -8186,6 +8246,14 @@
             } else if (!swellRendered) {
                 swellRendered = true;
                 mapSwell = initEmptyMap('map-swell', [currentLocation.lat, currentLocation.lon], 7, msg);
+                // renderSwellMap will never run now (swellRendered is set),
+                // so create the overlay panes it would have created. Without
+                // them, a local grid arriving after a basin failure throws on
+                // pane: 'fieldDetail' and the local view silently never
+                // renders — exactly the path a basin outage puts users on.
+                mapSwell.createPane('fieldBase').style.zIndex = 405;
+                mapSwell.createPane('fieldDetail').style.zIndex = 410;
+                mapSwell.createPane('fieldArrows').style.zIndex = 420;
             }
         }
 
@@ -8375,6 +8443,7 @@
                         const slider = document.getElementById('time-slider');
                         updateSwellMap(parseInt(slider.value) || 0);
                     }
+                    if (gridData.stale_at && mapSwell) addMapStaleNote(mapSwell, gridData.stale_at);
                 }))
                 .catch(staleGuard(error => {
                     console.error('Error fetching map forecast data:', error);
