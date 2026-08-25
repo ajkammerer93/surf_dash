@@ -58,12 +58,37 @@ def test_an_error_response_is_not_cacheable(client):
     assert 'Cache-Control' not in r.headers
 
 
-def test_an_unmapped_api_endpoint_gets_no_header(client):
-    """Fail closed. The Cloudflare rule bypasses cache when no header is
-    present, so a new endpoint has to opt in rather than inherit a TTL that
-    might be wrong for it."""
+def test_an_unmapped_api_endpoint_is_explicitly_uncacheable(client):
+    """Fail closed -- but the two edges disagree about what silence means.
+
+    Cloudflare's rule bypasses cache when no Cache-Control is present. Render's
+    edge does the opposite: a 200 with no directive gets a DEFAULT 120-minute
+    TTL. So an omission that meant "do not cache" on one edge means "cache for
+    two hours" on the other, and the endpoint it would hurt most is the incident
+    diagnostic. Silence is not a safe default anywhere now; the header is
+    explicit either way.
+    """
     r = client.get('/api/health-upstreams')
-    assert 'Cache-Control' not in r.headers
+    assert r.headers.get('Cache-Control') == 'no-store'
+
+
+def test_healthz_is_cheap_and_uncacheable(client):
+    """The platform health check must not depend on anyone else's uptime.
+
+    A probe that touches an upstream hands that upstream a restart button: NOAA
+    has a bad afternoon, the probe fails, and the platform recycles a process
+    that was serving cached forecasts perfectly well.
+    """
+    r = client.get('/healthz')
+    assert r.status_code == 200
+    assert r.get_json()['status'] == 'ok'
+    assert r.headers['Cache-Control'] == 'no-store'
+
+
+def test_healthz_is_not_the_upstream_diagnostic():
+    """Guards against someone later pointing healthCheckPath at the wrong one."""
+    assert '/healthz' not in A.API_EDGE_TTL
+    assert '/api/health-upstreams' not in A.API_EDGE_TTL
 
 
 def test_html_caching_is_unchanged(client):

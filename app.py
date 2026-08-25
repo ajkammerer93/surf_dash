@@ -5920,6 +5920,24 @@ def buoys_endpoint():
         return jsonify({"error": "Could not retrieve buoy data."}), 500
 
 
+@app.route('/healthz')
+def healthz():
+    """Liveness probe for the platform health check. Deliberately does nothing.
+
+    It answers "is this process up and serving" and NOTHING else. It must never
+    touch an upstream, the cache, or the filesystem, because a health check that
+    depends on a third party hands that third party a restart button: NOAA has a
+    bad afternoon, the probe fails, and the platform recycles a process that was
+    serving cached forecasts perfectly well. /api/health-upstreams is the
+    endpoint that asks how the world is, and it is deliberately not this one.
+
+    no-store because a cached liveness answer is worse than none.
+    """
+    resp = jsonify({'status': 'ok', 'version': APP_VERSION})
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
 @app.route('/api/health-upstreams')
 def health_upstreams():
     """Probe each upstream weather source from this server's vantage point.
@@ -6194,6 +6212,15 @@ def add_cache_headers(response):
         response.headers['Cache-Control'] = 'public, max-age=86400'
     elif response.content_type and 'text/html' in response.content_type:
         response.headers['Cache-Control'] = 'public, max-age=300'
+    elif request.path.startswith('/api/') and request.path not in API_EDGE_TTL:
+        # Fail closed. Render's edge applies a DEFAULT 120-minute TTL to a 200
+        # that carries no Cache-Control, which is the opposite of Cloudflare's
+        # bypass-when-absent and inverts what the omission was meant to express.
+        # Without this, /api/health-upstreams -- the endpoint reached for during
+        # an incident -- would answer with a two-hour-old picture of the world.
+        # An endpoint still has to opt in by appearing in API_EDGE_TTL; it just
+        # has to opt out explicitly too, now that silence means "cache it".
+        response.headers['Cache-Control'] = 'no-store'
     elif response.status_code == 200 and request.path in API_EDGE_TTL:
         # 200 only. A 500 from an upstream outage carries no header, so the
         # edge bypasses it and the next request gets a real attempt -- caching
