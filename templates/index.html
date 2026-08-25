@@ -583,6 +583,12 @@
             opacity: 0;
             animation: ssrReveal 0.4s ease-in 2s forwards;
         }
+        /* Buoy link inherits the browser's default blue, unreadable against
+           the dark-theme surface (1.96:1). status-good passes AA on both
+           themes' surface color. */
+        #ssr-summary a {
+            color: var(--status-good);
+        }
         @keyframes ssrReveal {
             to { opacity: 1; }
         }
