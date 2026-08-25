@@ -1232,6 +1232,61 @@ def _parse_erddap_to_grids(erddap_json, variable_names):
 
     return {'times': times, 'lats': lats, 'lons': lons, 'grids': grids}
 
+# Display precision for the five gridded fields. These grids serialize straight
+# to JSON and are the largest responses the app produces, so precision here is a
+# bandwidth decision as much as a numeric one: an unrounded float64 spends 17-18
+# characters saying "357.334826224105" for a wind direction that is drawn as an
+# arrow rotated to the nearest degree.
+#
+# The two wind fields were two-thirds of the 19.6 MB ocean-basin payload for
+# exactly that reason. They are COMPUTED rather than copied -- the sqrt and
+# arctan2 in _interpolate_wind_to_hourly produce full-width doubles, where the
+# wave fields inherit ERDDAP's already-short float32 text and cost a quarter as
+# much per value. Nothing was wrong with the numbers; they were just written out
+# at a precision no consumer asked for.
+#
+# Every tolerance below sits under what the renderer can express: the field
+# rasters quantize through a seven-stop ramp into 8-bit RGB, arrows are drawn
+# about 1.4px wide, and the readouts apply toFixed(1) to height, toFixed(0) to
+# period and Math.round to wind speed. Measured effect on the basin payload:
+# 6.54 MB to 1.68 MB on the wire, 17.5 MB to 6.6 MB parsed.
+GRID_ROUNDING = {
+    'wave_height': 2,      # 1 cm -- displayed in feet, where 0.01 m is 0.03 ft
+    'wave_period': 1,      # 0.1 s -- displayed as whole seconds
+    'wave_direction': 0,   # 1 degree -- drawn as a rotated arrow
+    'wind_speed': 1,       # 0.1 unit -- displayed as an integer
+    'wind_direction': 0,   # 1 degree -- drawn as a rotated arrow
+}
+
+
+def _round_grid(arr, decimals):
+    """Round one gridded field for JSON output; whole numbers when decimals is 0.
+
+    np.round runs over the array in C, so this is cheaper than what it replaces:
+    json.dumps was paying per-element Python cost to emit the longer reprs.
+    """
+    if decimals == 0:
+        return np.round(arr).astype(int).tolist()
+    return np.round(arr, decimals).tolist()
+
+
+def _grid_fields(wave_height, wave_period, wave_direction, wind_speed, wind_direction):
+    """The five gridded fields at display precision, ready to go into a response.
+
+    Shared by all three grid producers (NOMADS and ERDDAP local grids, and the
+    global basin) so the precision contract lives in one place. tests/
+    test_grid_precision.py pins it -- a future refactor that reaches for a bare
+    .tolist() again would otherwise silently restore several megabytes and break
+    no test.
+    """
+    values = {
+        'wave_height': wave_height, 'wave_period': wave_period,
+        'wave_direction': wave_direction, 'wind_speed': wind_speed,
+        'wind_direction': wind_direction,
+    }
+    return {name: _round_grid(arr, GRID_ROUNDING[name]) for name, arr in values.items()}
+
+
 def _parse_erddap_time(t):
     """Parse ERDDAP timestamp (may or may not have trailing Z, fractional seconds, etc.)."""
     for fmt in ('%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S'):
@@ -1789,11 +1844,8 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
         "lats": [float(la) for la in data['lats']],
         "lons": [float(lo) for lo in lons],
         "times": [dt.strftime('%Y-%m-%dT%H:%M') + 'Z' for dt in wave_dts],
-        "wave_height": wave_height.tolist(),
-        "wave_period": wave_period.tolist(),
-        "wave_direction": wave_dir.tolist(),
-        "wind_speed": wind_speed.tolist(),
-        "wind_direction": wind_dir.tolist(),
+        **_grid_fields(wave_height, wave_period, wave_dir,
+                      wind_speed, wind_dir),
     }
 
 def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
@@ -1880,11 +1932,8 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
             "lats": [float(la) for la in lats],
             "lons": [float(lo) for lo in lons],
             "times": [dt.strftime('%Y-%m-%dT%H:%M') + 'Z' for dt in wave_dts],
-            "wave_height": wave_height_grid.tolist(),
-            "wave_period": wave_period_grid.tolist(),
-            "wave_direction": wave_dir_grid.tolist(),
-            "wind_speed": wind_speed_grid.tolist(),
-            "wind_direction": wind_dir_grid.tolist(),
+            **_grid_fields(wave_height_grid, wave_period_grid, wave_dir_grid,
+                          wind_speed_grid, wind_dir_grid),
         }
 
     except Exception as e:
@@ -5205,11 +5254,8 @@ def get_ocean_basin_data():
             "lats": [float(la) for la in lats],
             "lons": [float(lo) for lo in lons],
             "times": formatted_times,
-            "wave_height": wave_height_out.tolist(),
-            "wave_period": wave_period_out.tolist(),
-            "wave_direction": wave_dir_out.tolist(),
-            "wind_speed": wind_speed_out.tolist(),
-            "wind_direction": wind_dir_out.tolist(),
+            **_grid_fields(wave_height_out, wave_period_out, wave_dir_out,
+                          wind_speed_out, wind_dir_out),
         }
 
     except Exception as e:
