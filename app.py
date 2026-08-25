@@ -5,6 +5,7 @@ import re
 import numpy as np
 import math
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -398,16 +399,53 @@ def compute_beach_facing_direction(lat, lon):
 
 
 # Simple time-based response cache.
-# OrderedDict + lock: gunicorn runs 1 worker / 4 threads, and cache keys
+# OrderedDict + lock: gunicorn runs 1 worker / 8 threads, and cache keys
 # include lat/lon, so an unbounded plain dict grows forever under crawler
 # traffic. LRU eviction caps memory; per-key locks stop a thundering herd
 # of threads all refreshing the same expired entry against slow upstreams.
 _cache = OrderedDict()
 _cache_lock = threading.Lock()
 _cache_key_locks = {}
+_cache_bytes = 0
 CACHE_TTL = 900  # 15 minutes
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
+
+# TWO bounds, because entries here differ in size by four orders of magnitude.
+# A count alone is the wrong unit: 1000 tide predictions is a few megabytes and
+# 1000 grid payloads is not survivable. The basin entry alone measures ~27 MB
+# resident as boxed Python floats -- about 6.5x its JSON size, since every float
+# is a 24-byte object plus an 8-byte pointer -- so a count-bounded cache was one
+# crawler sweep across 145 spots away from exhausting a 2 GB instance.
 CACHE_MAX_ENTRIES = 1000
+CACHE_MAX_BYTES = 400 * 1024 * 1024  # 400 MB of a 2 GB instance
+
+
+def _deep_size(obj, _seen=None):
+    """Resident size of a cached value, following containers.
+
+    sys.getsizeof on a nested list reports the pointer array and nothing the
+    pointers lead to, which for these payloads is off by a factor of six. The
+    walk is what makes the byte bound mean anything.
+
+    Cost is proportional to the value, and it is paid on insert only -- 0.33s
+    for the ~1.4M-float basin payload, microseconds for everything else. That
+    lands on a path that just spent 55-100s fetching from ERDDAP, so it is
+    noise; it deliberately runs OUTSIDE _cache_lock so it never blocks readers.
+    """
+    if _seen is None:
+        _seen = set()
+    marker = id(obj)
+    if marker in _seen:
+        return 0
+    _seen.add(marker)
+    size = sys.getsizeof(obj)
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            size += _deep_size(k, _seen) + _deep_size(v, _seen)
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        for item in obj:
+            size += _deep_size(item, _seen)
+    return size
 # How old a forecast we will still serve when every upstream wave source is
 # down (observed 2026-07-16: Open-Meteo rate limit + NOMADS gap + degraded
 # ERDDAP simultaneously). A day-old 7-day forecast beats a blank dashboard.
@@ -453,18 +491,48 @@ def cached(key, fn, ttl=CACHE_TTL):
             return data
         result = fn()
         if result is not None:
+            # Measured before the lock: the walk is proportional to the value
+            # and there is no reason for readers to wait behind it.
+            size = _deep_size(result)
             with _cache_lock:
-                _cache[key] = {'data': result, 'time': time.time()}
-                _cache.move_to_end(key)
-                while len(_cache) > CACHE_MAX_ENTRIES:
-                    evicted, _ = _cache.popitem(last=False)
-                    _cache_key_locks.pop(evicted, None)
-                # Keys whose fn() kept failing never enter _cache, so their
-                # locks aren't reaped by eviction — prune separately.
-                if len(_cache_key_locks) > 2 * CACHE_MAX_ENTRIES:
-                    for k in [k for k in _cache_key_locks if k not in _cache]:
-                        _cache_key_locks.pop(k, None)
+                _cache_store(key, result, size)
         return result
+
+
+def _cache_store(key, result, size):
+    """Insert one entry and evict until both bounds hold. Caller holds _cache_lock."""
+    global _cache_bytes
+    previous = _cache.get(key)
+    if previous is not None:
+        _cache_bytes -= previous.get('bytes', 0)
+    _cache[key] = {'data': result, 'time': time.time(), 'bytes': size}
+    _cache.move_to_end(key)
+    _cache_bytes += size
+
+    # Evict oldest-first until BOTH bounds are satisfied. The len(_cache) > 1
+    # guard is the important part: an entry larger than the whole budget must
+    # still be cached rather than evicted to nothing. The basin payload is the
+    # case -- refetching it costs 55-100s against ERDDAP, so declining to cache
+    # it would turn a memory bound into an availability problem, which is a
+    # strictly worse trade than briefly exceeding the budget.
+    while (len(_cache) > CACHE_MAX_ENTRIES or _cache_bytes > CACHE_MAX_BYTES) \
+            and len(_cache) > 1:
+        evicted_key, evicted = _cache.popitem(last=False)
+        _cache_bytes -= evicted.get('bytes', 0)
+        _cache_key_locks.pop(evicted_key, None)
+
+    if _cache_bytes > CACHE_MAX_BYTES:
+        # One entry, still over. Worth saying out loud rather than silently
+        # holding more than the budget claims.
+        logger.warning(
+            f"Cache holds {_cache_bytes / 1048576:.0f} MB in a single entry "
+            f"('{key}'), over the {CACHE_MAX_BYTES / 1048576:.0f} MB budget")
+
+    # Keys whose fn() kept failing never enter _cache, so their locks aren't
+    # reaped by eviction — prune separately.
+    if len(_cache_key_locks) > 2 * CACHE_MAX_ENTRIES:
+        for k in [k for k in _cache_key_locks if k not in _cache]:
+            _cache_key_locks.pop(k, None)
 
 DEFAULT_LAT = 34.42711
 DEFAULT_LON = -77.54608
@@ -1469,14 +1537,24 @@ def _find_latest_nomads_cycle():
                 resp = requests.get(test_url, timeout=4)
                 if resp.status_code == 200 and resp.headers.get('content-type', '').startswith('text/plain'):
                     logger.info(f"NOMADS cycle found: {date_str}/{cycle}z")
-                    _cache[cache_key] = {'data': url, 'time': now_ts}
+                    # Through _cache_store, not a bare assignment: a direct
+                    # write skips the byte accounting and leaves _cache_bytes
+                    # drifting from reality. Unreachable today (see the
+                    # short-circuit above) but this is exactly the kind of
+                    # detail a port would not think to check.
+                    with _cache_lock:
+                        _cache_store(cache_key, url, _deep_size(url))
                     return url
             except Exception:
                 continue
 
     logger.info("No NOMADS cycle available")
-    # Cache the failure for 5 minutes to avoid hammering NOMADS when it's down
-    _cache[cache_key] = {'data': None, 'time': now_ts - (NOMADS_CYCLE_CACHE_TTL - 300)}
+    # Cache the failure for 5 minutes to avoid hammering NOMADS when it's down.
+    # _cache_store stamps time.time(), so the backdating that shortened this
+    # TTL has to be reapplied after the insert rather than passed in.
+    with _cache_lock:
+        _cache_store(cache_key, None, 0)
+        _cache[cache_key]['time'] = now_ts - (NOMADS_CYCLE_CACHE_TTL - 300)
     return None
 
 def _fetch_nomads_opendap(base_url, variables, time_slice, lat_slice, lon_slice):
