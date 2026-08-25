@@ -1614,6 +1614,10 @@ GRID_ROUNDING = {
     'wave_direction': 0,   # 1 degree -- drawn as a rotated arrow
     'wind_speed': 1,       # 0.1 unit -- displayed as an integer
     'wind_direction': 0,   # 1 degree -- drawn as a rotated arrow
+    # primary swell partition, served opt-in via ?fields=swell
+    'swell_height': 2,
+    'swell_period': 1,
+    'swell_direction': 0,
 }
 
 
@@ -2323,11 +2327,11 @@ def _wave_sync_once():
     # proven at and the 2-degree fields above stay server-side for analysis.
     npz = np.load(io.BytesIO(raw))
     for key in ('client_lats', 'client_lons') + tuple(
-            'client_' + k for k in _WAVE_TILE_KEYS):
+            'client_' + k for k in _WAVE_TILE_KEYS + ('sw1h', 'sw1p', 'sw1d')):
         if key not in npz.files:
             raise ValueError(f"wave artifact missing key {key}")
         store[key] = npz[key]
-    for k in _WAVE_TILE_KEYS:
+    for k in _WAVE_TILE_KEYS + ('sw1h', 'sw1p', 'sw1d'):
         expected = (WAVE_BASIN_CLIENT_FRAMES,
                     len(store['client_lats']), len(store['client_lons']))
         if store['client_' + k].shape != expected:
@@ -2396,7 +2400,338 @@ def _basin_from_wave_store():
     result.update(_grid_fields(
         field('htsgw'), field('perpw'), field('dirpw'),
         field('wind'), field('wdir')))
+    # The primary swell partition rides in the same cached object and is
+    # filtered off the wire unless ?fields=swell asks for it -- the same
+    # arrangement wind has had since v0.11.69.
+    for out_name, key in (('swell_height', 'sw1h'), ('swell_period', 'sw1p'),
+                          ('swell_direction', 'sw1d')):
+        result[out_name] = _round_grid(field(key), GRID_ROUNDING[out_name])
     return result
+
+
+# ---------------------------------------------------------------------------
+# Basin situational awareness: storm watch and incoming swell trains.
+#
+# Both read the 2-degree analysis fields of the wave store -- the resolution
+# the wire deliberately does not carry. Storm tracks are computed once per
+# model cycle and cached at module scope; the per-spot work (bearing window,
+# land shadow, ETA) is a few hundred microseconds against the cached tracks.
+
+STORM_WIND_KMH = 45.0          # sustained near-gale: sea is actively building
+STORM_HSGW_M = 4.0
+STORM_MIN_CELLS = 3            # < 3 cells at 2 deg is noise, not a system
+STORM_MIN_FRAMES = 4           # 12h at 3-hourly: fetch DURATION makes swell
+STORM_TRACK_MATCH_KM = 600.0
+STORM_MAX_DISTANCE_KM = 12000.0
+STORM_BEARING_WINDOW_DEG = 80.0   # matches the frontend swell-window cone
+STORM_SHADOW_SAMPLES = 24
+STORM_SHADOW_MAX_LAND = 0.20
+# Deep-water group velocity, the same constant the narrative and the client
+# rings already use: cg = 0.78 * T (m/s) = 2.808 * T (km/h).
+GROUP_VELOCITY_KMH_PER_S = 2.808
+
+INCOMING_MIN_HEIGHT_M = 0.4
+INCOMING_MIN_PERIOD_S = 8.0
+
+_storm_tracks_cache = {'cycle': None, 'tracks': None}
+_storm_tracks_lock = threading.Lock()
+
+
+def _initial_bearing(lat1, lon1, lat2, lon2):
+    """Great-circle initial bearing from point 1 toward point 2, degrees."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlon = math.radians(lon2 - lon1)
+    x = math.sin(dlon) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dlon)
+    return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+
+
+def _great_circle_point(lat1, lon1, lat2, lon2, f):
+    """Point a fraction f along the great circle between two points."""
+    p1, l1 = math.radians(lat1), math.radians(lon1)
+    p2, l2 = math.radians(lat2), math.radians(lon2)
+    d = 2 * math.asin(math.sqrt(
+        math.sin((p2 - p1) / 2) ** 2
+        + math.cos(p1) * math.cos(p2) * math.sin((l2 - l1) / 2) ** 2))
+    if d == 0:
+        return lat1, lon1
+    a = math.sin((1 - f) * d) / math.sin(d)
+    b = math.sin(f * d) / math.sin(d)
+    x = a * math.cos(p1) * math.cos(l1) + b * math.cos(p2) * math.cos(l2)
+    y = a * math.cos(p1) * math.sin(l1) + b * math.cos(p2) * math.sin(l2)
+    z = a * math.sin(p1) + b * math.sin(p2)
+    return (math.degrees(math.atan2(z, math.sqrt(x * x + y * y))),
+            math.degrees(math.atan2(y, x)))
+
+
+def _basin_cell_index(store, lat, lon):
+    """Row/col of the 2-degree analysis cell nearest a point (lon 0..360)."""
+    lats, lons = store['lats'], store['lons']
+    ri = int(np.clip(np.searchsorted(lats, lat), 0, len(lats) - 1))
+    ci = int(np.clip(np.searchsorted(lons, lon % 360.0), 0, len(lons) - 1))
+    return ri, ci
+
+
+def _nearest_ocean_cell(store, lat, lon, max_radius=4):
+    """Spiral out from the nearest cell to the nearest FINITE (ocean) cell --
+    a shoreline spot's nearest 2-degree cell is frequently land."""
+    ri, ci = _basin_cell_index(store, lat, lon)
+    htsgw0 = store['htsgw'][0]
+    ny, nx = htsgw0.shape
+    for radius in range(0, max_radius + 1):
+        best = None
+        for dr in range(-radius, radius + 1):
+            for dc in range(-radius, radius + 1):
+                if max(abs(dr), abs(dc)) != radius:
+                    continue
+                r, c = ri + dr, (ci + dc) % nx
+                if 0 <= r < ny and np.isfinite(htsgw0[r, c]):
+                    d = (dr * dr + dc * dc)
+                    if best is None or d < best[0]:
+                        best = (d, r, c)
+        if best is not None:
+            return best[1], best[2]
+    return None
+
+
+def _cluster_storm_mask(mask):
+    """Connected components on a lat/lon mask, wrapping in LONGITUDE only.
+
+    Hand-rolled BFS: the mask is sparse (a few hundred cells on a stormy
+    frame) and scipy is not a dependency this app has or wants.
+    """
+    ny, nx = mask.shape
+    seen = np.zeros_like(mask, dtype=bool)
+    clusters = []
+    rows, cols = np.nonzero(mask)
+    for r0, c0 in zip(rows, cols):
+        if seen[r0, c0]:
+            continue
+        queue = [(r0, c0)]
+        seen[r0, c0] = True
+        cells = []
+        while queue:
+            r, c = queue.pop()
+            cells.append((r, c))
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                rr, cc = r + dr, (c + dc) % nx
+                if 0 <= rr < ny and mask[rr, cc] and not seen[rr, cc]:
+                    seen[rr, cc] = True
+                    queue.append((rr, cc))
+        clusters.append(cells)
+    return clusters
+
+
+def _storm_tracks(store):
+    """Storm systems tracked across the full 16-day analysis window.
+
+    A track is a sequence of frame-clusters whose centroids stay within
+    STORM_TRACK_MATCH_KM between consecutive frames, persisting at least
+    STORM_MIN_FRAMES -- fetch duration is what makes swell, so a 3-hour blob
+    is weather, not a source. Cached per model cycle; the scan over 129
+    frames costs ~100ms once.
+    """
+    with _storm_tracks_lock:
+        if _storm_tracks_cache['cycle'] == store['cycle']:
+            return _storm_tracks_cache['tracks']
+
+    lats, lons = store['lats'], store['lons']
+    times = store['times']
+    open_tracks = []
+    done_tracks = []
+    for f in range(len(times)):
+        wind = store['wind'][f].astype(np.float32)
+        hs = store['htsgw'][f].astype(np.float32)
+        perpw = store['perpw'][f].astype(np.float32)
+        with np.errstate(invalid='ignore'):
+            mask = (wind >= STORM_WIND_KMH) & (hs >= STORM_HSGW_M)
+        mask &= np.isfinite(wind) & np.isfinite(hs)
+        frame_clusters = []
+        for cells in _cluster_storm_mask(mask):
+            if len(cells) < STORM_MIN_CELLS:
+                continue
+            rs = np.array([c[0] for c in cells])
+            cs = np.array([c[1] for c in cells])
+            w = wind[rs, cs]
+            # wind-weighted centroid; longitudes via circular mean so a
+            # cluster straddling the seam does not average to the antipode
+            clat = float(np.average(lats[rs], weights=w))
+            lon_rad = np.deg2rad(lons[cs])
+            clon = float(np.rad2deg(np.arctan2(
+                np.average(np.sin(lon_rad), weights=w),
+                np.average(np.cos(lon_rad), weights=w)))) % 360.0
+            frame_clusters.append({
+                'frame': f, 'time': int(times[f]),
+                'lat': clat, 'lon': clon,
+                'max_wind': float(np.max(w)),
+                'max_hs': float(np.max(hs[rs, cs])),
+                'max_period': float(np.nanmax(perpw[rs, cs])) if np.isfinite(
+                    perpw[rs, cs]).any() else 0.0,
+                'cells': len(cells),
+            })
+        still_open = []
+        for track in open_tracks:
+            last = track[-1]
+            matched = None
+            for i, cl in enumerate(frame_clusters):
+                if haversine_distance(last['lat'],
+                                      ((last['lon'] + 180) % 360) - 180,
+                                      cl['lat'],
+                                      ((cl['lon'] + 180) % 360) - 180)                         <= STORM_TRACK_MATCH_KM:
+                    matched = i
+                    break
+            if matched is not None:
+                track.append(frame_clusters.pop(matched))
+                still_open.append(track)
+            else:
+                done_tracks.append(track)
+        open_tracks = still_open + [[cl] for cl in frame_clusters]
+    done_tracks.extend(open_tracks)
+    tracks = [t for t in done_tracks if len(t) >= STORM_MIN_FRAMES]
+
+    with _storm_tracks_lock:
+        _storm_tracks_cache['cycle'] = store['cycle']
+        _storm_tracks_cache['tracks'] = tracks
+    return tracks
+
+
+def _land_fraction_between(store, lat1, lon1, lat2, lon2):
+    """Share of great-circle samples between two points that land on the
+    basin's own land mask (NaN cells). The first and last 10% are skipped:
+    both endpoints are NEAR coasts by construction and would always count."""
+    htsgw0 = store['htsgw'][0]
+    land = 0
+    total = 0
+    for i in range(STORM_SHADOW_SAMPLES):
+        f = 0.10 + 0.80 * (i / (STORM_SHADOW_SAMPLES - 1))
+        plat, plon = _great_circle_point(lat1, lon1, lat2, lon2, f)
+        r, c = _basin_cell_index(store, plat, plon)
+        total += 1
+        if not np.isfinite(htsgw0[r, c]):
+            land += 1
+    return land / total if total else 0.0
+
+
+def _potential_swells(lat, lon, facing_direction):
+    """Storm systems whose swell could plausibly reach this spot, with ETAs.
+
+    This is the storm-watch half of the basin pane: honest about being a
+    watch, not a forecast -- anything arriving past the 7-day model window
+    is tagged 'storm-watch', and the model already shows anything nearer.
+    """
+    store = _wave_store_fresh()
+    if store is None:
+        return None
+    horizon_epoch = int(store['times'][min(56, len(store['times']) - 1)])
+    out = []
+    for track in _storm_tracks(store):
+        peak = max(track, key=lambda cl: cl['max_wind'])
+        storm_lat = peak['lat']
+        storm_lon = ((peak['lon'] + 180) % 360) - 180
+        dist = haversine_distance(lat, lon, storm_lat, storm_lon)
+        if not (200 <= dist <= STORM_MAX_DISTANCE_KM):
+            continue
+        bearing = _initial_bearing(lat, lon, storm_lat, storm_lon)
+        if facing_direction is not None:
+            diff = abs((bearing - facing_direction + 180) % 360 - 180)
+            if diff > STORM_BEARING_WINDOW_DEG:
+                continue
+        if _land_fraction_between(store, lat, lon, storm_lat, storm_lon)                 > STORM_SHADOW_MAX_LAND:
+            continue
+        period = max(peak['max_period'], 8.0)
+        cg = GROUP_VELOCITY_KMH_PER_S * period
+        eta = peak['time'] + (dist / cg) * 3600.0
+        eta_late = peak['time'] + (dist / (GROUP_VELOCITY_KMH_PER_S
+                                           * 0.8 * period)) * 3600.0
+        if eta_late < time.time():
+            continue                     # swell would already have passed
+        out.append({
+            'bearing': round(bearing),
+            'compass': degrees_to_compass(bearing),
+            'lat': round(storm_lat, 1),
+            'lon': round(storm_lon, 1),
+            'distance_km': round(dist, -1),
+            'max_wind_kmh': round(peak['max_wind']),
+            'peak_period_s': round(period, 1),
+            'storm_time_utc': datetime.fromtimestamp(
+                peak['time'], timezone.utc).strftime('%Y-%m-%dT%H:%MZ'),
+            'eta_utc': datetime.fromtimestamp(
+                eta, timezone.utc).strftime('%Y-%m-%dT%H:%MZ'),
+            'eta_late_utc': datetime.fromtimestamp(
+                eta_late, timezone.utc).strftime('%Y-%m-%dT%H:%MZ'),
+            'confidence': 'forecast' if eta <= horizon_epoch else 'storm-watch',
+        })
+    out.sort(key=lambda p: p['eta_utc'])
+    return out[:5]
+
+
+def _incoming_swells(lat, lon):
+    """Swell trains at this spot's basin cell over the 7-day window, from the
+    partitioned fields the wire does not carry: per partition, contiguous
+    runs of height >= 0.4m and period >= 8s become events with a direction, a
+    period band, a peak, and a phase label."""
+    store = _wave_store_fresh()
+    if store is None:
+        return None
+    cell = _nearest_ocean_cell(store, lat, lon)
+    if cell is None:
+        return None
+    ri, ci = cell
+    times = store['times'][:57]
+    now = time.time()
+    events = []
+    for part in ('sw1', 'sw2', 'sw3'):
+        h = store[part + 'h'][:57, ri, ci].astype(np.float32)
+        pperiod = store[part + 'p'][:57, ri, ci].astype(np.float32)
+        d = store[part + 'd'][:57, ri, ci].astype(np.float32)
+        with np.errstate(invalid='ignore'):
+            active = (h >= INCOMING_MIN_HEIGHT_M) & (pperiod >= INCOMING_MIN_PERIOD_S)
+        active &= np.isfinite(h) & np.isfinite(pperiod)
+        i = 0
+        while i < len(active):
+            if not active[i]:
+                i += 1
+                continue
+            j = i
+            while j < len(active) and active[j]:
+                j += 1
+            seg_h, seg_p, seg_d = h[i:j], pperiod[i:j], d[i:j]
+            if int(times[j - 1]) >= now and (j - i) >= 2:
+                peak_idx = i + int(np.argmax(seg_h))
+                rad = np.deg2rad(seg_d[np.isfinite(seg_d)])
+                mean_dir = float(np.rad2deg(math.atan2(
+                    float(np.mean(np.sin(rad))),
+                    float(np.mean(np.cos(rad)))))) % 360.0 if rad.size else None
+                peak_t = int(times[peak_idx])
+                if peak_t - now > 12 * 3600:
+                    phase = 'building'
+                elif now - peak_t > 12 * 3600:
+                    phase = 'fading'
+                else:
+                    phase = 'peaking'
+                events.append({
+                    'partition': part,
+                    'direction': round(mean_dir) if mean_dir is not None else None,
+                    'compass': degrees_to_compass(mean_dir)
+                    if mean_dir is not None else None,
+                    'period_min_s': round(float(np.min(seg_p)), 1),
+                    'period_max_s': round(float(np.max(seg_p)), 1),
+                    'peak_height_m': round(float(np.max(seg_h)), 2),
+                    'peak_time_utc': datetime.fromtimestamp(
+                        peak_t, timezone.utc).strftime('%Y-%m-%dT%H:%MZ'),
+                    'starts_utc': datetime.fromtimestamp(
+                        int(times[i]), timezone.utc).strftime('%Y-%m-%dT%H:%MZ'),
+                    'phase': phase,
+                })
+            i = j
+    events.sort(key=lambda e: (e['peak_time_utc']))
+    return events[:6]
+
+
+def degrees_to_compass(deg):
+    dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+            'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+    return dirs[round(deg / 22.5) % 16]
 
 
 def _tile_key_for(lat, lon):
@@ -5957,6 +6292,13 @@ def get_ocean_basin_data(wave_timeouts=(75,), wind_timeouts=(45,)):
 # grid drives the particles instead, so the default visitor downloaded several
 # megabytes of wind that was never drawn. They are omitted unless asked for.
 BASIN_WIND_FIELDS = ('wind_speed', 'wind_direction')
+# Same treatment for the primary swell partition: cached once, filtered off
+# the wire until the swell-arrow layer asks (?fields=swell). Groups compose:
+# ?wind=1&fields=swell serves both.
+BASIN_OPTIONAL_FIELD_GROUPS = {
+    'wind': BASIN_WIND_FIELDS,
+    'swell': ('swell_height', 'swell_period', 'swell_direction'),
+}
 
 
 @app.route('/api/ocean-basin')
@@ -5974,7 +6316,12 @@ def ocean_basin():
     if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
         return result
     center_lat, center_lon = result
-    include_wind = request.args.get('wind') == '1'
+    requested = {g for g in request.args.get('fields', '').split(',') if g}
+    if request.args.get('wind') == '1':
+        requested.add('wind')
+    include_wind = 'wind' in requested
+    excluded = tuple(f for group, fields in BASIN_OPTIONAL_FIELD_GROUPS.items()
+                     if group not in requested for f in fields)
 
     # This endpoint NEVER fetches upstream on a request thread. The global
     # fetch takes minutes against a degraded PacIOOS, and eight such requests
@@ -6007,8 +6354,7 @@ def ocean_basin():
             return resp
         data = stale_entry['data']
 
-    result = {k: v for k, v in data.items()
-              if include_wind or k not in BASIN_WIND_FIELDS}
+    result = {k: v for k, v in data.items() if k not in excluded}
     result["center"] = {"lat": round(center_lat, 2), "lon": round(center_lon, 2)}
     result["has_wind"] = include_wind
     if stale_entry is not None:
@@ -7025,7 +7371,7 @@ def swell_narrative():
             parts.append("Low steepness despite short period — cleanly organized")
         narrative = '. '.join(p for p in parts if p) + '.'
 
-        return {
+        result = {
             'narrative': narrative,
             'swell_direction': wave_dir,
             'swell_type': swell_type.lower(),
@@ -7038,6 +7384,29 @@ def swell_narrative():
             'peak_time_utc': peak_time_utc,
             'peak_height_ft': round(peak_height * m_to_ft, 1) if peak_height else None
         }
+
+        # Situational-awareness annotations from the wave store's 2-degree
+        # analysis fields. Both are OMITTED (never null, never an error) when
+        # the store is stale -- the narrative predates the store and must
+        # keep working without it. This delivers what the comment above
+        # deferred to "Phase 4 alongside spectral partitioning".
+        try:
+            facing = None
+            orientation = cached(
+                f"orientation:{lat:.4f},{lon:.4f}",
+                lambda: compute_beach_facing_direction(lat, lon),
+                ttl=ORIENTATION_CACHE_TTL)
+            if orientation:
+                facing = orientation.get('beach_facing_direction')
+            incoming = _incoming_swells(lat, lon)
+            if incoming is not None:
+                result['incoming_swells'] = incoming
+            potential = _potential_swells(lat, lon, facing)
+            if potential is not None:
+                result['potential_swells'] = potential
+        except Exception as e:
+            logger.warning(f"Swell annotations failed (non-critical): {e}")
+        return result
 
     data = cached(cache_key, _compute)
     if data:

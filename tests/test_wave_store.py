@@ -39,7 +39,7 @@ def _mk_store(age_s=0, frames=129, ny=90, nx=180):
     # the wire grid: 3-degree, 57 frames, its own axes
     store['client_lats'] = np.arange(-88.625, 90, 3.0, np.float32)[:60]
     store['client_lons'] = np.arange(1.375, 360, 3.0, np.float32)[:120]
-    for key in app._WAVE_TILE_KEYS:
+    for key in app._WAVE_TILE_KEYS + ('sw1h', 'sw1p', 'sw1d'):
         arr = np.full((app.WAVE_BASIN_CLIENT_FRAMES, 60, 120), 1.5, np.float16)
         arr[:, 0, 0] = np.nan
         store['client_' + key] = arr
