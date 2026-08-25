@@ -21,9 +21,13 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        # requirements-dev.txt, not a bare `pip install pytest`: a test-only
+        # import that exists in a local venv and not here fails COLLECTION, so
+        # the whole suite is skipped rather than one test failing. That put
+        # master red for three commits.
         run: |
           pip install -r requirements.txt
-          pip install pytest
+          pip install -r requirements-dev.txt
 
       - name: Run tests
         # tests/, not tests/test_seo.py: the accuracy-card and UX-collector
