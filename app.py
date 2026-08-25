@@ -6067,6 +6067,37 @@ def swell_narrative():
         return jsonify({"error": "Could not generate swell narrative."}), 500
 
 
+# How long Cloudflare may hold an API response at the edge. Every value is
+# BELOW the server-side TTL for the same data, deliberately: the in-process
+# cache is what protects the upstreams, and an edge copy that expires first can
+# never outlive the server entry that would have refreshed it.
+#
+# Why this exists at all: without a Cache-Control header Cloudflare returns
+# cf-cache-status: DYNAMIC and passes every request through, so a single
+# gunicorn worker was serving the 19.6 MB ocean-basin payload to every visitor
+# individually -- about 2.5s of thread time each even on a warm cache, which
+# caps the whole site near three visitors a second. Edge caching turns that
+# into one origin fetch per location per window.
+#
+# An endpoint absent from this map gets no header and is therefore NOT cached,
+# because the Cloudflare rule is set to "use cache-control header if present,
+# bypass cache if not". That is the safe direction: a new endpoint has to opt
+# in rather than inherit a default that might be wrong for it.
+# /api/health-upstreams is deliberately omitted -- it is the diagnostic reached
+# for during an incident, and a cached answer is worse than a slow one.
+API_EDGE_TTL = {
+    '/api/beach-orientation': 86400,   # coastline does not move
+    '/api/accuracy': 1800,             # verification pipeline runs every 6h
+    '/api/tides': 1800,                # harmonic predictions, not observations
+    '/api/webcams': 1800,
+    '/api/ocean-basin': 600,           # the 19.6 MB one; server TTL is 1800
+    '/api/map-forecast': 600,
+    '/api/forecast': 300,              # server TTL is 900
+    '/api/swell-narrative': 300,
+    '/api/buoys': 120,                 # live observations, keep it short
+}
+
+
 @app.after_request
 def add_cache_headers(response):
     """Add Cache-Control and security headers."""
@@ -6074,6 +6105,14 @@ def add_cache_headers(response):
         response.headers['Cache-Control'] = 'public, max-age=86400'
     elif response.content_type and 'text/html' in response.content_type:
         response.headers['Cache-Control'] = 'public, max-age=300'
+    elif response.status_code == 200 and request.path in API_EDGE_TTL:
+        # 200 only. A 500 from an upstream outage carries no header, so the
+        # edge bypasses it and the next request gets a real attempt -- caching
+        # a failure for ten minutes would turn a blip into an outage, and this
+        # app already serves a stale-but-flagged forecast rather than erroring
+        # when it can.
+        response.headers['Cache-Control'] = (
+            f'public, max-age={API_EDGE_TTL[request.path]}')
     # /embed/* must be frameable by third-party sites; everything else
     # keeps clickjacking protection.
     if request.path.startswith('/embed/'):
