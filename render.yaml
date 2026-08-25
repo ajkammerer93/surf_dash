@@ -2,18 +2,47 @@ services:
   - type: web
     name: surf-dash
     runtime: python
+
+    # plan, region and healthCheckPath are declared here because this file is
+    # meant to be adopted as a Blueprint, and Blueprint sync overwrites dashboard
+    # settings with whatever the file says. Anything true of the live service but
+    # missing here would be silently reset on the first sync.
+    #
+    # This file spent months describing a service that did not exist. The
+    # dashboard was running --timeout 120 --workers 2 with no --threads at all,
+    # which is the pre-v0.8.1 configuration: two concurrent requests rather than
+    # eight, and a timeout that killed the fallback chains v0.11.17 raised it to
+    # accommodate. Nothing warned about it, because an unadopted render.yaml is
+    # just a file in a repo. Adoption is what makes it authoritative.
+    plan: standard          # 0.5-1 CPU / 2 GB
+    region: ohio            # cannot be changed after creation; East Coast traffic
+    healthCheckPath: /healthz
+
     buildCommand: pip install -r requirements.txt
+
     # timeout 180: during multi-source outages the wave-fetch chain can
-    # legitimately need ~150s (marine timeout + both ERDDAP WW3 servers).
-    # Cloudflare cuts clients at 100s, but the worker finishing anyway is
-    # the point — the result lands in the cache and the retry is instant.
-    # threads 8: request threads mostly sit in I/O waits on upstream APIs.
-    # With 100-180s worst-case fetch chains, 4 threads let a handful of
-    # cold-cache requests pin the worker so even cache hits queued behind
-    # them (observed 2026-07-16).
+    # legitimately need ~150s (marine timeout plus the ERDDAP WW3 mirrors).
+    # Cloudflare cuts clients at 100s, but the worker finishing anyway is the
+    # point -- the result lands in the cache and the retry is instant.
+    #
+    # workers 1: deliberate, and a reversal of an earlier 2-worker config
+    # (v0.8.1). The response cache is in-process and is populated AFTER fork, so
+    # --preload does not share it: a second worker means a second copy of every
+    # entry, a second SSR warmer thread, and double the upstream load on mirrors
+    # that have failed twice this year. It also has no second core to run on.
+    # Scale vertically, or move the cache out of process first.
+    #
+    # threads 8: request threads sit in I/O waits on upstream APIs almost the
+    # whole time. Four was not enough -- during the 2026-07-16 degradation,
+    # worst-case chains of 100-180s pinned all four, so even warm cache hits
+    # queued behind them and timed out at the edge. Eight keeps hits flowing
+    # while slow chains grind.
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 8 --preload
+
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      # sync: false means "set in the dashboard, never in this file". Adoption
+      # retains existing values for these rather than clearing them.
       - key: WINDY_API_KEY
         sync: false
