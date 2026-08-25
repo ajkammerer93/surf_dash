@@ -1250,6 +1250,13 @@ def _parse_erddap_to_grids(erddap_json, variable_names):
 # about 1.4px wide, and the readouts apply toFixed(1) to height, toFixed(0) to
 # period and Math.round to wind speed. Measured effect on the basin payload:
 # 6.54 MB to 1.68 MB on the wire, 17.5 MB to 6.6 MB parsed.
+# One time axis for every grid the swell map draws. The basin has always been
+# 3-hourly; the local grid now matches, so a slider index means the same
+# instant on both layers. Both get_ocean_basin_data and _get_grid_from_erddap
+# read this, which is the point -- they were independently chosen before and
+# silently drifted apart when NOMADS retired.
+GRID_TIME_STRIDE = 3
+
 GRID_ROUNDING = {
     'wave_height': 2,      # 1 cm -- displayed in feet, where 0.01 m is 0.03 ft
     'wave_period': 1,      # 0.1 s -- displayed as whole seconds
@@ -1869,7 +1876,25 @@ def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
 def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
     """
     Fetches gridded wave and wind data from ERDDAP for local map display.
-    WW3 at native 0.5deg resolution, GFS wind interpolated to hourly.
+    WW3 at native 0.5deg resolution, on the same 3-hourly axis as the basin.
+
+    The stride is not a size optimisation, it is a correctness fix. The swell
+    map drives both this grid and the global basin grid from ONE time slider,
+    and it resolves the basin frame by index. This fetch used to have no
+    time_stride, so it came back hourly (168 steps) against the basin's
+    3-hourly (56), and slider position i meant hour i here but hour 3i on the
+    basin overlay. Zooming out therefore showed a field from up to five days
+    off, silently, with the badge reporting the local time. Beyond index 55 the
+    basin simply froze on its last frame.
+
+    That went unnoticed because NOMADS used to serve this path at 3-hourly and
+    matched by luck; when NOMADS retired (SCN 25-81, see
+    _find_latest_nomads_cycle) every request fell through to here and the
+    mismatch became the live behaviour.
+
+    The client also aligns by timestamp now rather than trusting the index, so
+    the two defences are independent -- but the axes should match in the first
+    place.
     """
     try:
         # Convert lon bounds to 0-360 for ERDDAP
@@ -1890,6 +1915,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
             lat_range=lat_range,
             lon_range=lon_range,
             depth=0,
+            time_stride=GRID_TIME_STRIDE,
             label=f"Grid forecast WW3 waves ({lat_min},{lon_min})-({lat_max},{lon_max})",
         )
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
@@ -1902,6 +1928,7 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
             lat_range=lat_range,
             lon_range=lon_range,
             depth=None,
+            time_stride=GRID_TIME_STRIDE,
             label="Grid forecast GFS wind",
         )
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
@@ -5176,7 +5203,7 @@ def get_ocean_basin_data():
     # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
     lat_range = "(-77.5):6:(77.5)"
     lon_range = "(0.0):6:(359.5)"
-    time_stride = 3  # every 3rd hourly step = 3-hourly
+    time_stride = GRID_TIME_STRIDE  # shared with the local grid; see GRID_TIME_STRIDE
 
     # --- Fetch WW3 wave data (required) ---
     # Retry with progressively older start times to handle ERDDAP model update gaps
@@ -5264,24 +5291,40 @@ def get_ocean_basin_data():
         return None
 
 # Route for ocean basin data
+# The two global wind grids are two thirds of the basin payload and they feed
+# exactly one thing: the decorative particle animation, and only while the map
+# is zoomed out past SWELL_LOCAL_ZOOM. The map opens at zoom 8, where the local
+# grid drives the particles instead, so the default visitor downloaded several
+# megabytes of wind that was never drawn. They are omitted unless asked for.
+BASIN_WIND_FIELDS = ('wind_speed', 'wind_direction')
+
+
 @app.route('/api/ocean-basin')
 def ocean_basin():
     """
     Provides wave data for the ocean basin around the forecast location.
     Accepts optional lat/lon query parameters.
+
+    Wind is opt-in via ?wind=1. Both shapes are served from the SAME cache entry
+    and the same single upstream fetch -- the split is only about what goes on
+    the wire, and splitting the fetch as well would double the load on mirrors
+    that have already failed once this week.
     """
     result = validate_lat_lon()
     if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], float):
         return result
     center_lat, center_lon = result
+    include_wind = request.args.get('wind') == '1'
 
     # Global data is the same for all locations — single cache entry
     cache_key = "basin:global"
     data = cached(cache_key, get_ocean_basin_data, ttl=BASIN_CACHE_TTL)
 
     if data:
-        result = dict(data)  # shallow copy so we don't mutate the cached version
+        result = {k: v for k, v in data.items()
+                  if include_wind or k not in BASIN_WIND_FIELDS}
         result["center"] = {"lat": round(center_lat, 2), "lon": round(center_lon, 2)}
+        result["has_wind"] = include_wind
         return jsonify(result)
     else:
         return jsonify({"error": "Could not retrieve ocean basin data."}), 500
