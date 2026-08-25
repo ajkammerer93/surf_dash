@@ -609,6 +609,60 @@ def collect_cloudflare():
         return {'error': str(e)[:300]}
 
 
+# Endpoints the edge is expected to cache, one dynamic and one static. Both are
+# cheap and both are in app.py's API_EDGE_TTL / static handling, so a DYNAMIC on
+# either means the CDN is passing everything through.
+EDGE_CACHE_PROBES = (
+    ('/api/forecast?lat=34.43&lon=-77.55', 'dynamic JSON'),
+    ('/static/og-image.png', 'static asset'),
+)
+
+
+def collect_edge_cache():
+    """Check the CDN is still caching, because nothing else can.
+
+    Edge caching is a dashboard-only setting -- the Blueprint spec has no field
+    for it, so unlike the gunicorn flags it cannot be pinned in render.yaml or
+    covered by a test. On 2026-08-25, shortly after a Blueprint sync, the
+    dashboard read "None" while the edge was demonstrably still creating cache
+    entries, so the stored value and the observed behaviour can disagree and
+    neither is self-announcing.
+
+    What it costs to miss: before edge caching, one gunicorn worker served the
+    19.6 MB ocean-basin payload to every visitor individually, about 2.5s of
+    thread time each, capping the site near three visitors a second. A silent
+    reset puts it straight back there, and the symptom is "the site feels slow"
+    weeks later rather than anything that looks like a configuration change.
+
+    Two fetches of the same URL. HIT or MISS on the second is fine -- the entry
+    either was already warm or has just been created. DYNAMIC is the failure: it
+    means the edge considered the response ineligible and went to the origin.
+    """
+    results = {}
+    for path, label in EDGE_CACHE_PROBES:
+        statuses = []
+        try:
+            for _ in range(2):
+                r = _get(f'{SITE}{path}')
+                statuses.append(r.headers.get('cf-cache-status', '(absent)'))
+        except Exception as e:
+            results[path] = {'label': label, 'error': f'{type(e).__name__}: {str(e)[:120]}'}
+            continue
+        results[path] = {
+            'label': label,
+            'statuses': statuses,
+            # A single DYNAMIC anywhere in the pair is enough to report. Waiting
+            # for both would hide a partial reset, and a check that only fires on
+            # total failure is most of the way to no check at all.
+            'cached': all(s != 'DYNAMIC' for s in statuses),
+        }
+    working = [v for v in results.values() if v.get('cached')]
+    return {
+        'probes': results,
+        'all_cached': len(working) == len(EDGE_CACHE_PROBES),
+    }
+
+
 def build_audit(state):
     return {
         'generated': _utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -617,6 +671,7 @@ def build_audit(state):
         'search_console': collect_search_console(state),
         'cloudflare': collect_cloudflare(),
         'web_vitals': collect_web_vitals(),
+        'edge_cache': collect_edge_cache(),
     }
 
 
@@ -666,6 +721,7 @@ def main():
         # built only from it says a change did nothing for six days.
         'cwv_p75_7d': (audit.get('web_vitals') or {}).get('sitewide_7d'),
         'cwv_p75_1d': (audit.get('web_vitals') or {}).get('sitewide_1d'),
+        'edge_cache_ok': (audit.get('edge_cache') or {}).get('all_cached'),
     }
     with open(os.path.join(args.data_dir, 'audit-history.jsonl'), 'a') as f:
         f.write(json.dumps(row) + '\n')
