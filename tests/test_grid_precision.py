@@ -29,7 +29,11 @@ GRID_FIELDS = ('wave_height', 'wave_period', 'wave_direction',
 
 
 def test_every_grid_field_has_a_declared_precision():
-    assert set(A.GRID_ROUNDING) == set(GRID_FIELDS)
+    # GRID_FIELDS is the _grid_fields five; the swell partition triplet is
+    # served through _round_grid directly (opt-in group), so GRID_ROUNDING is
+    # a superset now, never a mismatch.
+    assert set(GRID_FIELDS) <= set(A.GRID_ROUNDING)
+    assert {'swell_height', 'swell_period', 'swell_direction'} <= set(A.GRID_ROUNDING)
 
 
 def test_directions_are_whole_numbers_not_floats():

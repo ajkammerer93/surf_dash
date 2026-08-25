@@ -292,8 +292,12 @@ def build(out_dir, day, cyc, base=S3_BASE):
 
     basin = {key: np.full((len(BASIN_STEPS), 90, 180), np.nan, np.float16)
              for _, _, key in BASIN_BANDS}
+    # The client set carries the primary swell partition too: the basin
+    # pane's swell-arrow layer draws sw1 direction/height at wire resolution
+    # (opt-in via ?fields=swell, same pattern as wind).
+    client_keys = [key for _, _, key in TILE_BANDS] + ['sw1h', 'sw1p', 'sw1d']
     client = {f"client_{key}": np.full((CLIENT_FRAMES, 60, 120), np.nan, np.float16)
-              for _, _, key in TILE_BANDS}
+              for key in client_keys}
     tile_data = {t: {key: np.full((len(TILE_STEPS), 101, 101), np.nan, np.float16)
                      for _, _, key in TILE_BANDS} for t in tiles}
 

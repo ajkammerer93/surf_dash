@@ -1326,6 +1326,27 @@
             box-shadow: 0 0 8px rgba(255, 99, 71, 0.9);
         }
 
+        .storm-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: rgba(255, 176, 32, 0.9);
+            border: 2px solid #fff;
+            animation: storm-pulse 2s ease-out infinite;
+        }
+        .storm-dot.storm-watch { background: rgba(255, 99, 71, 0.85); }
+        @keyframes storm-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(255, 176, 32, 0.55); }
+            100% { box-shadow: 0 0 0 14px rgba(255, 176, 32, 0); }
+        }
+
+        .basin-swell-row {
+            display: block;
+            font-size: 11px;
+            opacity: 0.92;
+            margin-top: 3px;
+        }
+        .basin-swell-row .swell-phase { opacity: 0.7; }
+
         .legend strong {
             color: var(--text);
             font-size: 10px;
@@ -5191,6 +5212,7 @@
         // Basin wind arrives separately and only if the user zooms out far
         // enough to need it -- see loadBasinWind().
         let basinWindPending = false;
+        let basinSwellPending = false;
         let basinWarmRetries = 0;   // warming-state retry budget, reset per location
 
         // === Persistent rectangle/marker caches for slider reuse ===
@@ -7797,6 +7819,33 @@
                 }));
         }
 
+        function loadBasinSwell() {
+            // Same lazy opt-in shape as loadBasinWind: the partition triplet
+            // is filtered off the default payload and fetched once, into the
+            // same basin object, when the swell-arrow layer first needs it.
+            if (basinSwellPending || !basinGridData || basinGridData.swell_direction) return;
+            basinSwellPending = true;
+            const params = new URLSearchParams({
+                lat: currentLocation.lat, lon: currentLocation.lon, fields: 'swell'
+            });
+            fetch(`/api/ocean-basin?${params}`)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(staleGuard(function(data) {
+                    basinSwellPending = false;
+                    if (!data || !data.swell_direction || !basinGridData) return;
+                    basinGridData.swell_height = data.swell_height;
+                    basinGridData.swell_period = data.swell_period;
+                    basinGridData.swell_direction = data.swell_direction;
+                    clearRasterCache('basin:swell:');
+                    const slider = document.getElementById('time-slider');
+                    updateSwellMap(slider ? (parseInt(slider.value) || 0) : 0);
+                }))
+                .catch(staleGuard(function() {
+                    // Combined-sea arrows keep drawing; nothing to surface.
+                    basinSwellPending = false;
+                }));
+        }
+
         function updateSwellVelocity(timeIndex, visible) {
             if (!mapSwell) return;
             if (!visible) {
@@ -7903,6 +7952,36 @@
                     m.addTo(group);
                 }
             }
+            // Storm watch: systems from the server-side 16-day scan whose
+            // swell could plausibly reach this beach (bearing window and
+            // land-shadow already applied server-side).
+            if (narr && Array.isArray(narr.potential_swells)) {
+                narr.potential_swells.forEach(function(p) {
+                    if (p.lat == null || p.lon == null) return;
+                    var watch = p.confidence === 'storm-watch';
+                    var m2 = L.marker([p.lat, p.lon], {
+                        icon: L.divIcon({
+                            className: 'storm-marker',
+                            html: '<div class="storm-dot' + (watch ? ' storm-watch' : '') + '"></div>',
+                            iconSize: [18, 18], iconAnchor: [9, 9]
+                        })
+                    });
+                    var eta = new Date(p.eta_utc);
+                    var etaTxt = isNaN(eta) ? p.eta_utc
+                        : formatLocationTime(eta, { weekday: 'short', hour: 'numeric' });
+                    m2.bindTooltip(
+                        'Gale ' + p.max_wind_kmh + ' km/h \u00b7 '
+                        + Math.round(p.distance_km).toLocaleString() + ' km ' + p.compass
+                        + ' \u2014 ' + p.peak_period_s + 's swell possible ' + etaTxt
+                        + (watch ? ' (storm watch)' : ''),
+                        { direction: 'top' });
+                    m2.addTo(group);
+                    L.polyline([[currentLocation.lat, currentLocation.lon], [p.lat, p.lon]], {
+                        color: watch ? 'rgba(255,99,71,0.35)' : 'rgba(255,176,32,0.4)',
+                        weight: 1, dashArray: '3 7', interactive: false
+                    }).addTo(group);
+                });
+            }
             return group;
         }
 
@@ -7940,6 +8019,44 @@
                     closeBtn.onclick = function() { el.style.display = 'none'; };
                     el.appendChild(closeBtn);
                     el.appendChild(document.createTextNode(narr.narrative));
+                    // Incoming swell trains from the partitioned model
+                    // fields; text nodes only, same XSS posture as the
+                    // narrative itself.
+                    if (Array.isArray(narr.incoming_swells)) {
+                        narr.incoming_swells.slice(0, 3).forEach(function(sw) {
+                            var row = document.createElement('span');
+                            row.className = 'basin-swell-row';
+                            var peak = new Date(sw.peak_time_utc);
+                            var when = isNaN(peak) ? '' :
+                                formatLocationTime(peak, { weekday: 'short' });
+                            row.appendChild(document.createTextNode(
+                                '\u25B2 ' + sw.peak_height_m + 'm '
+                                + sw.period_min_s + '\u2013' + sw.period_max_s + 's '
+                                + (sw.compass || '') + ' swell '));
+                            var phase = document.createElement('span');
+                            phase.className = 'swell-phase';
+                            phase.textContent = '\u2014 ' + sw.phase
+                                + (when ? ' ' + when : '');
+                            row.appendChild(phase);
+                            el.appendChild(row);
+                        });
+                    }
+                    if (Array.isArray(narr.potential_swells) && narr.potential_swells.length) {
+                        var p0 = narr.potential_swells[0];
+                        var wrow = document.createElement('span');
+                        wrow.className = 'basin-swell-row';
+                        var weta = new Date(p0.eta_utc);
+                        var wtxt = isNaN(weta) ? '' :
+                            ' \u2248 ' + formatLocationTime(weta, { weekday: 'short' });
+                        var wphase = document.createElement('span');
+                        wphase.className = 'swell-phase';
+                        wphase.textContent = 'Storm watch: gale '
+                            + Math.round(p0.distance_km).toLocaleString() + ' km '
+                            + p0.compass + ' \u2014 possible ' + p0.peak_period_s
+                            + 's swell' + wtxt;
+                        wrow.appendChild(wphase);
+                        el.appendChild(wrow);
+                    }
                     el.style.display = '';
                     // Rebuild decor so the estimated swell-origin marker appears
                     window._swellNarrative = narr;
@@ -8171,10 +8288,19 @@
                 if (!state.swell || localMode) {
                     if (basinArrowOverlay) { mapSwell.removeLayer(basinArrowOverlay); basinArrowOverlay = null; }
                 } else {
-                    const akey = 'basin:swell:' + t;
+                    // Draw the PRIMARY SWELL PARTITION when it has arrived --
+                    // combined-sea direction blends swell with local wind chop,
+                    // which is exactly the thing a basin overview wants to
+                    // separate. Falls back to combined until the lazy fetch
+                    // lands (loadBasinSwell re-renders on arrival).
+                    const hasPartition = !!basinGridData.swell_direction;
+                    if (!hasPartition) loadBasinSwell();
+                    const akey = (hasPartition ? 'basin:sw1:' : 'basin:swell:') + t;
                     if (!_rasterCache[akey]) {
-                        const dirs = sliceGrid2D(basinGridData.wave_direction, t, basinLonOrder);
-                        const mags = sliceGrid2D(basinGridData.wave_height, t, basinLonOrder);
+                        const dirs = sliceGrid2D(hasPartition ? basinGridData.swell_direction
+                                                              : basinGridData.wave_direction, t, basinLonOrder);
+                        const mags = sliceGrid2D(hasPartition ? basinGridData.swell_height
+                                                              : basinGridData.wave_height, t, basinLonOrder);
                         _rasterCache[akey] = buildArrowRasterURL(bLats, lons, dirs, mags, {
                             step: 2, pxPerCell: 14, minMag: 0.4, scaleLen: 4, lineWidth: 1.4,
                             colorFor: function(mag) {
@@ -8345,7 +8471,11 @@
                     }
                 }
                 if (basinGridData && basinLonsSorted) {
-                    const t = Math.min(tRaw, basinGridData.times.length - 1);
+                    // by TIMESTAMP, like the raster path at the top of
+                    // updateSwellMap -- raw index clamping read a frame 3x
+                    // ahead of the pixels under the cursor once the local
+                    // grid went hourly against the 3-hourly basin
+                    const t = frameIndexForTime(basinGridData.times, sliderTimeIso(tRaw));
                     const lon = ((ll.lng + 180) % 360 + 360) % 360 - 180;
                     const hGrid = sliceGrid2D(basinGridData.wave_height, t, basinLonOrder);
                     const wh = sampleGrid(basinGridData.lats, basinLonsSorted, hGrid, ll.lat, lon);
