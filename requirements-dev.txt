@@ -10,3 +10,7 @@
 # it silently becomes "whatever happens to be installed on my laptop".
 pytest
 pyyaml
+# Decodes gfswave grib2 in scripts/build_wave_artifacts.py — which runs in CI
+# and on dev machines, never in the web process. The app consumes the decoded
+# npz artifacts with numpy alone.
+eccodes

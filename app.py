@@ -10,6 +10,7 @@ import threading
 import time
 import traceback
 import os
+import io
 import json
 import logging
 from collections import OrderedDict
@@ -439,6 +440,12 @@ def _deep_size(obj, _seen=None):
         return 0
     _seen.add(marker)
     size = sys.getsizeof(obj)
+    if isinstance(obj, np.ndarray):
+        # getsizeof on an ndarray VIEW reports only the header; nbytes is the
+        # honest figure either way. Nothing caches arrays today, but the wave
+        # store swap makes it possible and a silent undercount would quietly
+        # unbound the byte cap.
+        return size + int(obj.nbytes)
     if isinstance(obj, dict):
         for k, v in obj.items():
             size += _deep_size(k, _seen) + _deep_size(v, _seen)
@@ -753,8 +760,9 @@ def _enrich_with_wind(forecast, latitude, longitude):
     try:
         if not _om_weather_available():
             # Chronic 429 window: do not pay ~10s to rediscover it — go
-            # straight to the fallback.
-            _enrich_wind_from_erddap(forecast, latitude, longitude)
+            # straight to the fallbacks, cheapest first.
+            if not _enrich_wind_from_tile(forecast, latitude, longitude):
+                _enrich_wind_from_erddap(forecast, latitude, longitude)
             return
         resp = _retry_request(lambda: requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -769,8 +777,9 @@ def _enrich_with_wind(forecast, latitude, longitude):
         ))
         _om_weather_note(resp)
         if not resp.ok:
-            logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), trying ERDDAP fallback")
-            _enrich_wind_from_erddap(forecast, latitude, longitude)
+            logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), trying fallbacks")
+            if not _enrich_wind_from_tile(forecast, latitude, longitude):
+                _enrich_wind_from_erddap(forecast, latitude, longitude)
             return
         om = resp.json().get("hourly", {})
         om_times = om.get("time", [])
@@ -793,13 +802,70 @@ def _enrich_with_wind(forecast, latitude, longitude):
                 matched += 1
         logger.info(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
         if matched == 0:
-            _enrich_wind_from_erddap(forecast, latitude, longitude)
+            if not _enrich_wind_from_tile(forecast, latitude, longitude):
+                _enrich_wind_from_erddap(forecast, latitude, longitude)
     except Exception as e:
         logger.warning(f"  Open-Meteo wind fetch failed (non-critical): {e}")
         try:
-            _enrich_wind_from_erddap(forecast, latitude, longitude)
+            if not _enrich_wind_from_tile(forecast, latitude, longitude):
+                _enrich_wind_from_erddap(forecast, latitude, longitude)
         except Exception as e2:
-            logger.warning(f"  ERDDAP wind fallback also failed: {e2}")
+            logger.warning(f"  wind fallbacks also failed: {e2}")
+
+
+def _enrich_wind_from_tile(forecast, latitude, longitude):
+    """Backfill missing wind columns from the wave-store tile in RAM.
+
+    The tile carries the same GFS surface wind the ERDDAP fallback used to
+    fetch over HTTP -- gfswave files include WIND/WDIR -- so when the store
+    is warm this replaces an 8-18s upstream call with an array lookup.
+    Returns True when it filled anything.
+    """
+    tile = _load_wave_tile(*_tile_key_for(latitude, longitude))
+    if tile is None:
+        return False
+    lats, lons = tile['lats'], tile['lons']
+    if not (lats[0] <= latitude <= lats[-1] and lons[0] <= longitude <= lons[-1]):
+        return False
+    ri = int(np.clip(np.searchsorted(lats, latitude), 1, len(lats) - 1))
+    ci = int(np.clip(np.searchsorted(lons, longitude), 1, len(lons) - 1))
+    times = tile['times']
+
+    def sample(key, t_idx):
+        # nearest cell first, then a small spiral for shoreline points whose
+        # nearest cell is land (same reason the client has
+        # sampleGridNearestValid)
+        for radius in range(0, 4):
+            r0, r1 = max(0, ri - radius), min(len(lats), ri + radius + 1)
+            c0, c1 = max(0, ci - radius), min(len(lons), ci + radius + 1)
+            window = tile[key][t_idx, r0:r1, c0:c1].astype(np.float32)
+            finite = window[np.isfinite(window)]
+            if finite.size:
+                return float(finite[0])
+        return None
+
+    filled = 0
+    for entry in forecast:
+        if entry.get('wind_speed') is not None:
+            continue
+        try:
+            t = datetime.strptime(entry['time'], '%Y-%m-%dT%H:%MZ') \
+                .replace(tzinfo=timezone.utc).timestamp()
+        except (ValueError, KeyError):
+            continue
+        t_idx = int(np.clip(np.searchsorted(times, t), 0, len(times) - 1))
+        if abs(float(times[t_idx]) - t) > 5400:
+            continue                       # tile horizon ended before this hour
+        ws = sample('wind', t_idx)
+        wd = sample('wdir', t_idx)
+        if ws is not None:
+            entry['wind_speed'] = round(ws, 1)
+            filled += 1
+        if wd is not None:
+            entry['wind_direction'] = round(wd, 1)
+    if filled:
+        logger.info(f"  Wind backfilled from wave tile: {filled} hours")
+    return filled > 0
 
 
 # Per-host budgets for the wind ENRICHMENT chain only. Kept far below the
@@ -2150,7 +2216,282 @@ def _get_grid_from_nomads(lat_min, lat_max, lon_min, lon_max):
                       wind_speed, wind_dir),
     }
 
+# ---------------------------------------------------------------------------
+# The gfswave wave store: model data without ERDDAP.
+#
+# A GitHub Action (.github/workflows/wave-artifacts.yml) decodes NOAA's
+# gfswave.global.0p25 grib2 files from NODD S3 -- the grib work happens in CI,
+# never here -- and publishes compact float16 npz artifacts to the orphan
+# wave-data branch. A background thread syncs them into module-level numpy
+# arrays, and both grid endpoints serve slices from RAM. ERDDAP, a single
+# degraded server since the 2026-08-25 consolidation, becomes the last
+# resort instead of the load-bearing path.
+#
+# basin.npz: global 2-degree, 3-hourly f000-f384 (129 frames), 14 fields --
+# combined seas, surface wind, and three partitioned swell trains. Frames
+# beyond f168 exist for server-side storm watch, never for the wire.
+# tiles/tile_{lat0}_{lon0}.npz: 0.25-degree, hourly f000-f120, five fields,
+# 20-degree core + 2.5-degree halo so every map-forecast bbox around a
+# covered spot fits inside exactly one tile.
+
+WAVE_DATA_URL = os.environ.get(
+    'WAVE_DATA_URL',
+    'https://raw.githubusercontent.com/ajkammerer93/surf_dash/wave-data')
+WAVE_DATA_DIR = os.environ.get('WAVE_DATA_DIR')   # local/test override
+WAVE_SYNC_INTERVAL_S = 600
+# Gate on the manifest's built_at, not the cycle time: the newest complete
+# cycle is legitimately 5-11h old (6h cadence + ~5h publish latency), but a
+# manifest that has not been REBUILT in 12h means the pipeline is dead and
+# the fallback chain should take over.
+WAVE_ARTIFACT_MAX_AGE_S = 12 * 3600
+WAVE_TILE_LRU = 4
+WAVE_BASIN_CLIENT_FRAMES = 57      # f000-f168 equivalent: 7 days at 3-hourly
+
+_WAVE_BASIN_KEYS = ('htsgw', 'perpw', 'dirpw', 'wind', 'wdir',
+                    'sw1h', 'sw1p', 'sw1d', 'sw2h', 'sw2p', 'sw2d',
+                    'sw3h', 'sw3p', 'sw3d')
+_WAVE_TILE_KEYS = ('htsgw', 'perpw', 'dirpw', 'wind', 'wdir')
+
+_wave_basin = None                  # swapped whole; readers grab one ref
+_wave_basin_lock = threading.Lock() # writers only
+_wave_tiles = OrderedDict()         # (cycle, 'lat0_lon0') -> tile dict
+_wave_tiles_lock = threading.Lock()
+
+
+def _wave_fetch(relpath, timeout=60):
+    """One artifact file as bytes, from the local override or the data branch."""
+    if WAVE_DATA_DIR:
+        with open(os.path.join(WAVE_DATA_DIR, relpath), 'rb') as f:
+            return f.read()
+    resp = requests.get(f"{WAVE_DATA_URL}/{relpath}", timeout=timeout)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _load_wave_npz(data, required_keys, frames):
+    """npz bytes -> {key: float16 ndarray}, validated before anything is kept.
+
+    A half-valid artifact must be rejected whole: swapping in a store with a
+    missing field would move the failure from load time (loud, logged) to
+    request time (a KeyError inside every basin response).
+    """
+    npz = np.load(io.BytesIO(data))
+    store = {}
+    for key in ('times', 'lats', 'lons') + tuple(required_keys):
+        if key not in npz.files:
+            raise ValueError(f"wave artifact missing key {key}")
+        store[key] = npz[key]
+    nt, ny, nx = frames, len(store['lats']), len(store['lons'])
+    for key in required_keys:
+        if store[key].shape != (nt, ny, nx):
+            raise ValueError(
+                f"wave artifact {key} has shape {store[key].shape}, "
+                f"expected {(nt, ny, nx)}")
+    if len(store['times']) != nt:
+        raise ValueError("wave artifact times axis does not match frames")
+    if not np.all(np.diff(store['lats']) > 0):
+        raise ValueError("wave artifact lats must be ascending")
+    return store
+
+
+def _wave_store_fresh():
+    """The current basin store, or None when the pipeline is stale/absent."""
+    store = _wave_basin
+    if store is None:
+        return None
+    if time.time() - store['built_at_epoch'] > WAVE_ARTIFACT_MAX_AGE_S:
+        return None
+    return store
+
+
+def _wave_sync_once():
+    """Fetch the manifest and, on a cycle change, swap in a new basin store."""
+    global _wave_basin
+    manifest = json.loads(_wave_fetch('manifest.json', timeout=20))
+    current = _wave_basin
+    if current is not None and current['cycle'] == manifest['cycle']:
+        # Same cycle, fresher build stamp (the workflow reruns hourly and
+        # exits early; built_at only moves on a real rebuild).
+        current['built_at_epoch'] = _parse_manifest_built_at(manifest)
+        return False
+    raw = _wave_fetch('basin.npz', timeout=120)
+    store = _load_wave_npz(raw, _WAVE_BASIN_KEYS, frames=129)
+    # The client grid rides in the same file at its own resolution: 3-degree,
+    # 57 frames. 2-degree was measured at 3.0 MB brotli / ~28 MB parsed for
+    # the default response -- the exact regression the v0.11.69 payload work
+    # existed to kill -- so the wire keeps the resolution the budget was
+    # proven at and the 2-degree fields above stay server-side for analysis.
+    npz = np.load(io.BytesIO(raw))
+    for key in ('client_lats', 'client_lons') + tuple(
+            'client_' + k for k in _WAVE_TILE_KEYS):
+        if key not in npz.files:
+            raise ValueError(f"wave artifact missing key {key}")
+        store[key] = npz[key]
+    for k in _WAVE_TILE_KEYS:
+        expected = (WAVE_BASIN_CLIENT_FRAMES,
+                    len(store['client_lats']), len(store['client_lons']))
+        if store['client_' + k].shape != expected:
+            raise ValueError(f"wave artifact client_{k} has shape "
+                             f"{store['client_' + k].shape}, expected {expected}")
+    store['cycle'] = manifest['cycle']
+    store['cycle_epoch'] = int(manifest['cycle_epoch'])
+    store['built_at_epoch'] = _parse_manifest_built_at(manifest)
+    with _wave_basin_lock:
+        _wave_basin = store
+    logger.info(f"Wave store synced: cycle {store['cycle']}")
+    return True
+
+
+def _parse_manifest_built_at(manifest):
+    return datetime.strptime(
+        manifest['built_at'], '%Y-%m-%dT%H:%M:%SZ'
+    ).replace(tzinfo=timezone.utc).timestamp()
+
+
+def _wave_sync_loop():
+    # First pass immediately: this is what makes a fresh deploy warm in
+    # seconds instead of waiting minutes for the ERDDAP warmer.
+    while True:
+        try:
+            _wave_sync_once()
+        except Exception as e:
+            logger.warning(f"Wave store sync failed: {e}")
+        time.sleep(WAVE_SYNC_INTERVAL_S)
+
+
+def _wave_lons_to_signed(lons):
+    """Stored 0..360 order -> -180..180 VALUES in the same order. The client
+    reorders columns itself (lonColumnOrder); emitting sorted lons here would
+    silently double-reorder."""
+    return [round(float(((l + 180.0) % 360.0) - 180.0), 3) for l in lons]
+
+
+def _basin_from_wave_store():
+    """Assemble the /api/ocean-basin payload from the RAM store, or None."""
+    store = _wave_store_fresh()
+    if store is None:
+        return None
+    times = store['times'][:WAVE_BASIN_CLIENT_FRAMES]
+    now = time.time()
+    # Start at the newest frame at or before now; the cycle is typically
+    # 5-11h old, so this drops 2-4 already-past frames and serves the
+    # remaining ~6.5 forecast days -- the same shape the ERDDAP path
+    # produced with its walk-the-clock-back start.
+    start = max(0, int(np.searchsorted(times, now, side='right')) - 1)
+
+    def field(key):
+        # float64, not float32: np.round on float32 emits Python floats like
+        # 1.2999999523162842, which tripled the JSON payload before anyone
+        # saw a wrong number.
+        return np.nan_to_num(
+            store['client_' + key][start:].astype(np.float64), nan=0.0)
+
+    result = {
+        'times': [datetime.fromtimestamp(int(t), timezone.utc)
+                  .strftime('%Y-%m-%dT%H:%MZ') for t in times[start:]],
+        'lats': [round(float(v), 3) for v in store['client_lats']],
+        'lons': _wave_lons_to_signed(store['client_lons']),
+        'source': 'gfswave',
+    }
+    result.update(_grid_fields(
+        field('htsgw'), field('perpw'), field('dirpw'),
+        field('wind'), field('wdir')))
+    return result
+
+
+def _tile_key_for(lat, lon):
+    lat0 = int(math.floor(lat / 20.0) * 20)
+    lon0 = int(math.floor(lon / 20.0) * 20)
+    return lat0, lon0
+
+
+def _load_wave_tile(lat0, lon0):
+    """Tile store for one 20-degree cell, LRU-cached per cycle.
+
+    The download runs OUTSIDE the lock -- a 1-2s fetch must not serialize
+    every other tile reader behind it; the price is a rare duplicate fetch
+    when two requests race for the same cold tile, which is cheaper.
+    """
+    store = _wave_store_fresh()
+    if store is None:
+        return None
+    key = (store['cycle'], f"{lat0}_{lon0}")
+    with _wave_tiles_lock:
+        tile = _wave_tiles.get(key)
+        if tile is not None:
+            _wave_tiles.move_to_end(key)
+            return tile
+    try:
+        raw = _wave_fetch(f"tiles/tile_{lat0}_{lon0}.npz", timeout=60)
+        tile = _load_wave_npz(raw, _WAVE_TILE_KEYS, frames=121)
+    except Exception as e:
+        logger.info(f"No wave tile {lat0},{lon0}: {e}")
+        return None
+    with _wave_tiles_lock:
+        _wave_tiles[key] = tile
+        _wave_tiles.move_to_end(key)
+        while len(_wave_tiles) > WAVE_TILE_LRU:
+            _wave_tiles.popitem(last=False)
+    return tile
+
+
+def _grid_from_wave_tile(lat_min, lat_max, lon_min, lon_max):
+    """The /api/map-forecast payload sliced from a tile in RAM, or None.
+
+    Hourly at 0.25 degrees -- finer than the 0.5-degree ERDDAP grid this
+    replaces. The horizon is ~5 days (hourly f000-f120 minus the cycle's
+    publish latency) against ERDDAP's ~7; the local view is the detail
+    layer and the basin covers the week, so the trade is resolution and
+    instant serving for tail length.
+    """
+    center_lat = (lat_min + lat_max) / 2.0
+    center_lon = (lon_min + lon_max) / 2.0
+    tile = _load_wave_tile(*_tile_key_for(center_lat, center_lon))
+    if tile is None:
+        return None
+    lats, lons = tile['lats'], tile['lons']
+    if not (lats[0] <= lat_min and lat_max <= lats[-1]
+            and lons[0] <= lon_min and lon_max <= lons[-1]):
+        return None      # bbox leaks past the halo; let the fallback try
+    ri = np.where((lats >= lat_min) & (lats <= lat_max))[0]
+    ci = np.where((lons >= lon_min) & (lons <= lon_max))[0]
+    if ri.size < 2 or ci.size < 2:
+        return None
+
+    times = tile['times']
+    now = time.time()
+    start = int(np.searchsorted(times, now, side='right')) - 1
+    start = max(0, start - 1)          # keep one past hour for interpolation
+
+    def field(key):
+        # float64 for the same JSON-repr reason as the basin producer
+        return np.nan_to_num(
+            tile[key][start:, ri[0]:ri[-1] + 1, ci[0]:ci[-1] + 1]
+            .astype(np.float64), nan=0.0)
+
+    result = {
+        'times': [datetime.fromtimestamp(int(t), timezone.utc)
+                  .strftime('%Y-%m-%dT%H:%MZ') for t in times[start:]],
+        'lats': [round(float(v), 3) for v in lats[ri[0]:ri[-1] + 1]],
+        'lons': [round(float(v), 3) for v in lons[ci[0]:ci[-1] + 1]],
+        'source': 'gfswave',
+    }
+    result.update(_grid_fields(
+        field('htsgw'), field('perpw'), field('dirpw'),
+        field('wind'), field('wdir')))
+    return result
+
+
 def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
+    """Local grid: wave store tile first (RAM, hourly 0.25-degree), then the
+    ERDDAP chain as the breaker-guarded last resort."""
+    from_tile = _grid_from_wave_tile(lat_min, lat_max, lon_min, lon_max)
+    if from_tile is not None:
+        return from_tile
+    return _get_grid_weather_data_upstream(lat_min, lat_max, lon_min, lon_max)
+
+
+def _get_grid_weather_data_upstream(lat_min, lat_max, lon_min, lon_max):
     """
     Fetches gridded wave and wind data for local map display.
     Uses NOMADS GFS-Wave Atlantic 0.16deg if in coverage, falls back to ERDDAP.
@@ -5505,15 +5846,22 @@ def find_nearest_cameras(lat, lon, count=2):
     return results
 
 def get_ocean_basin_data(wave_timeouts=(75,), wind_timeouts=(45,)):
-    """
-    Fetches global wave and wind data via the ERDDAP mirror list.
+    """Global basin: wave store first (RAM, 2-degree gfswave), then ERDDAP.
 
-    The timeout kwargs exist because this now has two callers with opposite
-    needs: the background basin warmer passes (600,)/(240,) because it has
-    all day and is the only caller that can outlast a degraded PacIOOS,
-    while anything on a request thread keeps the tight defaults and relies
-    on the breaker + stale cache instead of waiting.
+    With the store synced this returns in well under a second, which turns
+    the background basin warmer into a cheap cache refresher and makes the
+    post-deploy "warming" window effectively disappear. The ERDDAP body
+    below survives as the last resort for a dead artifact pipeline.
+
+    The timeout kwargs exist because the ERDDAP path has two callers with
+    opposite needs: the warmer passes (600,)/(240,) because it has all day
+    and is the only caller that can outlast a degraded PacIOOS; anything on
+    a request thread keeps the tight defaults and relies on the breaker +
+    stale cache instead of waiting.
     """
+    from_store = _basin_from_wave_store()
+    if from_store is not None:
+        return from_store
     # WW3 global at 3° effective resolution (stride=6 on native 0.5°)
     # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
     lat_range = "(-77.5):6:(77.5)"
@@ -5636,6 +5984,16 @@ def ocean_basin():
     # honest fast "warming" answer.
     data = _cache_get_fresh("basin:global", BASIN_CACHE_TTL)
     stale_entry = None
+    if data is None:
+        # RAM assembly from the wave store is ~0.1s of numpy -- nothing like
+        # the minutes-long upstream fetch this endpoint is forbidden from
+        # making -- so a cold cache with a warm store serves immediately and
+        # the post-deploy "warming" window only exists when BOTH are cold.
+        data = _basin_from_wave_store()
+        if data is not None:
+            size = _deep_size(data)
+            with _cache_lock:
+                _cache_store("basin:global", data, size)
     if data is None:
         stale_entry = _cache_get_stale("basin:global", BASIN_STALE_MAX_AGE)
         if stale_entry is None:
@@ -6838,6 +7196,10 @@ def _ssr_cache_warmer():
 # the Flask client. An explicit BASIN_WARM=1/0 still wins.
 BASIN_WARM_ENABLED = os.environ.get(
     'BASIN_WARM', os.environ.get('SSR_WARM', '1')) == '1'
+# Same inheritance, same reason: SSR_WARM=0 in CI must keep the wave-store
+# sync from making live GitHub fetches inside the test suite.
+WAVE_SYNC_ENABLED = os.environ.get(
+    'WAVE_SYNC', os.environ.get('SSR_WARM', '1')) == '1'
 BASIN_WARM_CHECK_S = 60
 BASIN_WARM_RETRY_S = 300
 BASIN_WARM_WAVE_TIMEOUTS = (600,)
@@ -6895,6 +7257,8 @@ def _start_background_workers():
             threading.Thread(target=_ssr_cache_warmer, daemon=True, name='ssr-warmer').start()
         if BASIN_WARM_ENABLED:
             threading.Thread(target=_basin_cache_warmer, daemon=True, name='basin-warmer').start()
+        if WAVE_SYNC_ENABLED:
+            threading.Thread(target=_wave_sync_loop, daemon=True, name='wave-sync').start()
 
 
 if __name__ == '__main__':
