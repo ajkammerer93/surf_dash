@@ -5189,7 +5189,14 @@
         const SLIDER_SPEEDS = [6000, 3000, 1500];
         const SLIDER_SPEED_LABELS = ['0.5x', '1x', '2x'];
         let sliderSpeedIndex = 1;
-        const SLIDER_ANIMATION_STEP = 3;  // advance 3 hours per tick (Windy-style)
+        // Advance a fixed number of HOURS per tick, not a fixed number of slider
+        // positions. Those were the same thing while the grids were hourly and
+        // stopped being the same the moment the local grid joined the shared
+        // 3-hourly axis -- the animation quietly started jumping nine hours a
+        // tick, which is the kind of regression that looks like upstream data
+        // going coarse rather than like a client-side bug. Derive the stride
+        // from the data's own cadence so it survives the next change to it.
+        const SLIDER_ANIMATION_HOURS = 3;  // Windy-style
 
         // === Lazy render state ===
         let basinDataReady = false;     // data fetched, waiting for visibility
@@ -8425,12 +8432,23 @@
         }, { threshold: 0.1 });
 
         // === Slider Animation Functions ===
+        // How many slider positions make up SLIDER_ANIMATION_HOURS, given
+        // whatever cadence the grids actually came back at.
+        function sliderStepPositions() {
+            const times = (localGridData && localGridData.times) ||
+                          (basinGridData && basinGridData.times);
+            if (!times || times.length < 2) return 1;
+            const stepHours = (Date.parse(times[1]) - Date.parse(times[0])) / 3600000;
+            if (!(stepHours > 0)) return 1;
+            return Math.max(1, Math.round(SLIDER_ANIMATION_HOURS / stepHours));
+        }
+
         function advanceSlider() {
             const slider = document.getElementById('time-slider');
             let val = parseInt(slider.value);
             const max = parseInt(slider.max);
             if (max <= 0) return;
-            val = val + SLIDER_ANIMATION_STEP;
+            val = val + sliderStepPositions();
             if (val > max) val = 0;
             slider.value = val;
             slider.dispatchEvent(new Event('input'));
