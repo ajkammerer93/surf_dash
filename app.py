@@ -5930,13 +5930,20 @@ def _fetch_cdip_observation(station_id):
                 dt = datetime.fromtimestamp(epoch, timezone.utc)
                 time_str = dt.strftime('%Y-%m-%d %H:%M UTC')
 
+        # CDIP serves full float64, so an unrounded sea temperature reaches the
+        # page as 28.480011. NDBC publishes the same hull as 28.5; matching its
+        # precision keeps the two from looking like disagreeing instruments.
+        def rounded(varname, places):
+            v = extract_val(varname)
+            return None if v is None else round(v, places)
+
         return {
             'time': time_str,
-            'wave_height': extract_val('waveHs'),
-            'dominant_period': extract_val('waveTp'),
-            'wave_direction': extract_val('waveDp'),
-            'avg_period': extract_val('waveTa'),
-            'water_temp': extract_val('sstSeaSurfaceTemperature'),
+            'wave_height': rounded('waveHs', 2),
+            'dominant_period': rounded('waveTp', 1),
+            'wave_direction': rounded('waveDp', 0),
+            'avg_period': rounded('waveTa', 2),
+            'water_temp': rounded('sstSeaSurfaceTemperature', 1),
             'wind_speed': None,
             'wind_direction': None,
             'wind_gust': None,
@@ -6081,6 +6088,24 @@ def _fetch_cdip_directional(station_id):
         return None
 
 
+# Two records within this distance are the same hull listed by both networks.
+# Real distinct buoys are never this close; the observed NDBC/CDIP pairs sit
+# 11-308 m apart.
+SAME_BUOY_KM = 1.0
+
+
+def _buoy_gap_km(a, b):
+    return haversine_distance(a['lat'], a['lon'], b['lat'], b['lon'])
+
+
+def _same_buoy(candidate, accepted):
+    """The already-accepted entry for this hull, if there is one."""
+    for other in accepted:
+        if _buoy_gap_km(candidate, other) <= SAME_BUOY_KM:
+            return other
+    return None
+
+
 def get_buoy_data(lat, lon):
     """Fetch live buoy observations and spectral data for nearest buoys."""
     # Fetch extra candidates since some NDBC stations lack realtime data
@@ -6099,6 +6124,19 @@ def get_buoy_data(lat, lon):
         else:
             obs = _fetch_cdip_observation(buoy['id'])
         if obs and obs.get('wave_height') is not None:
+            twin = _same_buoy(buoy, buoys)
+            if twin:
+                # NDBC and CDIP both carry many of the same hulls, and the two
+                # records are metres apart with slightly different rounding
+                # (0.6 m vs 0.61 m, 178 deg vs 176.9 deg). Listed side by side
+                # that reads as two sources disagreeing about the water rather
+                # than one buoy reported twice, and it costs a slot that could
+                # hold a genuinely different buoy. First one with data wins, so
+                # a source being down still leaves the hull represented.
+                logger.info(
+                    f"  Skipping {buoy['source'].upper()} {buoy['id']} — same hull as "
+                    f"{twin['source'].upper()} {twin['id']}, {int(_buoy_gap_km(buoy, twin) * 1000)} m apart")
+                continue
             buoy.update(obs)
             buoys.append(buoy)
         else:

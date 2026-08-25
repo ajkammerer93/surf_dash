@@ -1,0 +1,68 @@
+name: NDBC station scan
+
+# Keeps ndbc_stations.json current against NDBC's active station index.
+#
+# This exists because the file was hand-made and went six months without a
+# refresh. By 2026-08-25 it knew about 74 of the 146 wave-reporting stations
+# within 120 km of a covered spot. That did not read as degraded data, it read
+# as no data: BUOY_MAX_DISTANCE_KM is 320 and every Great Lakes spot's nearest
+# KNOWN station was 400-600 km away across land, so Cleveland, Oswego and
+# Buffalo returned an empty buoy panel while live nearshore buoys sat 1.6 to
+# 4 km offshore. An empty panel is indistinguishable from a quiet upstream,
+# which is why nobody noticed.
+#
+# Monthly rather than weekly: buoys are deployed and retired on a scale of
+# seasons, and the scan makes ~1,350 requests to NDBC.
+#
+# Master is protected, and a data file that decides what the site can show
+# should not change without someone looking, so this opens a pull request
+# instead of committing. The script itself refuses to write an empty list or
+# one less than half the previous size -- a scan that half-fails would
+# otherwise gut coverage silently and keep serving.
+#
+# Authorship: anything this workflow writes to GitHub is authored in the
+# repository owner's voice. No tooling, automation or assistant is named in a
+# commit message, pull request or issue.
+
+on:
+  schedule:
+    - cron: '20 5 1 * *'      # 05:20 UTC on the 1st
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Rebuild the station list
+        run: python scripts/ndbc_station_scan.py --write | tee /tmp/scan.txt
+
+      - name: Open a pull request if the list changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet ndbc_stations.json; then
+            echo "station list unchanged"
+            exit 0
+          fi
+          branch="data/ndbc-stations-$(date -u +%Y%m%d)"
+          git config user.name  "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add ndbc_stations.json
+          git commit -m "Refresh the NDBC station list
+
+          $(cat /tmp/scan.txt)"
+          git push -u origin "$branch"
+          gh pr create \
+            --title "Refresh the NDBC station list" \
+            --body "$(printf 'Monthly rebuild from NDBC activestations.xml, keeping stations whose realtime2 feed carries real wave heights.\n\n```\n%s\n```\n\nWorth a look before merging: a station leaving the list means a spot may lose its nearest buoy, and BUOY_MAX_DISTANCE_KM is 320 km.\n' "$(cat /tmp/scan.txt)")"
