@@ -762,6 +762,13 @@ def _enrich_with_wind(forecast, latitude, longitude):
             logger.warning(f"  ERDDAP wind fallback also failed: {e2}")
 
 
+# Per-host budgets for the wind ENRICHMENT chain only. Kept far below the
+# grid endpoints' budgets on purpose: this runs inside a user-facing request
+# that has already produced a usable forecast, so its worst case is bounded at
+# ~18s rather than the ~97s that took the site down on 2026-08-25.
+WIND_ENRICHMENT_TIMEOUTS = (8, 10)
+
+
 def _enrich_wind_from_erddap(forecast, latitude, longitude):
     """Fallback wind + air-temperature enrichment from ERDDAP GFS.
 
@@ -780,15 +787,31 @@ def _enrich_wind_from_erddap(forecast, latitude, longitude):
         # This is the path that carries us through an Open-Meteo 429, so it is
         # the last thing that should be single-homed: on 2026-08-24 the rate
         # limit and a degraded CoastWatch landed on the same afternoon and the
-        # wind column had nowhere left to go. Small slice, so modest budgets.
+        # wind column had nowhere left to go.
+        #
+        # The budgets are deliberately SMALL, and that was learned the hard way
+        # on 2026-08-25. They used to be (30, 45), sized as though a 429 were a
+        # rare incident worth waiting out. It is not: the rate limit is per-IP
+        # on Render's shared egress and is effectively chronic, so every cold
+        # forecast paid the full fallback cost. A cold /api/forecast took 97.8
+        # seconds. With one worker and eight threads, eight cold requests took
+        # the entire site down -- Render's router returned 502 for everything,
+        # including /healthz, which does no I/O at all.
+        #
+        # Wind here is ENRICHMENT. The waves, the tides and the scoring have
+        # already succeeded by this point, and the row simply goes out without
+        # a wind value if this misses. Holding a request thread for a minute
+        # and a half to fill one column is a trade that takes the whole site
+        # offline to make one panel complete.
         try:
             wind_json = _fetch_erddap_grid_chain(
-                GFS_WIND_MIRRORS, (30, 45),
+                GFS_WIND_MIRRORS, WIND_ENRICHMENT_TIMEOUTS,
                 variables=["ugrd10m", "vgrd10m", "tmp2m"],
                 lat_range=lat_range,
                 lon_range=lon_range,
                 depth=None,
                 label="Wind enrichment GFS",
+                hours_back_options=(6,),
             )
         except Exception:
             return
