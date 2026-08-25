@@ -1250,11 +1250,14 @@ def _parse_erddap_to_grids(erddap_json, variable_names):
 # about 1.4px wide, and the readouts apply toFixed(1) to height, toFixed(0) to
 # period and Math.round to wind speed. Measured effect on the basin payload:
 # 6.54 MB to 1.68 MB on the wire, 17.5 MB to 6.6 MB parsed.
-# One time axis for every grid the swell map draws. The basin has always been
-# 3-hourly; the local grid now matches, so a slider index means the same
-# instant on both layers. Both get_ocean_basin_data and _get_grid_from_erddap
-# read this, which is the point -- they were independently chosen before and
-# silently drifted apart when NOMADS retired.
+# The basin's time cadence. It is global and 52x120 wide, so every extra frame
+# costs real bytes across the whole ocean, and nothing about a basin-scale swell
+# field changes meaningfully inside three hours.
+#
+# The LOCAL grid is deliberately NOT strided -- see _get_grid_from_erddap. The
+# two axes differing is fine and intended: the client resolves frames by
+# timestamp, not by index, so it does not need them to agree. It used to need
+# that, which is how a real bug hid here for weeks.
 GRID_TIME_STRIDE = 3
 
 GRID_ROUNDING = {
@@ -1876,25 +1879,31 @@ def get_grid_weather_data(lat_min, lat_max, lon_min, lon_max):
 def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
     """
     Fetches gridded wave and wind data from ERDDAP for local map display.
-    WW3 at native 0.5deg resolution, on the same 3-hourly axis as the basin.
+    WW3 at native 0.5deg resolution and native HOURLY cadence -- deliberately
+    finer than the basin's 3-hourly, and deliberately not matched to it.
 
-    The stride is not a size optimisation, it is a correctness fix. The swell
-    map drives both this grid and the global basin grid from ONE time slider,
-    and it resolves the basin frame by index. This fetch used to have no
-    time_stride, so it came back hourly (168 steps) against the basin's
-    3-hourly (56), and slider position i meant hour i here but hour 3i on the
-    basin overlay. Zooming out therefore showed a field from up to five days
-    off, silently, with the badge reporting the local time. Beyond index 55 the
-    basin simply froze on its last frame.
-
-    That went unnoticed because NOMADS used to serve this path at 3-hourly and
-    matched by luck; when NOMADS retired (SCN 25-81, see
+    That asymmetry used to be a live bug rather than a choice. The swell map
+    drives this grid and the global basin from one time slider, and the client
+    resolved the basin frame by INDEX, so slider position i meant hour i here
+    and hour 3i on the basin overlay -- zooming out showed a field up to five
+    days from the time on the badge, and past index 55 the basin froze on its
+    last frame. It went unnoticed because NOMADS served this path at 3-hourly
+    and matched by luck; when NOMADS retired (SCN 25-81, see
     _find_latest_nomads_cycle) every request fell through to here and the
-    mismatch became the live behaviour.
+    mismatch became what the site did.
 
-    The client also aligns by timestamp now rather than trusting the index, so
-    the two defences are independent -- but the axes should match in the first
-    place.
+    v0.11.70 fixed it twice: the client now resolves frames by TIMESTAMP
+    (frameIndexForTime), and this fetch was strided to 3-hourly to match. The
+    stride was the weaker of the two -- it bought nothing the timestamp lookup
+    did not already guarantee, and it cost the slider two thirds of its
+    resolution, since the wave data really is hourly and a surfer scrubbing for
+    a window wants the hour. So the stride is gone and the timestamp lookup
+    carries it. Do not "restore" the stride for consistency: the axes are
+    allowed to differ, and the client is written on that basis.
+
+    Wind is left unstrided too. GFS is natively 3-hourly, so a stride here
+    would have made it 9-hourly -- too coarse to interpolate onto an hourly
+    wave axis, which is what _interpolate_wind_to_hourly exists to do.
     """
     try:
         # Convert lon bounds to 0-360 for ERDDAP
@@ -1915,7 +1924,6 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
             lat_range=lat_range,
             lon_range=lon_range,
             depth=0,
-            time_stride=GRID_TIME_STRIDE,
             label=f"Grid forecast WW3 waves ({lat_min},{lon_min})-({lat_max},{lon_max})",
         )
         wave = _parse_erddap_to_grids(wave_json, ["Thgt", "Tper", "Tdir"])
@@ -1928,7 +1936,6 @@ def _get_grid_from_erddap(lat_min, lat_max, lon_min, lon_max):
             lat_range=lat_range,
             lon_range=lon_range,
             depth=None,
-            time_stride=GRID_TIME_STRIDE,
             label="Grid forecast GFS wind",
         )
         wind = _parse_erddap_to_grids(wind_json, ["ugrd10m", "vgrd10m"])
@@ -5203,7 +5210,7 @@ def get_ocean_basin_data():
     # 3-hourly time steps to keep response size under ~30 MB for 512 MB Render tier
     lat_range = "(-77.5):6:(77.5)"
     lon_range = "(0.0):6:(359.5)"
-    time_stride = GRID_TIME_STRIDE  # shared with the local grid; see GRID_TIME_STRIDE
+    time_stride = GRID_TIME_STRIDE  # basin only; the local grid is hourly on purpose
 
     # --- Fetch WW3 wave data (required) ---
     # Retry with progressively older start times to handle ERDDAP model update gaps
