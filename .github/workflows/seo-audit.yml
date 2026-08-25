@@ -87,6 +87,23 @@ jobs:
           line('Search Console', sc, 'search_analytics')
           line('Cloudflare', cf, 'cloudflare')
 
+          # Edge caching is a dashboard-only setting with no render.yaml field,
+          # so a Blueprint sync or a stray click can turn it off and nothing in
+          # the repo would know. Losing it puts one gunicorn worker back to
+          # serving every byte to every visitor, which presents as "the site
+          # feels slow" weeks later rather than as a config change. This is the
+          # only thing watching it, so it warns rather than just printing.
+          ec = a.get('edge_cache', {})
+          for path, probe in (ec.get('probes') or {}).items():
+              if probe.get('error'):
+                  print(f"::warning::edge cache probe failed for {path}: {probe['error']}")
+              elif not probe.get('cached'):
+                  print(f"::warning::EDGE CACHING OFF for {path} "
+                        f"({probe.get('label')}): {probe.get('statuses')} "
+                        f"-- check Settings > Edge Caching is set to All files")
+              else:
+                  print(f"edge cache {path}: {'/'.join(probe.get('statuses', []))}")
+
           # Web Vitals is a Beta dataset, so a renamed field is a live
           # possibility rather than a hypothetical. The collector records the
           # real schema when its query fails; print that here, because the
