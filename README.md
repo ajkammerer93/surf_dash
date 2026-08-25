@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.66
+**Current version:** v0.11.76
 
 ## Dashboard
 
@@ -70,7 +70,8 @@ Available at `http://localhost:5000`.
 ### Run Tests
 
 ```bash
-pytest tests/                                          # full suite (516 tests)
+pip install -r requirements-dev.txt                    # test-only deps
+pytest tests/                                          # full suite (561 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -103,9 +104,10 @@ LOG_LEVEL=DEBUG python app.py
 | `scripts/forecast_verification.py` | Snapshots the site's own forecasts at NDBC buoys and scores them; publishes to the `verification-data` branch |
 | `scripts/seo_audit.py` | Collects CI, site-health, Search Console and Cloudflare metrics into a daily snapshot on the `seo-data` branch |
 | `scripts/instagram_publish.py` | Social pipeline publisher (Graph API or dry-run) |
-| `tests/` | 516 tests across SEO, pure functions, mocked upstream failures, the ERDDAP mirror chain, and the UX/SEO audit collectors |
+| `tests/` | 561 tests across SEO, pure functions, mocked upstream failures, the ERDDAP mirror chain, grid precision, cache bounds, deploy config, and the UX/SEO audit collectors |
 | `static/sw.js` | Service worker (network-first HTML, 24h offline API fallback) |
-| `render.yaml` | Render deploy config (Gunicorn `--workers 1 --threads 8 --preload`) |
+| `render.yaml` | Render Blueprint (adopted -- this file is the source of truth for the live service) |
+| `requirements-dev.txt` | Test-only dependencies, kept out of the runtime install |
 
 ### Page Routes
 
@@ -123,6 +125,7 @@ LOG_LEVEL=DEBUG python app.py
 | `/about` | About page (includes embed-widget docs) |
 | `/og/<slug>.png` | Per-location OpenGraph image |
 | `/sitemap.xml`, `/robots.txt` | SEO surfaces |
+| `/healthz` | Liveness probe for Render health checks (no upstream I/O) |
 
 Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 
@@ -195,11 +198,30 @@ visitor sees.
 
 ## Deployment
 
-Deployed on [Render.com](https://render.com/) behind Cloudflare (DNS, CDN, DDoS, free analytics). See `render.yaml`.
+Deployed on [Render.com](https://render.com/) behind Cloudflare (DNS, CDN, DDoS, free analytics).
+
+`render.yaml` is an adopted Blueprint, so it is the source of truth: a Blueprint
+sync overwrites dashboard settings from this file, and a field that is true of
+the live service but missing here gets reset on the next sync.
+`tests/test_deploy_config.py` pins the fields where that would hurt.
 
 ```bash
 gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 1 --threads 8 --preload
 ```
+
+Two settings live only in the dashboard, with no Blueprint field to hold them:
+
+- **Edge caching** must stay on "All files". Render's own CDN is the caching
+  layer here -- a Cloudflare cache rule in front of it cannot work, because
+  Render fronts customer apps with Cloudflare too and Cloudflare-behind-
+  Cloudflare passes straight through. Responses carry `Cache-Control` per
+  `API_EDGE_TTL`, and any `/api/` path missing from that map gets `no-store`,
+  because Render caches an absent header for two hours by default. A Blueprint
+  sync has silently reset this to "None" once; the daily SEO audit now probes
+  two URLs twice and warns if neither reaches `HIT`.
+- **Health check path** is `/healthz`. Render polls it and will not route
+  traffic to an instance that fails it, which makes a bad deploy roll back
+  instead of going live.
 
 Security baseline: Content-Security-Policy, X-Frame-Options DENY (except `/embed/*`, which allows framing via `frame-ancestors *`), Referrer-Policy, Permissions-Policy, and SRI hashes on CDN script/style tags.
 

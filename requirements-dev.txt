@@ -1,0 +1,12 @@
+# Test-only dependencies. Kept out of requirements.txt on purpose: Render
+# installs that file into the running service, and none of this is imported by
+# app.py at runtime.
+#
+# This file exists because CI went red on master for three commits without
+# anyone noticing. tests/test_deploy_config.py imported yaml, which was present
+# in a local venv and absent in CI, so the suite passed locally and failed to
+# COLLECT in Actions -- an import error, not a test failure, which means the
+# other 555 tests never ran either. A test dependency needs a declared home or
+# it silently becomes "whatever happens to be installed on my laptop".
+pytest
+pyyaml
