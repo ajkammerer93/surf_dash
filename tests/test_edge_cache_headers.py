@@ -51,11 +51,19 @@ def test_a_200_carries_its_configured_max_age(client):
     assert r.headers['Cache-Control'] == 'public, max-age=86400'
 
 
-def test_an_error_response_is_not_cacheable(client):
-    """The regression that would hurt most: a cached upstream failure."""
+def test_an_error_response_is_explicitly_no_store(client):
+    """The regression that would hurt most: a cached upstream failure.
+
+    This used to assert header ABSENCE, on the theory the edge would bypass
+    an unheaded response. True of Cloudflare, false of Render, which
+    default-caches unheaded responses -- the same silence-disagreement the
+    test below narrates for 200s applies to errors, and an edge-cached 503
+    "warming" answer would keep announcing an outage long after the cache
+    had warmed. Errors now say no-store out loud.
+    """
     r = client.get('/api/forecast?lat=999&lon=999')
     assert r.status_code == 400
-    assert 'Cache-Control' not in r.headers
+    assert r.headers['Cache-Control'] == 'no-store' 
 
 
 def test_an_unmapped_api_endpoint_is_explicitly_uncacheable(client):

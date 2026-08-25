@@ -146,10 +146,70 @@ def test_dataset_travels_with_its_host(calls):
         ('first.example', 'DS_ONE'), ('second.example', 'DS_TWO')]
 
 
-def test_shipped_mirror_lists_have_a_real_fallback():
+def test_shipped_mirror_lists_are_truthful_about_the_consolidation():
+    """The lists must contain only hosts that answer data queries THEMSELVES.
+
+    This test used to assert the opposite -- at least two mirrors per list --
+    and that requirement became actively harmful on 2026-08-25, when NOAA
+    consolidated the West Coast ERDDAP family: upwell and coastwatch.pfeg
+    began 302-redirecting every griddap data query to pae-paha. A second
+    entry that redirects to the first is worse than no second entry: it
+    doubles the worst case (two budgets spent proving one sick server sick)
+    and it lies to the per-host breaker, which counts the shim and its
+    target as independent hosts. Redundancy that upstream has quietly
+    removed must be removed from the list too, not simulated.
+    """
+    retired_shims = {'upwell.pfeg.noaa.gov', 'coastwatch.pfeg.noaa.gov'}
     for mirrors in (app.WW3_WAVE_MIRRORS, app.GFS_WIND_MIRRORS):
-        assert len(mirrors) >= 2
-        assert len({host for host, _ in mirrors}) == len(mirrors)
+        assert len(mirrors) >= 1
+        hosts = [host for host, _ in mirrors]
+        assert len(set(hosts)) == len(hosts)
+        assert not retired_shims.intersection(hosts), (
+            "a retired redirect shim is back in a mirror list")
+
+
+def test_redirect_is_raised_not_followed(monkeypatch):
+    """A 302 on a data query means the host is a shim for another server.
+
+    requests follows redirects silently by default, which is exactly how the
+    consolidation hid: every query 'to upwell' was really a query to the
+    degraded PacIOOS, billed against upwell's budget. The fetch layer must
+    surface the redirect as a failure of THIS host, carrying the target so
+    the log names the server actually being pointed at.
+    """
+    class _Resp:
+        status_code = 302
+        headers = {'Location': 'https://pae-paha.pacioos.hawaii.edu/erddap/x'}
+
+        @staticmethod
+        def close():
+            return None
+
+    followed = {'n': 0}
+
+    def fake_get(url, timeout=None, allow_redirects=True, stream=False):
+        assert allow_redirects is False, "data queries must never auto-follow"
+        followed['n'] += 1
+        return _Resp()
+
+    monkeypatch.setattr(app.requests, 'get', fake_get)
+    with pytest.raises(app.ErddapRedirect) as exc:
+        app._fetch_erddap_grid('shim.example', 'DS', ['Thgt'],
+                               '(x):(y)', '(0):(1)', '(0):(1)')
+    assert 'pae-paha' in str(exc.value)
+    assert followed['n'] == 1
+
+
+def test_redirect_moves_the_chain_without_walking_the_clock(calls):
+    """A redirect is a host-level failure, like a timeout: one attempt, no
+    hours_back walk. Walking the clock against a shim would re-issue the
+    same redirected request three times for nothing."""
+    log, outcomes = calls
+    outcomes['first.example'] = {
+        'ok': False, 'raise': app.ErddapRedirect('first.example', 'https://x')}
+    result = _run()
+    assert result['table']['served_by'] == 'second.example'
+    assert [c['server'] for c in log] == ['first.example', 'second.example']
 
 
 def test_no_erddap_call_site_is_single_homed():

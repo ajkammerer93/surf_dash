@@ -302,6 +302,15 @@ class TestWindEnrichmentFallback:
     FORECAST = [{'time': '2026-06-10T19:00Z', 'wind_speed': None,
                  'wind_direction': None, 'air_temperature': None}]
 
+    @pytest.fixture(autouse=True)
+    def _reset_om_cooldown(self):
+        """The 429 test below arms the module-level Open-Meteo cooldown; left
+        armed, every later test in this class would skip the weather API and
+        go straight to the fallback, failing for the wrong reason."""
+        surf_app._om_weather_block['until'] = 0.0
+        yield
+        surf_app._om_weather_block['until'] = 0.0
+
     @patch('app._enrich_wind_from_erddap')
     @patch('app.requests.get')
     def test_http_429_triggers_erddap_fallback(self, mock_get, mock_fallback):
