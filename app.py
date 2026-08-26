@@ -709,22 +709,27 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     location_tz = "UTC"
     try:
         # Air temperature (also resolves IANA timezone via timezone=auto).
-        # Skipped during a 429 cooldown — water temp below is the marine
-        # pool and still runs; the timezone falls back to UTC, which the
-        # ERDDAP enrichment path also tolerates.
+        # This one call is EXEMPT from the 429 cooldown, deliberately: the
+        # cooldown exists to stop the 7-day hourly wind call paying ~10s per
+        # cold forecast, but this current-conditions request costs ~0.5s
+        # even when it 429s (_retry_request never retries 4xx), and the rate
+        # limit is intermittent -- gating it behind the cooldown turned
+        # "air temp missing sometimes" into "air temp missing always"
+        # (168/168 null hours in production, 2026-08-25), because every
+        # request that could have landed in a 200 window was itself skipped.
+        # It still NOTES 429s so the wind call stays protected.
         air_temp = None
-        if _om_weather_available():
-            resp = _retry_request(lambda: requests.get(
-                "https://api.open-meteo.com/v1/forecast",
-                params={"latitude": latitude, "longitude": longitude,
-                        "current": "temperature_2m", "timezone": "auto"},
-                timeout=10
-            ))
-            _om_weather_note(resp)
-            if resp.ok:
-                air_data = resp.json()
-                air_temp = air_data.get("current", {}).get("temperature_2m")
-                location_tz = air_data.get("timezone", "UTC")
+        resp = _retry_request(lambda: requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": latitude, "longitude": longitude,
+                    "current": "temperature_2m", "timezone": "auto"},
+            timeout=10
+        ))
+        _om_weather_note(resp)
+        if resp.ok:
+            air_data = resp.json()
+            air_temp = air_data.get("current", {}).get("temperature_2m")
+            location_tz = air_data.get("timezone", "UTC")
 
         # Sea surface temperature
         water_temp = None
@@ -761,8 +766,7 @@ def _enrich_with_wind(forecast, latitude, longitude):
         if not _om_weather_available():
             # Chronic 429 window: do not pay ~10s to rediscover it — go
             # straight to the fallbacks, cheapest first.
-            if not _enrich_wind_from_tile(forecast, latitude, longitude):
-                _enrich_wind_from_erddap(forecast, latitude, longitude)
+            _enrich_wind_fallbacks(forecast, latitude, longitude)
             return
         resp = _retry_request(lambda: requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -778,8 +782,7 @@ def _enrich_with_wind(forecast, latitude, longitude):
         _om_weather_note(resp)
         if not resp.ok:
             logger.warning(f"  Open-Meteo wind request failed (HTTP {resp.status_code}), trying fallbacks")
-            if not _enrich_wind_from_tile(forecast, latitude, longitude):
-                _enrich_wind_from_erddap(forecast, latitude, longitude)
+            _enrich_wind_fallbacks(forecast, latitude, longitude)
             return
         om = resp.json().get("hourly", {})
         om_times = om.get("time", [])
@@ -802,15 +805,80 @@ def _enrich_with_wind(forecast, latitude, longitude):
                 matched += 1
         logger.info(f"  Open-Meteo wind: matched {matched}/{len(forecast)} hours")
         if matched == 0:
-            if not _enrich_wind_from_tile(forecast, latitude, longitude):
-                _enrich_wind_from_erddap(forecast, latitude, longitude)
+            _enrich_wind_fallbacks(forecast, latitude, longitude)
     except Exception as e:
         logger.warning(f"  Open-Meteo wind fetch failed (non-critical): {e}")
         try:
-            if not _enrich_wind_from_tile(forecast, latitude, longitude):
-                _enrich_wind_from_erddap(forecast, latitude, longitude)
+            _enrich_wind_fallbacks(forecast, latitude, longitude)
         except Exception as e2:
             logger.warning(f"  wind fallbacks also failed: {e2}")
+
+
+def _wind_gaps(forecast):
+    return any(e.get('wind_speed') is None for e in forecast)
+
+
+def _enrich_wind_fallbacks(forecast, latitude, longitude):
+    """Fill missing wind columns from every fallback that can contribute.
+
+    ADDITIVE, not either/or -- the first version returned after the tile
+    fallback succeeded, and the tile only covers hourly f000-f120 of the
+    current cycle. Hours already past when the cycle started and the day-6/7
+    tail stayed None (45 null hours per spot, live, 2026-08-25), which read
+    as missing wind -- and through the chart's blank tooltip rows, as
+    missing everything -- whenever the weather API was in a 429 window.
+    Order is cost: tile (RAM), basin store (RAM, 3-hourly 2-degree --
+    coarse, honest for a far tail), then ERDDAP (breaker-bounded, an
+    instant no-op while the breaker is open).
+    """
+    _enrich_wind_from_tile(forecast, latitude, longitude)
+    if _wind_gaps(forecast):
+        _enrich_wind_from_basin_store(forecast, latitude, longitude)
+    if _wind_gaps(forecast):
+        _enrich_wind_from_erddap(forecast, latitude, longitude)
+
+
+def _enrich_wind_from_basin_store(forecast, latitude, longitude):
+    """Backfill from the basin store's 3-hourly global wind (2-degree).
+
+    Coarser than everything else in the chain, so it runs only for hours the
+    tile could not reach -- in practice the f120+ tail, where a 2-degree
+    GFS-pooled value is at least as honest as any 6-day point forecast.
+    Nearest 3-hourly frame within 90 minutes; hours before the cycle stay
+    None for the ERDDAP/weather paths to claim.
+    """
+    store = _wave_store_fresh()
+    if store is None:
+        return False
+    cell = _nearest_ocean_cell(store, latitude, longitude)
+    if cell is None:
+        return False
+    ri, ci = cell
+    times = store['times']
+    wind = store['wind'][:, ri, ci].astype(np.float32)
+    wdir = store['wdir'][:, ri, ci].astype(np.float32)
+    filled = 0
+    for entry in forecast:
+        if entry.get('wind_speed') is not None:
+            continue
+        try:
+            t = datetime.strptime(entry['time'], '%Y-%m-%dT%H:%MZ') \
+                .replace(tzinfo=timezone.utc).timestamp()
+        except (ValueError, KeyError):
+            continue
+        idx = int(np.clip(np.searchsorted(times, t), 0, len(times) - 1))
+        if idx > 0 and abs(float(times[idx - 1]) - t) < abs(float(times[idx]) - t):
+            idx -= 1
+        if abs(float(times[idx]) - t) > 5400:
+            continue
+        if np.isfinite(wind[idx]):
+            entry['wind_speed'] = round(float(wind[idx]), 1)
+            filled += 1
+        if np.isfinite(wdir[idx]):
+            entry['wind_direction'] = round(float(wdir[idx]), 1)
+    if filled:
+        logger.info(f"  Wind backfilled from basin store: {filled} hours")
+    return filled > 0
 
 
 def _enrich_wind_from_tile(forecast, latitude, longitude):
