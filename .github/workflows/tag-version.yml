@@ -1,0 +1,45 @@
+name: Tag version
+
+# Creates the git tag named in VERSION whenever a push to master changes that
+# file. The repo convention is one patch bump per push with a matching tag,
+# but tags can only be pushed from this machine: the nightly review sessions
+# that merge their own small fixes cannot create tag refs (their token gets a
+# 403 on refs/tags), so v0.11.86 landed untagged. Doing it here means the tag
+# follows the VERSION file no matter who pushed.
+#
+# Idempotent: an existing tag is left alone, never moved.
+
+on:
+  push:
+    branches: [master]
+    paths: [VERSION]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create the tag if it does not exist
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          case "$version" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "VERSION '$version' is not a vX.Y.Z tag; refusing"; exit 1 ;;
+          esac
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null; then
+            echo "$version already exists -- nothing to do"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$version" "$GITHUB_SHA"
+          git push origin "refs/tags/$version"
+          echo "tagged $version at $GITHUB_SHA"
