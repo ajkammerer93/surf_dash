@@ -291,13 +291,6 @@
                 <div class="value">{{ "%+.2f" | format(ov.bias_m) }} m</div>
                 <div class="sub">{{ "over-forecasts" if ov.bias_m > 0 else "under-forecasts" }} on average</div>
             </div>
-            {% if ov.period_bias_s is defined %}
-            <div class="summary-card">
-                <div class="label">Period bias</div>
-                <div class="value">{{ "%+.1f" | format(ov.period_bias_s) }} s</div>
-                <div class="sub">dominant period vs buoy</div>
-            </div>
-            {% endif %}
         </div>
 
         {% for region, stations in regions %}
@@ -349,7 +342,8 @@
                 Every 6 hours (about 2h45m after each NOAA wave-model cycle) we request our own
                 public forecast at the exact coordinates of {{ (stats.stations | length) if stats and stats.stations else 21 }}
                 NDBC wave buoys spanning every region we serve. Each snapshot stores the predicted
-                significant wave height and peak period out to 72 hours ahead.
+                significant wave height (and wave period, though the period figures aren't shown
+                here — see below) out to 72 hours ahead.
             </p>
             <p>
                 Once a forecast's valid time passes, it is paired with the buoy observation nearest
@@ -358,6 +352,14 @@
                 error, both over a rolling 30-day window. Wave heights are significant wave height
                 in meters, compared like-for-like in open water — this measures the wave model, not
                 breaking-wave face height at the beach.
+            </p>
+            <p>
+                We don't publish a headline period-bias number. Our own forecast sources define
+                "wave period" differently (a mean period from one, a peak period from another) and
+                neither matches NDBC's peak-period observation cleanly, so a pooled figure would
+                mostly measure that definitional gap rather than forecast skill. The per-source period
+                error is still computed and available in the <a href="/api/accuracy">raw JSON</a> for
+                anyone who wants to dig into it.
             </p>
             <p>
                 We use these numbers, not just publish them: where a buoy shows a persistent,

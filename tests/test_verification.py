@@ -90,10 +90,33 @@ class TestPairing:
 
 
 class TestStats:
-    def _pair(self, valid, lead_h, fc, ob, station="41110"):
+    def _pair(self, valid, lead_h, fc, ob, station="41110", fc_tp=None,
+              ob_tp=None, source="test"):
         return {"station": station, "issued": "x", "valid": valid,
                 "lead_h": lead_h, "fc_wh": fc, "ob_wh": ob,
-                "fc_tp": None, "ob_tp": None, "source": "test"}
+                "fc_tp": fc_tp, "ob_tp": ob_tp, "source": source}
+
+    def test_period_bias_split_by_source_not_pooled(self):
+        # Open-Meteo (mean period) under-reads DPD; WW3-ERDDAP (peak period)
+        # over-reads it. Pooling would average +1 and -3 into a misleading
+        # single number (#71) -- each source must keep its own bias.
+        now = datetime(2026, 7, 17, tzinfo=timezone.utc)
+        recent = "2026-07-16T12:00:00Z"
+        pairs = [
+            self._pair(recent, 6, 1.0, 1.0, fc_tp=7.0, ob_tp=10.0,
+                       source="Open-Meteo"),
+            self._pair(recent, 6, 1.0, 1.0, fc_tp=11.0, ob_tp=10.0,
+                       source="WW3-ERDDAP"),
+        ]
+        agg = fv._aggregate(pairs)
+        assert "period_bias_s" not in agg
+        by_source = agg["period_by_source"]
+        assert by_source["Open-Meteo"] == {"bias_s": -3.0, "n": 1}
+        assert by_source["WW3-ERDDAP"] == {"bias_s": 1.0, "n": 1}
+
+    def test_period_bias_omitted_without_period_pairs(self):
+        agg = fv._aggregate([self._pair("x", 6, 1.0, 1.0)])
+        assert "period_by_source" not in agg
 
     def test_bias_mae_rmse(self):
         now = datetime(2026, 7, 17, tzinfo=timezone.utc)

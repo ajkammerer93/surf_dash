@@ -289,21 +289,39 @@ def _bin_label(lead_h):
 
 
 def _aggregate(pairs):
-    """bias/MAE/RMSE for wave height plus period bias over a pair list."""
+    """bias/MAE/RMSE for wave height, plus period bias broken out per
+    forecast source.
+
+    Open-Meteo's wave_period is a mean period while NDBC's DPD (the only
+    period observation scored here) is the peak period -- pooling sources
+    averages Open-Meteo's mean-vs-peak gap with WW3-ERDDAP's peak-vs-peak
+    comparison into one number that isn't a clean skill measurement for
+    either (#71). Height is unaffected: both sides are significant wave
+    height already.
+    """
     if not pairs:
         return None
     errs = [p["fc_wh"] - p["ob_wh"] for p in pairs]
-    tp_errs = [p["fc_tp"] - p["ob_tp"] for p in pairs
-               if p.get("fc_tp") is not None and p.get("ob_tp") is not None]
     agg = {
         "n": len(errs),
         "bias_m": round(sum(errs) / len(errs), 3),
         "mae_m": round(sum(abs(e) for e in errs) / len(errs), 3),
         "rmse_m": round(math.sqrt(sum(e * e for e in errs) / len(errs)), 3),
     }
-    if tp_errs:
-        agg["period_bias_s"] = round(sum(tp_errs) / len(tp_errs), 2)
-        agg["period_n"] = len(tp_errs)
+    tp_errs_by_source = {}
+    for p in pairs:
+        if p.get("fc_tp") is None or p.get("ob_tp") is None:
+            continue
+        source = p.get("source", "unknown")
+        tp_errs_by_source.setdefault(source, []).append(p["fc_tp"] - p["ob_tp"])
+    if tp_errs_by_source:
+        agg["period_by_source"] = {
+            source: {
+                "bias_s": round(sum(source_errs) / len(source_errs), 2),
+                "n": len(source_errs),
+            }
+            for source, source_errs in sorted(tp_errs_by_source.items())
+        }
     return agg
 
 

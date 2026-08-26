@@ -6019,18 +6019,23 @@ def accuracy_csv():
     buf = StringIO()
     w = _csv.writer(buf)
     w.writerow(['station_id', 'name', 'region', 'lat', 'lon', 'lead_bin',
-                'n_pairs', 'bias_m', 'mae_m', 'rmse_m', 'period_bias_s'])
+                'n_pairs', 'bias_m', 'mae_m', 'rmse_m', 'period_by_source'])
     for sid, st in sorted(stats['stations'].items()):
         rows = [('all', st.get('all') or {})]
         rows += sorted((st.get('bins') or {}).items())
         for label, agg in rows:
             if not agg:
                 continue
+            # Period bias isn't pooled (Open-Meteo's mean period and
+            # WW3-ERDDAP's peak period aren't the same quantity, see
+            # /accuracy methodology), so this is one JSON blob per source
+            # rather than a single column.
+            period_by_source = agg.get('period_by_source')
             w.writerow([sid, st.get('name', ''), st.get('region', ''),
                         st.get('lat', ''), st.get('lon', ''), label,
                         agg.get('n', ''), agg.get('bias_m', ''),
                         agg.get('mae_m', ''), agg.get('rmse_m', ''),
-                        agg.get('period_bias_s', '')])
+                        json.dumps(period_by_source) if period_by_source else ''])
 
     resp = Response(buf.getvalue(), mimetype='text/csv')
     resp.headers['Content-Disposition'] = \
