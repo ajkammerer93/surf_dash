@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.76
+**Current version:** v0.11.84
 
 ## Dashboard
 
@@ -39,8 +39,9 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 | Data | Source | Cost |
 |---|---|---|
-| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) / NOAA WW3 via ERDDAP (upwell + PacIOOS mirrors) | Free |
-| Wind speed, direction, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with NOAA GFS via ERDDAP (CoastWatch + upwell mirrors) fallback | Free |
+| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) (point) / NOAA gfswave grib2 from [NODD S3](https://registry.opendata.aws/noaa-gfs-bdp-pds/) (grids), ERDDAP last resort | Free |
+| Swell partitions, gridded wind | NOAA gfswave (three partitioned swell trains + surface wind ride in the same files) | Free |
+| Wind columns, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with wave-store and ERDDAP fallbacks | Free |
 | Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged) | Free |
 | Buoy observations | [NDBC](https://www.ndbc.noaa.gov/) / [CDIP](https://cdip.ucsd.edu/) | Free |
 | Surf cameras | Curated YouTube live embeds + [Windy Webcams API](https://api.windy.com/) + provider link-outs | Free tier |
@@ -71,7 +72,7 @@ Available at `http://localhost:5000`.
 
 ```bash
 pip install -r requirements-dev.txt                    # test-only deps
-pytest tests/                                          # full suite (561 tests)
+pytest tests/                                          # full suite (693 tests)
 pytest tests/test_seo.py -v                            # SEO/integration tests
 pytest tests/test_units.py -v                          # pure-function unit tests
 pytest tests/test_failures.py -v                       # mocked upstream-failure tests
@@ -104,7 +105,7 @@ LOG_LEVEL=DEBUG python app.py
 | `scripts/forecast_verification.py` | Snapshots the site's own forecasts at NDBC buoys and scores them; publishes to the `verification-data` branch |
 | `scripts/seo_audit.py` | Collects CI, site-health, Search Console and Cloudflare metrics into a daily snapshot on the `seo-data` branch |
 | `scripts/instagram_publish.py` | Social pipeline publisher (Graph API or dry-run) |
-| `tests/` | 561 tests across SEO, pure functions, mocked upstream failures, the ERDDAP mirror chain, grid precision, cache bounds, deploy config, and the UX/SEO audit collectors |
+| `tests/` | 693 tests across SEO, pure functions, mocked upstream failures, the ERDDAP breaker and mirror chain, the wave store and artifact builder, storm-watch analysis, grid precision, cache bounds, deploy config, and the UX/SEO audit collectors |
 | `static/sw.js` | Service worker (network-first HTML, 24h offline API fallback) |
 | `render.yaml` | Render Blueprint (adopted -- this file is the source of truth for the live service) |
 | `requirements-dev.txt` | Test-only dependencies, kept out of the runtime install |
@@ -144,9 +145,11 @@ Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 
 | `GET /api/health-upstreams` | Diagnostic: probes each weather source from the server's vantage |
 
-All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection. Upstream failures degrade gracefully: the wave chain falls from Open-Meteo Marine to WW3, and every ERDDAP fetch -- point forecast, local grid and ocean basin alike -- walks an ordered list of independent mirrors hosting the same model, with a per-host timeout budget. Wind and air-temp have the same treatment, tides degrade to hourly-only, and if every wave source fails at once the API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
+All endpoints are stateless with thread-safe, size-bounded TTL caching and stampede protection.
 
-The mirror lists live in one place (`WW3_WAVE_MIRRORS`, `GFS_WIND_MIRRORS`) because they were once inline per call site, and the two grid endpoints were left single-homed on a server that went slow -- the swell map returned 500 for hours while the point forecast rode the same outage out. A test asserts no call site names a host directly.
+Grid data comes from a **wave data spine** rather than live upstream calls: an hourly GitHub Action decodes NOAA's gfswave grib2 files from NODD S3 into compact float16 npz artifacts on the `wave-data` branch, and a background thread syncs them into RAM. The swell-map endpoints serve numpy slices in well under a second, deploys warm in seconds, and the grib tooling lives only in CI -- the web process needs numpy alone. The zoomed-out basin view is built for situational awareness: partitioned swell trains at the spot ("building toward Thursday"), and a 16-day storm watch that tracks gale systems, filters them by the beach's swell window and a great-circle land-shadow test, and estimates arrival from group velocity.
+
+Upstream failures degrade gracefully behind that: wall-clock-bounded fetches (a drip-feeding server cannot outlive its budget), a per-host circuit breaker that fails calls in microseconds once a host has proven slow-dead, redirect detection (a mirror that 302s data queries is treated as gone, not silently followed), serve-stale on both grid endpoints (up to 24h, flagged `stale_at`), and an honest fast `warming` state when nothing is cached. If every wave source fails at once the point API serves the last good forecast (up to 24h, flagged `stale`) rather than going dark.
 
 ### Scheduled jobs
 
@@ -156,6 +159,7 @@ its own unprotected data branch, which the app or the next run reads back.
 | Workflow | Cadence | Writes to |
 |---|---|---|
 | `forecast-verification.yml` | every 6h | `verification-data` |
+| `wave-artifacts.yml` | hourly (builds ~4x/day, on new gfswave cycles) | `wave-data` |
 | `social-post.yml` | daily, two schedules by coast | posts to Instagram |
 | `seo-audit.yml` | daily | `seo-data` |
 | `youtube-cam-scan.yml` | weekly | `cam-data` + the rolling review issue |
