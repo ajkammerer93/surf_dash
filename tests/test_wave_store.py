@@ -248,3 +248,81 @@ def test_wave_sync_default_inherits_ssr_warm():
 def test_deep_size_counts_numpy_nbytes():
     arr = np.zeros((100, 100), np.float32)
     assert app._deep_size(arr) >= arr.nbytes
+
+
+class TestAdditiveWindFallbacks:
+    """The fallback chain fills gaps ADDITIVELY. The either/or version left
+    45 null wind hours per spot in production: the tile covered its hourly
+    f000-f120 window, returned True, and the remaining hours -- already-past
+    hours and the day-6/7 tail -- never reached the next fallback.
+    """
+
+    def _forecast(self, hours=(0, 30, 140)):
+        import time as _t
+        from datetime import datetime, timezone as tz
+        base = _t.time()
+        return [{'time': datetime.fromtimestamp(base + h * 3600, tz.utc)
+                 .strftime('%Y-%m-%dT%H:%MZ'),
+                 'wind_speed': None, 'wind_direction': None} for h in hours]
+
+    def test_erddap_runs_for_hours_the_tile_missed(self, monkeypatch):
+        app._wave_basin = _mk_store()
+        tile = None  # tile absent entirely
+
+        def fake_tile(lat0, lon0):
+            return tile
+        monkeypatch.setattr(app, '_load_wave_tile', fake_tile)
+        monkeypatch.setattr(app, '_enrich_wind_from_basin_store',
+                            lambda f, la, lo: False)
+        called = {}
+        monkeypatch.setattr(app, '_enrich_wind_from_erddap',
+                            lambda f, la, lo: called.setdefault('erddap', True))
+        fc = self._forecast()
+        app._enrich_wind_fallbacks(fc, 34.43, -77.55)
+        assert called.get('erddap'), (
+            "gaps remained and the ERDDAP fallback never ran -- the either/or "
+            "bug is back")
+
+    def test_erddap_skipped_when_everything_is_filled(self, monkeypatch):
+        monkeypatch.setattr(app, '_enrich_wind_from_tile',
+                            lambda f, la, lo: [e.update(
+                                {'wind_speed': 5.0, 'wind_direction': 90.0})
+                                for e in f] and True)
+
+        def no_erddap(*a):
+            raise AssertionError("ERDDAP ran with zero gaps")
+        monkeypatch.setattr(app, '_enrich_wind_from_erddap', no_erddap)
+        fc = self._forecast()
+        app._enrich_wind_fallbacks(fc, 34.43, -77.55)
+        assert all(e['wind_speed'] == 5.0 for e in fc)
+
+    def test_basin_store_backfills_the_tail(self):
+        """3-hourly 2-degree wind from RAM covers hours past the tile
+        horizon; coarse, but honest for day 6-7 -- and free."""
+        app._wave_basin = _mk_store()
+        app._wave_basin['wind'][:] = 18.0
+        app._wave_basin['wdir'][:] = 270.0
+        fc = self._forecast(hours=(30, 90, 140))
+        filled = app._enrich_wind_from_basin_store(fc, 30.0, -150.0)
+        assert filled is True
+        assert all(e['wind_speed'] == 18.0 for e in fc)
+
+    def test_basin_store_leaves_existing_values_alone(self):
+        app._wave_basin = _mk_store()
+        fc = self._forecast(hours=(30,))
+        fc[0]['wind_speed'] = 7.7
+        app._enrich_wind_from_basin_store(fc, 30.0, -150.0)
+        assert fc[0]['wind_speed'] == 7.7
+
+    def test_hours_before_the_cycle_stay_none(self):
+        """The store starts at the cycle; an hour 12h before it must not be
+        filled with frame zero."""
+        import time as _t
+        from datetime import datetime, timezone as tz
+        app._wave_basin = _mk_store()
+        past = datetime.fromtimestamp(
+            float(app._wave_basin['times'][0]) - 12 * 3600, tz.utc
+        ).strftime('%Y-%m-%dT%H:%MZ')
+        fc = [{'time': past, 'wind_speed': None, 'wind_direction': None}]
+        app._enrich_wind_from_basin_store(fc, 30.0, -150.0)
+        assert fc[0]['wind_speed'] is None

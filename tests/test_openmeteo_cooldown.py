@@ -59,17 +59,33 @@ def test_wind_goes_straight_to_fallback_while_blocked(mock_get, mock_fallback):
 
 
 @patch('app.requests.get')
-def test_temperatures_skip_air_but_keep_water_while_blocked(mock_get):
-    """The marine pool keeps working through a weather 429; blocking both
-    would throw away a healthy upstream."""
+def test_current_temp_call_is_exempt_from_the_cooldown(mock_get):
+    """The cooldown exists to protect the ~10s hourly-wind call. Gating the
+    ~0.5s current-temp call behind it turned "air temp missing sometimes"
+    into "air temp missing ALWAYS" in production (168/168 null hours,
+    2026-08-25): with the rate limit intermittent, every request that could
+    have landed in a 200 window was itself skipped. The temp call now always
+    tries -- and still NOTES a 429 so the wind call stays protected."""
     surf_app._om_weather_block['until'] = time.monotonic() + 600
     mock_get.return_value = make_response(
-        200, json_data={'current': {'sea_surface_temperature': 22.5}})
+        200, json_data={'current': {'temperature_2m': 27.5,
+                                    'sea_surface_temperature': 22.5},
+                        'timezone': 'America/New_York'})
     forecast = [{'air_temperature': None, 'water_temperature': None}]
     surf_app._enrich_with_temperatures(forecast, 34.43, -77.55)
     urls = [c.args[0] for c in mock_get.call_args_list]
-    assert all('marine' in u for u in urls), f"weather API was called: {urls}"
+    assert any('api.open-meteo.com' in u for u in urls), "temp call was gated"
+    assert forecast[0]['air_temperature'] == 27.5
     assert forecast[0]['water_temperature'] == 22.5
+
+
+@patch('app.requests.get')
+def test_a_429_on_the_temp_call_rearms_the_cooldown(mock_get):
+    surf_app._om_weather_block['until'] = 0.0
+    mock_get.return_value = make_response(429)
+    surf_app._enrich_with_temperatures(
+        [{'air_temperature': None, 'water_temperature': None}], 34.43, -77.55)
+    assert surf_app._om_weather_available() is False
 
 
 @patch('app._enrich_wind_from_erddap')
