@@ -31,6 +31,12 @@ The four that matter:
    layer after the user unticked Wind or the pane scrolled off, with nothing
    left to tear it down -- an always-on off-screen animation loop, which the
    whole map rework exists to prevent.
+
+5. ONE WIND READOUT, OWNED BY THE CURSOR PROBE. leaflet-velocity's displayValues
+   control was a second wind number on the same map in m/s and a compass
+   bearing, styled and positioned by the library, configured through option
+   names that turned out not to be options. The particles are now purely a
+   visualisation and attachProbe reports wind for both grids.
 """
 import os
 import re
@@ -240,40 +246,78 @@ class TestLazyWindLoader:
             "extent keeps animating over the basin view")
 
 
-class TestReadoutConventions:
-    """The readout must not quietly disagree with the rest of the dashboard."""
+class TestSingleWindReadout:
+    """There is exactly ONE wind readout on this map, and the cursor probe owns
+    it.
 
-    def test_angle_convention_is_meteorological(self):
-        src = _src()
-        assert "angleConvention: 'meteoCW'" in _velocity_options(src), (
-            "leaflet-velocity defaults to a bearing (where the wind is GOING); "
-            "every other wind direction on this site is meteorological (where "
-            "it comes FROM). meteoCCW is mirrored against our u/v signs.")
+    leaflet-velocity's built-in displayValues control was a second wind number
+    on the same map that shared none of the site's conventions: m/s instead of
+    mph/km/h, a compass bearing instead of a meteorological direction, its own
+    white-on-dark CSS, a corner the narrative bar paints over, and option names
+    (displayPosition / displayEmptyString) that are not options at all and were
+    silently ignored. Rather than keep configuring around it, wind moved into
+    attachProbe, which already owned units, compassLabel and offshore/onshore.
+    """
 
-    def test_speed_unit_follows_the_site_preference(self):
-        src = _src()
-        opts = _velocity_options(src)
-        assert "speedUnit" in opts and "METRIC_UNITS" in opts, (
-            "the readout defaulted to m/s, a unit that appears nowhere else on "
-            "the dashboard (mph, or km/h in metric mode)")
+    def test_velocity_layer_has_no_readout_of_its_own(self):
+        opts = _decommented(_velocity_options(_src()))
+        # displayValues DEFAULTS TO TRUE, so its mere absence is not enough --
+        # asserting "not in" would have pinned the broken state. It must be
+        # explicitly false.
+        assert re.search(r"displayValues:\s*false", opts), (
+            "displayValues defaults to TRUE in leaflet-velocity; it must be "
+            "explicitly false or the library renders a second wind readout in "
+            "m/s and a compass bearing. The cursor probe is the single source "
+            "of wind text.")
+        assert "displayOptions" not in opts, (
+            "displayOptions only configures the control that must stay off")
 
-    def test_readout_is_not_under_the_narrative_bar(self):
-        """.basin-narrative spans the full width at the map bottom and is
-        re-appended after Leaflet builds its controls, so it paints over
-        anything in the bottom-left corner."""
+    def test_no_dead_styling_for_a_control_that_never_renders(self):
+        assert ".leaflet-control-velocity" not in _src(), (
+            "the velocity control is disabled, so CSS for it is dead weight "
+            "that implies a readout which no longer exists")
+
+    def test_probe_formats_wind_through_one_helper(self):
         src = _src()
-        # The control reads `position`/`emptyString`. The displayPosition /
-        # displayEmptyString spellings are not options and were silently
-        # ignored -- pin that they never come back, or the readout drifts to
-        # the default bottomleft under the narrative bar again.
-        opts = _decommented(_velocity_options(src))
-        assert "displayPosition" not in opts and "displayEmptyString" not in opts, (
-            "displayPosition/displayEmptyString are not leaflet-velocity "
-            "options; use position/emptyString")
-        assert re.search(r"position:\s*'topright'", opts), (
-            "the velocity readout must not sit in bottomleft, where the basin "
-            "narrative bar spans the full width and paints over it -- worst in "
-            "the zoomed-out state where the particles are the main content")
-        assert "emptyString:" in opts, (
-            "without emptyString the control shows the library default, "
-            "'Unavailable', which reads as a broken layer")
+        assert "function windProbeText(" in src, (
+            "local and basin probe branches must share one formatter or they "
+            "drift apart on units and convention")
+        probe = _fn(src, "windProbeText")
+        assert "D_SPEED" in probe and "U_SPEED" in probe, (
+            "wind speed must follow the site unit preference, not a fixed unit")
+        assert "compassLabel" in probe, (
+            "direction must render through the site's own compass labels")
+
+    def test_both_probe_branches_report_wind(self):
+        """The basin branch reported waves only; wind at basin scale was
+        available exclusively from the library control that is now off."""
+        src = _src()
+        # attachProbe's callback is an argument, so take the whole call.
+        probe = _balanced(src, "attachProbe(mapSwell", opener="(", closer=")")
+        assert probe.count("windProbeText(") >= 2, (
+            "both the local and the basin branch of the cursor probe must "
+            "report wind; with the library control off, a basin branch without "
+            "it means zooming out loses the wind readout entirely")
+
+    def test_shore_relation_is_local_only(self):
+        """offshore/onshore is measured against BEACH_FACING_DIRECTION at the
+        home spot; applying it to a point far out on the basin grid states a
+        relationship that does not exist."""
+        src = _src()
+        probe = _balanced(src, "attachProbe(mapSwell", opener="(", closer=")")
+        assert "windProbeText(ws, wd, true)" in probe, (
+            "the local branch should pass withShoreRelation=true")
+        assert re.search(r"windProbeText\([^;]*,\s*false\)", probe), (
+            "the basin branch must pass withShoreRelation=false")
+
+    def test_basin_wind_resolves_on_its_own_axis(self):
+        """Basin wind is opt-in and assembled independently, so it rides
+        wind_times, not the wave axis."""
+        src = _src()
+        probe = _balanced(src, "attachProbe(mapSwell", opener="(", closer=")")
+        assert "wind_times" in probe, (
+            "the basin probe branch must resolve the wind frame against "
+            "wind_times, like buildVelocityData does")
+        assert "basinLonsSorted" in probe and "basinLonOrder" in probe, (
+            "basin sampling must go through the reordered-column path; basin "
+            "lons arrive in 0..360 order with signed values")

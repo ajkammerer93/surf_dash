@@ -1224,22 +1224,6 @@
             white-space: nowrap;
         }
 
-        /* leaflet-velocity ships a white Helvetica box; the swell map's
-           basemap is always dark regardless of site theme, so match .map-probe
-           rather than let it read as a foreign control. */
-        .leaflet-control-velocity {
-            font-family: var(--font-body);
-            font-size: 10px;
-            line-height: 1.4;
-            background: rgba(10, 10, 10, 0.85);
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 4px 8px;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-
         .spot-marker-dot {
             display: inline-block;
             width: 7px; height: 7px;
@@ -7708,6 +7692,31 @@
             return dirs[Math.round(deg / 45) % 8];
         }
 
+        // One formatter for wind in the cursor probe, so the local and basin
+        // branches cannot drift apart on units or convention. This replaced
+        // leaflet-velocity's own displayValues readout, which was a second
+        // wind number on the same map in a different unit (m/s) and a
+        // different convention (compass bearing) -- see v0.11.89.
+        //
+        // withShoreRelation is local-only on purpose: offshore/onshore is
+        // measured against BEACH_FACING_DIRECTION at the home spot, which says
+        // nothing about a point a thousand km out on the basin grid.
+        function windProbeText(ws, wd, withShoreRelation) {
+            if (ws == null) return null;
+            let txt = Math.round(ws * D_SPEED) + ' ' + U_SPEED;
+            if (wd != null) {
+                // wd is meteorological (the direction the wind comes FROM),
+                // matching every other wind readout on the site.
+                txt += ' ' + compassLabel(wd);
+                if (withShoreRelation) {
+                    const offshoreFrom = (BEACH_FACING_DIRECTION + 180) % 360;
+                    const diff = Math.abs(((wd - offshoreFrom) % 360 + 540) % 360 - 180);
+                    txt += diff <= 45 ? ' (offshore)' : diff >= 135 ? ' (onshore)' : ' (cross)';
+                }
+            }
+            return txt;
+        }
+
         function updateSwellLegend() {
             if (!mapSwell) return;
             if (swellLegendControl) {
@@ -7962,34 +7971,22 @@
                     // Above the field rasters, not Leaflet's default
                     // overlayPane (400), which sits UNDER fieldBase (405).
                     paneName: 'fieldWind',
-                    displayValues: true,
-                    // NB: the control reads `position` and `emptyString`. The
-                    // `displayPosition` / `displayEmptyString` spellings that
-                    // used to be here are not options at all -- they were
-                    // silently ignored, which is why the readout sat bottom-left
-                    // showing the library's default "Unavailable".
-                    displayOptions: {
-                        velocityType: 'Wind',
-                        // bottomleft is spanned by the basin narrative bar,
-                        // which is re-appended after Leaflet builds its
-                        // controls and therefore paints over anything there.
-                        position: 'topright',
-                        emptyString: 'Hover for wind',
-                        // Every other wind readout on this site is
-                        // meteorological (the direction wind comes FROM).
-                        // None of the library's three documented conventions
-                        // gives that: bearingCW yields d+180, bearingCCW
-                        // 180-d, meteoCCW 360-d (mirrored). An unrecognised
-                        // value skips both the CCW sign flip and the +180, so
-                        // vectorToDegrees returns d itself. 'meteoCW' is that
-                        // value -- deliberate, not a typo. Pinned by SRI, so a
-                        // future release cannot change it under us.
-                        angleConvention: 'meteoCW',
-                        // METRIC_UNITS is fixed for the session (toggleUnits
-                        // reloads), so one value at construction is always
-                        // right. The library spells km/h as 'k/h'.
-                        speedUnit: METRIC_UNITS ? 'k/h' : 'mph'
-                    },
+                    // displayValues DEFAULTS TO TRUE in leaflet-velocity, so
+                    // this must be set explicitly -- omitting it leaves the
+                    // control on, rendering bottom-left with the library's
+                    // "No velocity data" placeholder.
+                    displayValues: false,
+                    // The library's own readout stays OFF. The library's own readout was a
+                    // SECOND wind number on the same map, and it owned none of
+                    // the site's conventions: it reported m/s and a compass
+                    // bearing, its option names were easy to get silently wrong
+                    // (displayPosition/displayEmptyString are not options), it
+                    // shipped its own white-on-dark CSS, and it sat in a corner
+                    // the basin narrative bar paints over. The cursor probe
+                    // already owns units, compassLabel and the offshore/onshore
+                    // call, so wind is reported there for BOTH the local and
+                    // basin grids via windProbeText(). The particles remain
+                    // purely a visualisation.
                     data: velocityData,
                     maxVelocity: 25,
                     velocityScale: 0.01,
@@ -8598,16 +8595,8 @@
                         const wd = sampleGrid(lats, lons, localGridData.wind_direction[t], ll.lat, ll.lng);
                         const parts = [];
                         if (wh != null) parts.push((wh * D_HEIGHT).toFixed(1) + ' ' + U_HEIGHT + (wp != null ? ' @ ' + wp.toFixed(0) + 's' : ''));
-                        if (ws != null) {
-                            let windTxt = Math.round(ws * D_SPEED) + ' ' + U_SPEED;
-                            if (wd != null) {
-                                windTxt += ' ' + compassLabel(wd);
-                                const offshoreFrom = (BEACH_FACING_DIRECTION + 180) % 360;
-                                const diff = Math.abs(((wd - offshoreFrom) % 360 + 540) % 360 - 180);
-                                windTxt += diff <= 45 ? ' (offshore)' : diff >= 135 ? ' (onshore)' : ' (cross)';
-                            }
-                            parts.push(windTxt);
-                        }
+                        const windTxt = windProbeText(ws, wd, true);
+                        if (windTxt) parts.push(windTxt);
                         if (parts.length) return parts.join(' \u00b7 ');
                     }
                 }
@@ -8628,6 +8617,24 @@
                     let txt = (wh * D_HEIGHT).toFixed(1) + ' ' + U_HEIGHT;
                     if (wp != null) txt += ' @ ' + wp.toFixed(0) + 's';
                     if (wd != null) txt += ' from ' + compassLabel(wd);
+                    // Wind is opt-in on the basin payload and rides its own
+                    // axis (see loadBasinWind), so resolve its frame
+                    // separately and skip it entirely when absent.
+                    if (basinGridData.wind_speed && basinGridData.wind_direction) {
+                        const wt = frameIndexForTime(
+                            basinGridData.wind_times || basinGridData.times,
+                            sliderTimeIso(tRaw));
+                        const sFrame = basinGridData.wind_speed[wt];
+                        const dFrame = basinGridData.wind_direction[wt];
+                        if (sFrame && dFrame) {
+                            const sGrid = sliceGrid2D(basinGridData.wind_speed, wt, basinLonOrder);
+                            const dwGrid = sliceGrid2D(basinGridData.wind_direction, wt, basinLonOrder);
+                            const ws = sampleGrid(basinGridData.lats, basinLonsSorted, sGrid, ll.lat, lon);
+                            const wdir = sampleGrid(basinGridData.lats, basinLonsSorted, dwGrid, ll.lat, lon);
+                            const windTxt = windProbeText(ws, wdir, false);
+                            if (windTxt) txt += ' · ' + windTxt;
+                        }
+                    }
                     return txt;
                 }
                 return null;
