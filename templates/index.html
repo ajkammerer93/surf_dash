@@ -1224,6 +1224,22 @@
             white-space: nowrap;
         }
 
+        /* leaflet-velocity ships a white Helvetica box; the swell map's
+           basemap is always dark regardless of site theme, so match .map-probe
+           rather than let it read as a foreign control. */
+        .leaflet-control-velocity {
+            font-family: var(--font-body);
+            font-size: 10px;
+            line-height: 1.4;
+            background: rgba(10, 10, 10, 0.85);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
         .spot-marker-dot {
             display: inline-block;
             width: 7px; height: 7px;
@@ -7737,18 +7753,71 @@
             return best;
         }
 
-        // The slider's authoritative clock: whichever grid drives slider.max.
+        const LOCAL_FRAME_TOLERANCE_MS = 90 * 60 * 1000;
+
+        // Resolve the slider position onto the LOCAL grid's own axis, or -1
+        // when the local grid does not cover that time at all.
+        //
+        // The local tile stops at f120 while the slider now spans the basin's
+        // 7 days, so positions past the local tail have no local frame. The old
+        // Math.min(...) clamp made the last local frame smear across the entire
+        // f120+ tail -- the same "frame zero impersonating other hours" mistake
+        // the basin-store backfill guards against server-side.
+        function localFrameForSlider(timeIndex) {
+            if (!localGridData || !localGridData.times || !localGridData.times.length) return -1;
+            const targetIso = sliderTimeIso(timeIndex);
+            if (!targetIso) return -1;
+            const target = Date.parse(targetIso);
+            if (isNaN(target)) return -1;
+            const times = localGridData.times;
+            const idx = frameIndexForTime(times, targetIso);
+            // 90 minutes, the same nearest-frame tolerance the basin-store
+            // backfill uses server-side. Not half the local stride: the two
+            // grids do not share a start offset (the basin lands on the 3-hour
+            // cycle, the local tile on f000+1h), so a 30-minute window rejected
+            // the DEFAULT slider position and dropped the high-res patch from
+            // the opening view. 90 minutes accepts that 1-hour offset and still
+            // refuses the f120+ tail, which is hours away, not minutes.
+            const gap = Math.abs(Date.parse(times[idx]) - target);
+            return gap <= LOCAL_FRAME_TOLERANCE_MS ? idx : -1;
+        }
+
+        // The slider's authoritative clock: the grid with the LONGEST
+        // wall-clock horizon, which is not necessarily the finest-grained one.
+        // The basin runs 7 days at 3-hourly; the local tile stops at f120.
+        // Preferring `local || basin` silently truncated the map to +56h the
+        // moment the hourly local grid landed, because slider.max had already
+        // been set from the basin's 57 frames and every clock reader then
+        // switched to the hourly axis.
+        function sliderTimes() {
+            const l = localGridData && localGridData.times;
+            const b = basinGridData && basinGridData.times;
+            if (!l || !l.length) return (b && b.length) ? b : null;
+            if (!b || !b.length) return l;
+            return Date.parse(b[b.length - 1]) > Date.parse(l[l.length - 1]) ? b : l;
+        }
+
         function sliderTimeIso(timeIndex) {
-            const times = (localGridData && localGridData.times) ||
-                          (basinGridData && basinGridData.times);
+            const times = sliderTimes();
             return times && times[timeIndex] ? times[timeIndex] : null;
         }
 
         function buildVelocityData(timeIndex, gridData) {
             if (!gridData || !gridData.wind_speed) return null;
             const lats = gridData.lats;
+            // Basin lons arrive in stored 0..360 ORDER with signed VALUES
+            // (_wave_lons_to_signed), and windy's buildGrid indexes by
+            // floorMod(lon - lo1, 360) / dx. Raw order is what it wants --
+            // do NOT sort these through basinLonsSorted, which would break it.
             const lons = gridData.lons;
-            const bTimeIndex = frameIndexForTime(gridData.times, sliderTimeIso(timeIndex));
+            // Wind may ride a different axis than the waves (see loadBasinWind).
+            const windTimes = gridData.wind_times || gridData.times;
+            const bTimeIndex = frameIndexForTime(windTimes, sliderTimeIso(timeIndex));
+            const speedFrame = gridData.wind_speed[bTimeIndex];
+            const dirFrame = gridData.wind_direction && gridData.wind_direction[bTimeIndex];
+            // A diverged axis can index past the end; updateSwellVelocity
+            // already treats null as "nothing to draw".
+            if (!speedFrame || !dirFrame) return null;
             const nx = lons.length;
             const ny = lats.length;
             const lo1 = lons[0];
@@ -7763,8 +7832,8 @@
             // leaflet-velocity expects north-to-south row order; our lats are south-to-north
             for (let i = lats.length - 1; i >= 0; i--) {
                 for (let j = 0; j < lons.length; j++) {
-                    const speedKmh = gridData.wind_speed[bTimeIndex][i][j];
-                    const dir = gridData.wind_direction[bTimeIndex][i][j];
+                    const speedKmh = speedFrame[i][j];
+                    const dir = dirFrame[i][j];
                     const speedMs = speedKmh / 3.6;
                     const dirRad = dir * Math.PI / 180;
                     uData.push(-speedMs * Math.sin(dirRad));
@@ -7809,8 +7878,19 @@
                     if (!data || !data.wind_speed || !basinGridData) return;
                     basinGridData.wind_speed = data.wind_speed;
                     basinGridData.wind_direction = data.wind_direction;
+                    // The wind response is assembled independently of the wave
+                    // response and its start frame moves with wall-clock time,
+                    // so its axis is not necessarily the wave axis. Keep it and
+                    // resolve wind frames against it (one clock, by timestamp).
+                    basinGridData.wind_times = data.times || basinGridData.times;
+                    // Go through updateSwellMap, exactly as loadBasinSwell does:
+                    // it derives visibility from the wind toggle, pane
+                    // visibility and document.hidden. Passing a literal true
+                    // here resurrected the layer after the user unticked Wind
+                    // or the pane scrolled off, with nothing left to tear it
+                    // down -- the always-on off-screen particle loop.
                     const slider = document.getElementById('time-slider');
-                    updateSwellVelocity(slider ? (parseInt(slider.value) || 0) : 0, true);
+                    updateSwellMap(slider ? (parseInt(slider.value) || 0) : 0);
                 }))
                 .catch(staleGuard(function() {
                     // Particles are decorative. A failure here leaves the map as
@@ -7860,25 +7940,55 @@
             const localMode = mapSwell.getZoom() >= SWELL_LOCAL_ZOOM;
             const source = (localMode && localGridData) ? localGridData : basinGridData;
             const sourceName = source === localGridData ? 'local' : 'basin';
+            // Tear down a layer built for the OTHER dataset before any early
+            // return. Zooming out before the basin wind has arrived used to
+            // return below with the local-extent layer still attached, leaving
+            // its animation loop running over a world view -- and if the basin
+            // wind fetch never succeeded it never stopped.
+            if (basinVelocityLayer && basinVelocityLayer._fsfSource !== sourceName) {
+                mapSwell.removeLayer(basinVelocityLayer);
+                basinVelocityLayer = null;
+            }
             if (source === basinGridData && basinGridData && !basinGridData.wind_speed) {
                 loadBasinWind();  // re-enters this function when it lands
                 return;
             }
             const velocityData = buildVelocityData(timeIndex, source);
             if (!velocityData) return;
-            if (basinVelocityLayer && basinVelocityLayer._fsfSource !== sourceName) {
-                mapSwell.removeLayer(basinVelocityLayer);
-                basinVelocityLayer = null;
-            }
             if (basinVelocityLayer) {
                 basinVelocityLayer.setData(velocityData);
             } else {
                 basinVelocityLayer = L.velocityLayer({
+                    // Above the field rasters, not Leaflet's default
+                    // overlayPane (400), which sits UNDER fieldBase (405).
+                    paneName: 'fieldWind',
                     displayValues: true,
+                    // NB: the control reads `position` and `emptyString`. The
+                    // `displayPosition` / `displayEmptyString` spellings that
+                    // used to be here are not options at all -- they were
+                    // silently ignored, which is why the readout sat bottom-left
+                    // showing the library's default "Unavailable".
                     displayOptions: {
                         velocityType: 'Wind',
-                        displayPosition: 'bottomleft',
-                        displayEmptyString: 'No wind data'
+                        // bottomleft is spanned by the basin narrative bar,
+                        // which is re-appended after Leaflet builds its
+                        // controls and therefore paints over anything there.
+                        position: 'topright',
+                        emptyString: 'Hover for wind',
+                        // Every other wind readout on this site is
+                        // meteorological (the direction wind comes FROM).
+                        // None of the library's three documented conventions
+                        // gives that: bearingCW yields d+180, bearingCCW
+                        // 180-d, meteoCCW 360-d (mirrored). An unrecognised
+                        // value skips both the CCW sign flip and the +180, so
+                        // vectorToDegrees returns d itself. 'meteoCW' is that
+                        // value -- deliberate, not a typo. Pinned by SRI, so a
+                        // future release cannot change it under us.
+                        angleConvention: 'meteoCW',
+                        // METRIC_UNITS is fixed for the session (toggleUnits
+                        // reloads), so one value at construction is always
+                        // right. The library spells km/h as 'k/h'.
+                        speedUnit: METRIC_UNITS ? 'k/h' : 'mph'
                     },
                     data: velocityData,
                     maxVelocity: 25,
@@ -8113,7 +8223,10 @@
             if (!visible || !window._knownSpots || !localGridData) return;
             localSpotLayer = L.layerGroup();
             const lats = localGridData.lats, lons = localGridData.lons;
-            const hGrid = localGridData.wave_height[Math.min(t, localGridData.times.length - 1)];
+            // t is a resolved local frame index from localFrameForSlider(), not
+            // a slider position -- callers must not pass a raw slider index.
+            const hGrid = localGridData.wave_height[t];
+            if (!hGrid) return;
             const cur = currentLocation;
 
             window._knownSpots
@@ -8329,9 +8442,13 @@
             }
 
             // --- Local (high-res) layers ---
-            if (localGridData) {
+            // t is resolved by TIMESTAMP, not by slider index: the slider now
+            // runs on whichever grid reaches furthest, so a position past the
+            // local tail has no local frame and the patch must drop out rather
+            // than smear its last frame across the tail.
+            const t = localFrameForSlider(timeIndex);
+            if (localGridData && t >= 0) {
                 const lats = localGridData.lats, lons = localGridData.lons;
-                const t = Math.min(timeIndex, localGridData.times.length - 1);
                 const dLat = lats.length > 1 ? lats[1] - lats[0] : 0.16;
                 const dLon = lons.length > 1 ? lons[1] - lons[0] : 0.16;
                 const bounds = [[lats[0] - dLat / 2, lons[0] - dLon / 2],
@@ -8360,6 +8477,12 @@
 
                 updateLocalSpotMarkers(t, state.spots && localMode);
                 updateLocalCamMarkers(state.cams && localMode);
+            } else if (localGridData) {
+                // Past the local grid's horizon: drop the high-res patch and
+                // its labels so the basin field shows through unobstructed.
+                if (localFieldOverlay) { mapSwell.removeLayer(localFieldOverlay); localFieldOverlay = null; }
+                updateLocalSpotMarkers(0, false);
+                updateLocalCamMarkers(state.cams && localMode);
             }
             updateSwellBuoyMarkers(getSwellLayerState().buoys && localMode);
             updateSwellVelocity(timeIndex, state.wind && paneVisible);
@@ -8379,8 +8502,21 @@
                 // renders — exactly the path a basin outage puts users on.
                 mapSwell.createPane('fieldBase').style.zIndex = 405;
                 mapSwell.createPane('fieldDetail').style.zIndex = 410;
+                createWindPane(mapSwell);
                 mapSwell.createPane('fieldArrows').style.zIndex = 420;
             }
+        }
+
+        // The wind particles need their own pane ABOVE the field rasters.
+        // leaflet-velocity defaults to overlayPane (z 400), which puts the
+        // particles UNDER fieldBase (405) -- and Wave Height is on by default,
+        // so out of the box the layer was a ghost under a saturated ramp.
+        // pointerEvents none keeps the canvas out of the cursor probe's path.
+        function createWindPane(map) {
+            const pane = map.createPane('fieldWind');
+            pane.style.zIndex = 415;
+            pane.style.pointerEvents = 'none';
+            return pane;
         }
 
         // Create the map once data is available and the pane is visible
@@ -8399,9 +8535,11 @@
                 .setView([currentLocation.lat, currentLocation.lon], 8);
             if (narrativeKeep) swellEl.appendChild(narrativeKeep);
 
-            // Stacked panes: basin field under the local patch, arrows on top
+            // Stacked panes: basin field under the local patch, wind particles
+            // over both, arrows on top
             mapSwell.createPane('fieldBase').style.zIndex = 405;
             mapSwell.createPane('fieldDetail').style.zIndex = 410;
+            createWindPane(mapSwell);
             mapSwell.createPane('fieldArrows').style.zIndex = 420;
 
             addHomeButton(mapSwell, [currentLocation.lat, currentLocation.lon], 8);
@@ -8445,11 +8583,14 @@
             attachProbe(mapSwell, function(ll) {
                 const slider = document.getElementById('time-slider');
                 const tRaw = parseInt(slider.value) || 0;
-                if (localGridData) {
+                const localT = localFrameForSlider(tRaw);
+                if (localGridData && localT >= 0) {
                     const lats = localGridData.lats, lons = localGridData.lons;
                     if (ll.lat > lats[0] && ll.lat < lats[lats.length - 1] &&
                         ll.lng > lons[0] && ll.lng < lons[lons.length - 1]) {
-                        const t = Math.min(tRaw, localGridData.times.length - 1);
+                        // Resolved by timestamp; the old clamp reported the
+                        // last local hour for every position past the tail.
+                        const t = localT;
                         let wh = sampleGrid(lats, lons, localGridData.wave_height[t], ll.lat, ll.lng);
                         if (wh != null && wh <= 0) wh = null;
                         const wp = sampleGrid(lats, lons, localGridData.wave_period[t], ll.lat, ll.lng);
@@ -8570,8 +8711,11 @@
                     localDataReady = true;
                     if (mapVisibility['map-swell'] && !swellRendered) renderSwellMap();
                     if (mapSwell) {
-                        const slider = document.getElementById('time-slider');
-                        updateSwellMap(parseInt(slider.value) || 0);
+                        // Re-derive slider.max now that a second grid exists.
+                        // Without this the slider kept the basin's frame COUNT
+                        // while the clock silently moved to this hourly axis,
+                        // collapsing the reachable horizon to ~+56h.
+                        onMapDataReady();
                     }
                     if (gridData.stale_at && mapSwell) addMapStaleNote(mapSwell, gridData.stale_at);
                 }))
@@ -8585,19 +8729,23 @@
         // === Unified Map Time Slider Logic ===
 
         function onMapDataReady() {
-            // Determine time array from whichever dataset is available
-            const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
+            // Runs again when a second grid lands, so preserve the user's
+            // wall-clock position instead of yanking them back to now. Read the
+            // OLD axis before slider.max is rewritten.
+            const slider = document.getElementById('time-slider');
+            const keepIso = (parseInt(slider.max) || 0) > 0
+                ? sliderTimeIso(parseInt(slider.value) || 0) : null;
+
+            const times = sliderTimes();
             if (!times) return;
 
-            const slider = document.getElementById('time-slider');
             slider.max = times.length - 1;
-            slider.value = 0;
-            updateAllMaps(0);
+            slider.value = keepIso ? frameIndexForTime(times, keepIso) : 0;
+            updateAllMaps(parseInt(slider.value) || 0);
         }
 
         function updateAllMaps(timeIndex) {
-            // Determine time array
-            const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
+            const times = sliderTimes();
             if (!times) return;
 
             // Update time badge, label, and panel timestamps
@@ -8640,8 +8788,7 @@
         // How many slider positions make up SLIDER_ANIMATION_HOURS, given
         // whatever cadence the grids actually came back at.
         function sliderStepPositions() {
-            const times = (localGridData && localGridData.times) ||
-                          (basinGridData && basinGridData.times);
+            const times = sliderTimes();
             if (!times || times.length < 2) return 1;
             const stepHours = (Date.parse(times[1]) - Date.parse(times[0])) / 3600000;
             if (!(stepHours > 0)) return 1;
@@ -8704,7 +8851,12 @@
                     mapSwell.removeLayer(basinVelocityLayer);
                     basinVelocityLayer = null;
                 }
-            } else if (basinGridData && mapVisibility['map-swell']) {
+            } else if ((basinGridData || localGridData) && mapVisibility['map-swell']) {
+                // The teardown above is unconditional, so the resume condition
+                // must be no narrower. At zoom >= SWELL_LOCAL_ZOOM the
+                // particles run off localGridData and can be live with
+                // basinGridData still null -- the documented state when
+                // /api/ocean-basin is warming but /api/map-forecast succeeded.
                 const slider = document.getElementById('time-slider');
                 updateSwellMap(parseInt(slider.value) || 0);
             }
@@ -8721,7 +8873,7 @@
             document.getElementById('time-slider').addEventListener('input', function(e) {
                 const timeIndex = parseInt(e.target.value);
                 // Update label immediately (cheap DOM write)
-                const times = (localGridData && localGridData.times) || (basinGridData && basinGridData.times);
+                const times = sliderTimes();
                 if (times && times[timeIndex]) {
                     const timeStr = formatLocationTime(new Date(times[timeIndex]), {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
                     document.getElementById('map-time-badge').textContent = timeStr;
