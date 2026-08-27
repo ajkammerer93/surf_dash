@@ -45,14 +45,15 @@ BASE_URL = 'https://freesurfforecast.com'
 # linked Page and a Page access token; this one needs neither.
 GRAPH_URL = 'https://graph.instagram.com/v25.0'
 
-# One region per weekday (Mon..Sun). Rotating regions keeps the feed varied
-# without any per-day decisions.
 # Which schedule each region belongs to. Posting a Southern California card at
 # 4am Pacific or a Hawaii card at 1am local means reporting overnight
 # conditions to a sleeping audience, so the Pacific regions run on a later cron.
 REGION_GROUPS = {
     'outer-banks': 'east',
+    'north-carolina-coast': 'east',
+    'virginia-coast': 'east',
     'southern-california': 'west',
+    'northern-california': 'west',
     'great-lakes': 'east',
     'jersey-shore': 'east',
     'florida-space-coast': 'east',
@@ -67,15 +68,121 @@ ACCURACY_SLUG = 'accuracy'
 HIGHLIGHT_SLUG = 'highlight'
 REFUSING_SLUGS = (ACCURACY_SLUG, HIGHLIGHT_SLUG)
 
+# The rotation is DEMAND-WEIGHTED, not one-per-weekday. It is indexed by day
+# of year rather than weekday, so its length is free and a region can appear
+# more than once per cycle.
+#
+# The weights come from what people actually read (Cloudflare top paths, 7d):
+# wrightsville-beach 26, avalon-nj 20, virginia-beach 12, cape-may-cove-nj 12,
+# santa-cruz-ca 10. The old seven-region rotation had no card for three of
+# those top five -- the #1 page on the site had no post at all -- so the feed
+# was advertising coastlines the audience does not read. north-carolina-coast
+# and jersey-shore appear twice per cycle because they carry the top four
+# spots between them.
 REGION_ROTATION = [
-    'outer-banks',          # Monday
-    'southern-california',  # Tuesday
-    'great-lakes',          # Wednesday
-    'jersey-shore',         # Thursday
-    'florida-space-coast',  # Friday
-    'hawaii-north-shore',   # Saturday
-    'new-england',          # Sunday
+    'north-carolina-coast',   # Wrightsville / Topsail -- most-read spots
+    'southern-california',
+    'jersey-shore',           # Avalon / Cape May
+    'great-lakes',
+    'virginia-coast',
+    'hawaii-north-shore',
+    'north-carolina-coast',
+    'outer-banks',
+    'jersey-shore',
+    'northern-california',    # Santa Cruz
+    'florida-space-coast',
+    'new-england',
 ]
+
+# Below this the card is a flat day: score is roughly 10 points per foot of
+# face (_simple_surf_score in app.py), so 20 is about 2 ft.
+FLAT_SCORE = 20.0
+# How far down the rotation to look for a better card on a flat day.
+FLAT_LOOKAHEAD = 4
+
+
+def rotation_region(day, group=None):
+    """Today's scheduled region, optionally restricted to one cron group."""
+    idx = day.timetuple().tm_yday % len(REGION_ROTATION)
+    if group is None:
+        return REGION_ROTATION[idx]
+    for step in range(len(REGION_ROTATION)):
+        slug = REGION_ROTATION[(idx + step) % len(REGION_ROTATION)]
+        if REGION_GROUPS.get(slug) == group:
+            return slug
+    return None
+
+
+def card_best_score(card):
+    """Best spot score on a card, or 0 when it carries none."""
+    scores = [sp.get('score') or 0 for sp in (card.get('spots') or [])]
+    return max(scores) if scores else 0.0
+
+
+def flat_day_alternatives(slug, group):
+    """Same-group regions to try when `slug` comes up flat.
+
+    Deliberately SAME-GROUP only. Picking the best surf anywhere would send an
+    east-coast audience a Hawaii card most days -- the Pacific regions are
+    bigger nearly all the time, so an unrestricted "best surf wins" rule
+    quietly starves exactly the coastlines this rotation exists to serve. The
+    swap is a floor on quality, not a ranking.
+    """
+    idx = REGION_ROTATION.index(slug) if slug in REGION_ROTATION else 0
+    out = []
+    for step in range(1, len(REGION_ROTATION)):
+        cand = REGION_ROTATION[(idx + step) % len(REGION_ROTATION)]
+        if cand != slug and cand not in out and REGION_GROUPS.get(cand) == group:
+            out.append(cand)
+        if len(out) >= FLAT_LOOKAHEAD:
+            break
+    return out
+
+
+def pick_region(base_url, scheduled, group, dry_run=False):
+    """The region to post today: the scheduled one, unless it is flat and a
+    same-group sibling is doing better.
+
+    A flat card is worth avoiding: "1.4ft @ 7s" is not a reason to open the
+    app, and the feed reads as dead. But the fix must not become "post
+    whichever coast has the biggest surf", because the Pacific wins that
+    contest nearly every day and the audience this rotation serves is on the
+    Atlantic. So the rotation stays authoritative and this only intervenes
+    when the scheduled region is genuinely flat, choosing among ITS OWN group.
+
+    Best-effort by construction: any fetch problem here leaves the scheduled
+    region in place rather than failing the run, because a flat card still
+    beats no card.
+    """
+    if not group:
+        return scheduled
+    try:
+        card = fetch_card(base_url, scheduled, retries=1)
+        best = card_best_score(card)
+    except Exception as e:
+        print(f'  flat-day check skipped for {scheduled}: {e}')
+        return scheduled
+    if best >= FLAT_SCORE:
+        return scheduled
+    print(f'  {scheduled} is flat (best score {best:.0f} < {FLAT_SCORE:.0f}); '
+          f'looking for a better {group} region')
+    winner, winner_score = scheduled, best
+    for cand in flat_day_alternatives(scheduled, group):
+        try:
+            alt = fetch_card(base_url, cand, retries=1)
+        except Exception as e:
+            print(f'    {cand}: unavailable ({e})')
+            continue
+        alt_score = card_best_score(alt)
+        print(f'    {cand}: best score {alt_score:.0f}')
+        if alt_score > winner_score:
+            winner, winner_score = cand, alt_score
+    if winner != scheduled:
+        print(f'  posting {winner} instead of {scheduled} '
+              f'({winner_score:.0f} vs {best:.0f})')
+    else:
+        print(f'  no better {group} region today; keeping {scheduled}')
+    return winner
 
 
 class CardRefused(Exception):
@@ -241,16 +348,21 @@ def main():
         slug = HIGHLIGHT_SLUG + (f'?kind={args.kind}' if args.kind else '')
         targets = [(today.strftime('%A %b %d'), slug)]
     elif args.week:
-        days = [(today + timedelta(days=i)) for i in range(7)]
-        targets = [(d.strftime('%A %b %d'), REGION_ROTATION[d.weekday()]) for d in days]
+        days = [(today + timedelta(days=i)) for i in range(len(REGION_ROTATION))]
+        targets = [(d.strftime('%A %b %d'), rotation_region(d)) for d in days]
     else:
-        region = args.region or REGION_ROTATION[today.weekday()]
-        # An explicitly requested region is a deliberate manual post, so the
-        # schedule's group filter should not veto it.
-        if not args.region and args.group and REGION_GROUPS.get(region) != args.group:
-            print(f"Today's region ({region}) is not in the {args.group} group "
-                  f"- nothing to do on this schedule.")
-            sys.exit(0)
+        if args.region:
+            # An explicit region is a deliberate manual post: no group filter,
+            # no flat-day swap. What was asked for is what gets posted.
+            region = args.region
+        else:
+            region = rotation_region(today)
+            if args.group and REGION_GROUPS.get(region) != args.group:
+                print(f"Today's region ({region}) is not in the {args.group} "
+                      f"group - nothing to do on this schedule.")
+                sys.exit(0)
+            region = pick_region(args.base_url, region, args.group,
+                                 dry_run=args.dry_run)
         targets = [(today.strftime('%A %b %d'), region)]
 
     failures = 0

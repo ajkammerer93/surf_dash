@@ -3905,6 +3905,29 @@ SOCIAL_HASHTAGS = {
 SOCIAL_BASE_HASHTAGS = '#surf #surfing #surfforecast #surfreport'
 
 
+SOCIAL_ENGAGEMENT_LINES = [
+    "Surfing {spot} today? Tell us what it is actually doing.",
+    "Which break should we add next? Drop it below.",
+    "Save this if you are checking {region} this week.",
+    "Tag whoever you would call for this one.",
+    "Does this match what you are seeing? Corrections welcome.",
+    "Which spot do you want scored next? Comment it.",
+]
+
+
+def _social_engagement_line(region, top):
+    """One rotating call to action for the daily regional caption.
+
+    Rotates on day-of-year so consecutive posts differ, and so the two cards
+    that go out on a given day (east group and west group) never carry the
+    same ask.
+    """
+    idx = datetime.now(timezone.utc).timetuple().tm_yday % len(SOCIAL_ENGAGEMENT_LINES)
+    spot = (top[0]['name'] if top else region.get('short_title', 'out there'))
+    return SOCIAL_ENGAGEMENT_LINES[idx].format(
+        spot=spot, region=region.get('short_title', 'your coast'))
+
+
 def _simple_surf_score(entry):
     """Rough server-side ranking for the social card. This is NOT the
     dashboard's session score (that lives in JS with tide and orientation
@@ -4020,6 +4043,13 @@ def _social_card_data(region_slug):
         lines.append(f'We grade every forecast against NOAA buoys: '
                      f'{accuracy_mae_ft}ft average error over the last 30 days.')
     lines.append('Link in bio or freesurfforecast.com')
+    lines.append('')
+    # An ask, rotated so the feed does not repeat one line every day. Instagram
+    # weights comments and saves far above passive views, and every other line
+    # in this caption is a statement -- nothing in it gave anyone a reason to
+    # reply. Keyed to the date so a given day's east and west cards do not
+    # both ask the same thing.
+    lines.append(_social_engagement_line(region, top))
     lines.append('')
     lines.append(f"{SOCIAL_BASE_HASHTAGS} {SOCIAL_HASHTAGS.get(region_slug, '')}".strip())
 
@@ -4796,7 +4826,13 @@ NDBC_LATEST_OBS_TTL = 1800
 HIGHLIGHT_OBS_MAX_AGE_H = 6
 HIGHLIGHT_MIN_STATIONS = 40
 
+# How close a buoy must sit to a spot we actually forecast to count as "on a
+# coast we serve". 250 km covers the offshore wave buoys that drive a coastline
+# without reaching across an ocean basin.
+HIGHLIGHT_SERVED_KM = 250.0
+
 # The editorial bar. A superlative is only worth an audience's attention when it
+
 # is actually exceptional: "biggest seas today, 6 ft" is a fact, but posting it
 # teaches people to scroll past. Below these floors the card is skipped rather
 # than posted, and the publisher treats that as a normal quiet day. In August
@@ -4919,6 +4955,37 @@ def _get_ndbc_latest_obs():
                   ttl=NDBC_LATEST_OBS_TTL)
 
 
+def _served_buoy_ids(rows):
+    """Ids of buoys within HIGHLIGHT_SERVED_KM of a spot we forecast.
+
+    The spot list is static, so this is memoised on the station geometry
+    rather than recomputed per card.
+    """
+    global _SERVED_BUOY_CACHE
+    key = len(rows)
+    if _SERVED_BUOY_CACHE and _SERVED_BUOY_CACHE[0] == key:
+        return _SERVED_BUOY_CACHE[1]
+    spots = [(loc['lat'], loc['lon']) for loc in LOCATION_BY_SLUG.values()
+             if loc.get('lat') is not None and loc.get('lon') is not None]
+    served = set()
+    for r in rows:
+        if r.get('lat') is None or r.get('lon') is None:
+            continue
+        for slat, slon in spots:
+            # Cheap degree-box reject before the trigonometry; 250 km is under
+            # 2.3 deg of latitude anywhere.
+            if abs(r['lat'] - slat) > 3.0:
+                continue
+            if haversine_distance(r['lat'], r['lon'], slat, slon) <= HIGHLIGHT_SERVED_KM:
+                served.add(r['id'])
+                break
+    _SERVED_BUOY_CACHE = (key, served)
+    return served
+
+
+_SERVED_BUOY_CACHE = None
+
+
 def _highlight_candidates(obs, kind):
     """Winner for one kind, or None when nothing clears the floor.
 
@@ -4931,6 +4998,33 @@ def _highlight_candidates(obs, kind):
              if (now - r['time']).total_seconds() <= HIGHLIGHT_OBS_MAX_AGE_H * 3600]
     if len(fresh) < HIGHLIGHT_MIN_STATIONS:
         return None, f'only {len(fresh)} stations reporting within {HIGHLIGHT_OBS_MAX_AGE_H}h'
+
+    # Prefer a winner on a coast we actually forecast, and only fall back to the
+    # whole network when our own coasts have nothing exceptional.
+    #
+    # The global maximum is almost always somewhere nobody reading this can
+    # surf -- American Samoa, the Aleutians, a mid-Pacific buoy -- which makes
+    # the card un-taggable and irrelevant to an audience that reads
+    # Wrightsville, Avalon and Virginia Beach. But the floors below were tuned
+    # against the GLOBAL pool, so filtering outright would have gone silent for
+    # most of the summer. Preference with fallback keeps the feed alive and
+    # makes it local whenever local is worth posting.
+    served_ids = _served_buoy_ids(obs['rows'])
+    served = [r for r in fresh if r['id'] in served_ids]
+    last_why = 'no stations in either pool'
+    for scope, pool_rows in (('served', served), ('global', fresh)):
+        if not pool_rows:
+            continue
+        pick, why = _highlight_pick_from(pool_rows, kind, floor)
+        if pick:
+            pick['scope'] = scope
+            return pick, None
+        last_why = why
+    return None, last_why
+
+
+def _highlight_pick_from(fresh, kind, floor):
+    """Best reading of one kind within a given pool, or (None, reason)."""
 
     if kind == 'biggest-seas':
         pool = [r for r in fresh if r['wvht_m']]
@@ -4973,8 +5067,13 @@ def _highlight_headline(pick):
     st, kind = pick['station'], pick['kind']
     wv_ft = st['wvht_m'] * M_TO_FT if st['wvht_m'] else None
     tiles = []
+    # The sub-line has to match the pool the winner actually came from --
+    # "on the buoy network" is a false claim when a bigger reading exists
+    # somewhere we do not forecast.
+    network = ('on coasts we forecast' if pick.get('scope') == 'served'
+               else 'on the buoy network')
     if kind == 'biggest-seas':
-        head = ['Biggest seas', 'on the buoy network']
+        head = ['Biggest seas', network]
         value = f"{pick['value']:.1f}"
         unit = 'ft'
         label = 'SIGNIFICANT WAVE HEIGHT, MEASURED'
@@ -4998,7 +5097,7 @@ def _highlight_headline(pick):
         if wv_ft:
             tiles.append((f'{wv_ft:.1f} ft', 'wave height'))
     else:
-        head = ['Strongest wind', 'on the buoy network']
+        head = ['Strongest wind', network]
         value = f"{pick['value']:.0f}"
         unit = 'kt'
         label = 'SUSTAINED WIND SPEED, MEASURED'

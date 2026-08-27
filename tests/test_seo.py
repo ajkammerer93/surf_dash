@@ -726,19 +726,87 @@ class TestSocialCards:
         d = resp.get_json()
         assert d['story_image_url'].endswith('/social/story/virginia-coast.jpg')
 
-    def test_every_rotation_region_has_a_posting_group(self):
-        """Each region must map to a schedule group, or its day silently
-        posts nothing once the cron is split by coast."""
+    def _publisher(self):
         import importlib.util, os
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         spec = importlib.util.spec_from_file_location(
             'instagram_publish', os.path.join(root, 'scripts', 'instagram_publish.py'))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        assert len(mod.REGION_ROTATION) == 7
+        return mod
+
+    def test_every_rotation_region_has_a_posting_group(self):
+        """Each region must map to a schedule group, or its day silently
+        posts nothing once the cron is split by coast.
+
+        The rotation used to be exactly 7 long because it was indexed by
+        weekday. It is indexed by day of year now so the length is free --
+        which is what lets a high-demand region appear more than once per
+        cycle -- so length is no longer the invariant. Group coverage is.
+        """
+        mod = self._publisher()
+        assert mod.REGION_ROTATION, 'rotation is empty'
         for region in mod.REGION_ROTATION:
             assert region in mod.REGION_GROUPS, f'{region} has no posting group'
             assert mod.REGION_GROUPS[region] in ('east', 'west')
+        groups = {mod.REGION_GROUPS[r] for r in mod.REGION_ROTATION}
+        assert groups == {'east', 'west'}, (
+            'both cron groups must appear in the rotation, or one coast never '
+            f'posts; got {groups}')
+
+    def test_rotation_covers_the_most_read_spots(self):
+        """The feed should advertise the coastlines people actually read.
+        These four regions carry the top pages on the site; a rotation without
+        them posts about places the audience does not visit."""
+        mod = self._publisher()
+        for region in ('north-carolina-coast', 'jersey-shore',
+                       'virginia-coast', 'northern-california'):
+            assert region in mod.REGION_ROTATION, (
+                f'{region} carries a top-read spot but never posts')
+
+    def test_group_lookup_never_returns_the_wrong_coast(self):
+        """rotation_region(day, group) is what each cron uses; returning a
+        region from the other group would post Hawaii on the east schedule."""
+        import datetime
+        mod = self._publisher()
+        for offset in range(0, 366):
+            day = datetime.date(2026, 1, 1) + datetime.timedelta(days=offset)
+            for group in ('east', 'west'):
+                got = mod.rotation_region(day, group)
+                assert got is not None, f'no {group} region for {day}'
+                assert mod.REGION_GROUPS[got] == group, (
+                    f'{day} {group} -> {got} which is '
+                    f'{mod.REGION_GROUPS[got]}')
+
+    def test_flat_day_swap_stays_within_the_group(self):
+        """The swap exists to avoid posting a flat card, NOT to rank coasts.
+        Picking the biggest surf anywhere would send an east-coast audience a
+        Pacific card nearly every day, starving the regions the rotation was
+        weighted to serve."""
+        mod = self._publisher()
+        cards = {r: {'spots': [{'score': 5.0}]} for r in mod.REGION_GROUPS}
+        cards['jersey-shore'] = {'spots': [{'score': 4.0}]}      # flat, scheduled
+        cards['virginia-coast'] = {'spots': [{'score': 40.0}]}   # best east
+        cards['hawaii-north-shore'] = {'spots': [{'score': 99.0}]}  # best overall
+        mod.fetch_card = lambda base, slug, retries=3, **kw: cards[slug]
+        got = mod.pick_region('http://x', 'jersey-shore', 'east')
+        assert got == 'virginia-coast', got
+        assert mod.REGION_GROUPS[got] == 'east'
+
+    def test_a_firing_region_is_never_swapped_away(self):
+        mod = self._publisher()
+        cards = {r: {'spots': [{'score': 90.0}]} for r in mod.REGION_GROUPS}
+        cards['jersey-shore'] = {'spots': [{'score': 45.0}]}
+        mod.fetch_card = lambda base, slug, retries=3, **kw: cards[slug]
+        assert mod.pick_region('http://x', 'jersey-shore', 'east') == 'jersey-shore'
+
+    def test_flat_day_check_failure_keeps_the_scheduled_region(self):
+        """A fetch problem during the check must not cost the day's post."""
+        mod = self._publisher()
+        def boom(base, slug, retries=3, **kw):
+            raise RuntimeError('upstream down')
+        mod.fetch_card = boom
+        assert mod.pick_region('http://x', 'jersey-shore', 'east') == 'jersey-shore'
 
     def test_card_title_fits_canvas_for_every_region(self):
         """Long region names used to run off the 1080px canvas at a fixed

@@ -505,3 +505,90 @@ class TestSpectrum:
         assert spec['second'] is not None
         for p in (spec['peak'][0], spec['second'][0]):
             assert app_module._swell_type(p)[0] == 'Ground swell'
+
+
+class TestServedCoastPreference:
+    """The card should be about a coast the audience can actually surf.
+
+    The pick used to be an unfiltered global maximum, so it landed on American
+    Samoa, the Aleutians or a mid-Pacific buoy most days -- places nobody
+    reading the feed will ever paddle out, and with no local hashtag to tag it
+    with. But the editorial floors (10 ft / 14 s / 35 kt) were tuned against
+    that global pool, so simply filtering to US coasts would have taken the
+    card silent for most of the summer. Hence preference-with-fallback: local
+    when local is worth posting, global rather than nothing.
+    """
+
+    @staticmethod
+    def _row(sid, lat, lon, wvht_ft, when, dpd=9.0, wspd_kt=10.0):
+        return {'id': sid, 'name': sid, 'lat': lat, 'lon': lon, 'time': when,
+                'wspd_ms': wspd_kt / 1.944, 'gust_ms': None,
+                'wvht_m': wvht_ft / 3.28084, 'dpd_s': dpd, 'apd_s': None,
+                'mwd_deg': 90, 'wtmp_c': 20.0}
+
+    def _obs(self, extra):
+        now = datetime.now(timezone.utc)
+        # Enough distant stations to clear HIGHLIGHT_MIN_STATIONS without any
+        # of them being near a spot we forecast.
+        pad = [self._row(f'P{i}', 5.0 + i * 0.1, -150.0, 1.0, now)
+               for i in range(45)]
+        app_module._SERVED_BUOY_CACHE = None
+        return {'rows': pad + extra, 'newest': now}
+
+    def test_a_local_buoy_that_clears_the_bar_beats_a_bigger_foreign_one(self):
+        now = datetime.now(timezone.utc)
+        obs = self._obs([
+            self._row('41013', 33.44, -77.74, 12.0, now),   # off North Carolina
+            self._row('51209', -14.27, -170.5, 20.0, now),  # American Samoa
+        ])
+        pick, why = app_module._highlight_candidates(obs, 'biggest-seas')
+        assert pick is not None, why
+        assert pick['station']['id'] == '41013'
+        assert pick['scope'] == 'served'
+
+    def test_falls_back_to_the_network_when_local_is_flat(self):
+        """Better a card about Samoa than no card at all."""
+        now = datetime.now(timezone.utc)
+        obs = self._obs([
+            self._row('41013', 33.44, -77.74, 6.0, now),    # under the 10 ft bar
+            self._row('51209', -14.27, -170.5, 20.0, now),
+        ])
+        pick, why = app_module._highlight_candidates(obs, 'biggest-seas')
+        assert pick is not None, why
+        assert pick['station']['id'] == '51209'
+        assert pick['scope'] == 'global'
+
+    def test_headline_does_not_claim_the_network_when_scoped(self):
+        """"Biggest seas on the buoy network" is a false claim when a larger
+        reading exists somewhere outside the pool that produced the winner."""
+        now = datetime.now(timezone.utc)
+        obs = self._obs([
+            self._row('41013', 33.44, -77.74, 12.0, now),
+            self._row('51209', -14.27, -170.5, 20.0, now),
+        ])
+        pick, _ = app_module._highlight_candidates(obs, 'biggest-seas')
+        head = app_module._highlight_headline(pick)[0]
+        assert 'buoy network' not in ' '.join(head).lower(), head
+        assert 'forecast' in ' '.join(head).lower(), head
+
+    def test_headline_still_claims_the_network_on_a_global_win(self):
+        now = datetime.now(timezone.utc)
+        obs = self._obs([
+            self._row('41013', 33.44, -77.74, 6.0, now),
+            self._row('51209', -14.27, -170.5, 20.0, now),
+        ])
+        pick, _ = app_module._highlight_candidates(obs, 'biggest-seas')
+        head = app_module._highlight_headline(pick)[0]
+        assert 'buoy network' in ' '.join(head).lower(), head
+
+    def test_served_filter_recognises_coasts_we_forecast(self):
+        rows = [
+            {'id': 'nc', 'lat': 33.44, 'lon': -77.74},    # off NC
+            {'id': 'ny', 'lat': 40.37, 'lon': -73.70},    # NY bight
+            {'id': 'samoa', 'lat': -14.27, 'lon': -170.5},
+            {'id': 'midpac', 'lat': 38.0, 'lon': -130.0},
+        ]
+        app_module._SERVED_BUOY_CACHE = None
+        served = app_module._served_buoy_ids(rows)
+        assert 'nc' in served and 'ny' in served
+        assert 'samoa' not in served and 'midpac' not in served

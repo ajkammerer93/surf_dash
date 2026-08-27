@@ -37,12 +37,16 @@ on:
         description: 'Post only the story (no feed card)'
         type: boolean
         default: false
-  # Intended cadence once I have vetted it by hand -- uncomment to go live.
   # Sunday late morning, when the week just scored is complete. Minute 7 rather
   # than 0: top-of-hour is when Actions queues are most congested, same reason
   # as social-post.yml.
-  # schedule:
-  #   - cron: '7 15 * * 0'   # 11:07 ET Sunday
+  #
+  # The card can decline: /api/social-card/accuracy answers 503 with a reason
+  # when its publication guards say the window is not worth posting, and
+  # instagram_publish.py treats that as a clean exit rather than a retry. So a
+  # live schedule cannot post a thin week -- it just skips one.
+  schedule:
+    - cron: '7 15 * * 0'   # 11:07 ET Sunday
 
 # One accuracy post at a time. Two overlapping runs would publish the same card
 # twice.
