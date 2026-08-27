@@ -1224,6 +1224,9 @@
             white-space: nowrap;
         }
 
+        /* See addBasemap(): dims the basemap only, never the labels. */
+        .basemap-muted { filter: brightness(0.62) saturate(0.7); }
+
         .spot-marker-dot {
             display: inline-block;
             width: 7px; height: 7px;
@@ -5658,6 +5661,49 @@
             if (overlay) overlay.remove();
         }
 
+        // ---- Basemap tiles -------------------------------------------------
+        // CARTO began serving keyless basemap requests with a large diagonal
+        // "API KEY REQUIRED / carto.com/basemaps/apikey" watermark burned into
+        // every tile. The tiles still return HTTP 200 and a valid PNG, so
+        // nothing threw, nothing 4xx'd and no alert fired -- it went live and
+        // sat on production unnoticed. A basemap can fail by looking wrong
+        // while behaving perfectly.
+        //
+        // Esri's Dark Gray Canvas serves keyless and unwatermarked. Two things
+        // differ from the CARTO URLs and both bite silently:
+        //   - the tile path is {z}/{y}/{x}, Y BEFORE X, not the usual XYZ order
+        //   - labels are a SEPARATE reference layer, not baked into the base
+        // No call site names these hosts directly; go through addBasemap().
+        const BASEMAP_BASE_URL =
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+        const BASEMAP_LABELS_URL =
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+        const BASEMAP_ATTRIBUTION =
+            'Tiles &copy; <a href="https://www.esri.com/">Esri</a>, HERE, Garmin, &copy; OpenStreetMap contributors';
+
+        // labels: false matches CARTO's dark_nolabels. The labels layer is
+        // added second so it stacks over the base within Leaflet's tilePane,
+        // which keeps both below the field rasters (fieldBase z405) exactly as
+        // the old baked-in labels were.
+        function addBasemap(map, opts) {
+            opts = opts || {};
+            const maxZoom = opts.maxZoom || 19;
+            L.tileLayer(BASEMAP_BASE_URL, {
+                attribution: BASEMAP_ATTRIBUTION,
+                maxZoom: maxZoom,
+                // Muted on the BASE layer only. Esri's land is considerably
+                // lighter than the CARTO basemap this replaced, and on a data
+                // map the basemap must recede behind the wave field rather
+                // than compete with it. The labels layer is separate and keeps
+                // its full contrast, which is the whole reason to dim here
+                // rather than on the tile pane.
+                className: 'basemap-muted'
+            }).addTo(map);
+            if (opts.labels !== false) {
+                L.tileLayer(BASEMAP_LABELS_URL, { maxZoom: maxZoom }).addTo(map);
+            }
+        }
+
         function initEmptyMap(containerId, center, zoom, errorMessage) {
             const el = document.getElementById(containerId);
             // The basin narrative div lives INSIDE the map container and is
@@ -5669,10 +5715,7 @@
             if (narrativeKeep) narrativeKeep.remove();
             el.innerHTML = '';
             const map = L.map(containerId).setView(center, zoom);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-                maxZoom: 19
-            }).addTo(map);
+            addBasemap(map);
             addHomeButton(map, center, zoom);
             addMapDataError(map, errorMessage);
             if (narrativeKeep) el.appendChild(narrativeKeep);
@@ -6268,10 +6311,7 @@
         // Location selector map initialization
         function initLocationMap() {
             locationMap = L.map('location-map').setView([20, 0], 2);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-                maxZoom: 19
-            }).addTo(locationMap);
+            addBasemap(locationMap);
 
             // Add click handler
             locationMap.on('click', function(e) {
@@ -8557,10 +8597,7 @@
             });
             mapSwell.addControl(new GlobeControl());
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-                maxZoom: 19
-            }).addTo(mapSwell);
+            addBasemap(mapSwell);
 
             // Current spot marker (always visible at every zoom)
             const locationIcon = L.divIcon({
@@ -10792,9 +10829,7 @@
                     keyboard: false,
                     touchZoom: false
                 }).setView([buoy.lat, buoy.lon], 9);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-                    maxZoom: 14
-                }).addTo(buoyMap);
+                addBasemap(buoyMap, { labels: false, maxZoom: 14 });
             }
 
             if (buoyMapMarker) buoyMap.removeLayer(buoyMapMarker);
