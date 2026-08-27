@@ -131,17 +131,6 @@ jobs:
                       f"{k.replace('cumulativeLayoutShift','')}={v}"
                       for k, v in sorted(spread.items()) if k != 'samples')
                   print(f"CLS spread 7d (n={spread.get('samples')}): {vals}")
-              # Print the whole CLS distribution until the field's meaning
-              # is settled. A score varies smoothly across percentiles; a
-              # per-event rating pins to -1/0/1 with interpolated fractions
-              # between. The first real run gave p75 = 1 for four elements and
-              # -1 for others, and a CLS score cannot be negative.
-              spread = wv.get('cls_spread_7d') or {}
-              if spread:
-                  vals = ' '.join(
-                      f"{k.replace('cumulativeLayoutShift', '')}={v}"
-                      for k, v in sorted(spread.items()) if k != 'samples')
-                  print(f"CLS spread 7d (n={spread.get('samples')}): {vals}")
               for window in ('sitewide_1d', 'sitewide_7d'):
                   m = wv.get(window) or {}
                   if not m:
@@ -151,12 +140,29 @@ jobs:
                   print(f"Web Vitals p75 {window}: n={m.get('samples')} {vals}")
               if wv.get('low_sample_warning'):
                   print(f"::warning::Web Vitals: {wv['low_sample_warning']}")
-              for row in (wv.get('by_path_7d') or [])[:8]:
-                  cls = row.get('cumulativeLayoutShiftP75')
-                  if cls is not None and cls > 0.1:
-                      print(f"::warning::CLS p75 over budget on "
-                            f"{row.get('requestPath')}: {cls} "
-                            f"(n={row.get('samples')})")
+              # NOT a ::warning::, deliberately. Cloudflare's CLS field is
+              # not a CLS score and must not be acted on: it returns -1 for
+              # some groups (impossible for a real score) and saturates at
+              # exactly 1 from p75 up, because it appears to count
+              # user-initiated shifts that the CWV spec excludes via
+              # hadRecentInput. One GridStack panel drag alone produces 0.0704
+              # of hadRecentInput=true shift on the element it names, while
+              # spec-counted CLS measured on this site stays at 0.0000-0.0063
+              # against a 0.10 budget. Emitting these as warnings fired a
+              # false alarm on every single run -- five per run, values pinned
+              # at exactly 1 on samples as small as n=4 -- at a reader that
+              # acts on findings autonomously, which is precisely how someone
+              # ends up "fixing" CLS protections that are already correct.
+              # Reported, never alarmed on, so the finding stays re-checkable.
+              flagged = [r for r in (wv.get('by_path_7d') or [])[:8]
+                         if (r.get('cumulativeLayoutShiftP75') or 0) > 0.1]
+              if flagged:
+                  print("CF CLS rating (NOT a CLS score, not actionable -- "
+                        "see the Web Vitals notes; real CLS here is ~0.006):")
+                  for r in flagged:
+                      print(f"  {r.get('requestPath')}: "
+                            f"{r.get('cumulativeLayoutShiftP75')} "
+                            f"(n={r.get('samples')})")
               # The elements real visitors saw move, worst first. This is the
               # line that turns "CLS is bad" into a file and a selector, so it
               # prints whether or not anything is over budget.
