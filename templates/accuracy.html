@@ -177,8 +177,10 @@
         table.stats tr:last-child td { border-bottom: none; }
         table.stats td { color: var(--text-dim); }
         table.stats td.station { color: var(--accent); font-weight: 700; }
-        td.bias-over { color: #d97706 !important; }
-        td.bias-under { color: #0284c7 !important; }
+        td.bias-over { color: #d97706 !important; }  /* 5.78:1 on --surface */
+        td.bias-under { color: #0ea5e9 !important; }  /* was #0284c7 -- 4.5:1 on --surface, right at the AA line; #0ea5e9 is 6.65:1 */
+        [data-theme="light"] td.bias-over { color: #9a3412 !important; }  /* #d97706 is 3.19:1 on white; #9a3412 matches the badge fix and clears 7.31:1 */
+        [data-theme="light"] td.bias-under { color: #0369a1 !important; }  /* #0284c7 is 4.1:1 on white, below AA; #0369a1 is 5.93:1 */
 
         .empty-state, .methodology {
             background: var(--surface);
