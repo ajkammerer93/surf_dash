@@ -778,6 +778,71 @@ class TestSocialCards:
                     f'{day} {group} -> {got} which is '
                     f'{mod.REGION_GROUPS[got]}')
 
+    def test_scheduled_slot_survives_a_delivery_past_midnight(self):
+        """A late run must post the slot it was FIRED for, not the region for
+        whatever day it happens to start on.
+
+        Real case, 2026-08-28: the 16:07 UTC west slot was delivered at 00:32
+        the next day. Reading the wall clock gave Saturday's region and posted
+        it a day early; Saturday's own east cron then found that region was
+        not east and exited "nothing to do", so a slot posted nothing.
+        """
+        import datetime
+        mod = self._publisher()
+        ran_at = datetime.datetime(2026, 8, 29, 0, 32,
+                                   tzinfo=datetime.timezone.utc)
+        slot = mod.scheduled_fire('16:07', ran_at)
+        assert slot == datetime.datetime(2026, 8, 28, 16, 7,
+                                         tzinfo=datetime.timezone.utc)
+        by_slot = mod.rotation_region(slot.date())
+        by_wall = mod.rotation_region(ran_at.date())
+        assert by_slot != by_wall, (
+            'this fixture only tests something if the two days differ')
+
+    def test_scheduled_fire_never_returns_a_future_slot(self):
+        import datetime
+        mod = self._publisher()
+        for hour in range(24):
+            now = datetime.datetime(2026, 8, 29, hour, 30,
+                                    tzinfo=datetime.timezone.utc)
+            for hhmm in ('11:07', '16:07', '22:07', '15:07'):
+                fire = mod.scheduled_fire(hhmm, now)
+                assert fire <= now, (hhmm, hour, fire)
+                assert (now - fire) < datetime.timedelta(days=1)
+
+    def test_dead_hours_are_measured_in_the_region_s_own_time(self):
+        """23:00-05:00 local. The whole point is that a Hawaii card and a New
+        Jersey card are asleep at different UTC hours."""
+        import datetime
+        mod = self._publisher()
+        # 12:00 UTC: 08:00 in NJ (fine), 02:00 in Hawaii (dead)
+        t = datetime.datetime(2026, 8, 29, 12, 0, tzinfo=datetime.timezone.utc)
+        assert not mod.in_dead_hours('America/New_York', t)
+        assert mod.in_dead_hours('Pacific/Honolulu', t)
+        # 06:00 UTC: 02:00 in NJ (dead), 20:00 in Hawaii (fine)
+        t = datetime.datetime(2026, 8, 29, 6, 0, tzinfo=datetime.timezone.utc)
+        assert mod.in_dead_hours('America/New_York', t)
+        assert not mod.in_dead_hours('Pacific/Honolulu', t)
+
+    def test_dead_window_boundaries(self):
+        import datetime
+        mod = self._publisher()
+        def ny(hour):
+            # 2026-08-29 is EDT, UTC-4
+            return datetime.datetime(2026, 8, 29, (hour + 4) % 24,
+                                     tzinfo=datetime.timezone.utc)
+        assert not mod.in_dead_hours('America/New_York', ny(22))   # 22:00 ok
+        assert mod.in_dead_hours('America/New_York', ny(23))       # 23:00 dead
+        assert mod.in_dead_hours('America/New_York', ny(4))        # 04:00 dead
+        assert not mod.in_dead_hours('America/New_York', ny(5))    # 05:00 ok
+
+    def test_every_rotation_region_has_a_timezone(self):
+        """A region with no entry falls back to Eastern, which would quietly
+        judge a Pacific card against the wrong clock."""
+        mod = self._publisher()
+        for region in mod.REGION_ROTATION:
+            assert region in mod.REGION_TZ, f'{region} has no timezone'
+
     def test_flat_day_swap_stays_within_the_group(self):
         """The swap exists to avoid posting a flat card, NOT to rank coasts.
         Picking the biggest surf anywhere would send an east-coast audience a

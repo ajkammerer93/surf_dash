@@ -67,6 +67,7 @@ jobs:
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          SCHEDULE: ${{ github.event.schedule }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_STORY_ONLY: ${{ inputs.story_only }}
         run: |
@@ -75,4 +76,7 @@ jobs:
           # and the job posts for real.
           if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           if [ "$INPUT_STORY_ONLY" = "true" ]; then ARGS="$ARGS --story-only"; fi
+          # Slot passed so the dead-hour guard can reject a badly delayed
+          # Sunday delivery rather than posting the week's one card at 3am.
+          if [ -n "$SCHEDULE" ]; then ARGS="$ARGS --scheduled-utc 15:07"; fi
           python scripts/instagram_publish.py $ARGS

@@ -36,7 +36,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -93,6 +93,69 @@ REGION_ROTATION = [
     'florida-space-coast',
     'new-england',
 ]
+
+# Local timezone per region, for the dead-hour guard. A card is written for
+# the people who surf that coast, so "is this a reasonable hour to post" has to
+# be asked in their time, not UTC and not the runner's.
+#
+# great-lakes straddles Central and Eastern (Milwaukee vs Rochester/Frankfort);
+# Eastern is the majority of its roster and the guard only needs to be roughly
+# right, since it is rejecting the middle of the night rather than picking a
+# peak hour.
+REGION_TZ = {
+    'outer-banks': 'America/New_York',
+    'north-carolina-coast': 'America/New_York',
+    'virginia-coast': 'America/New_York',
+    'jersey-shore': 'America/New_York',
+    'new-england': 'America/New_York',
+    'florida-space-coast': 'America/New_York',
+    'great-lakes': 'America/New_York',
+    'southern-california': 'America/Los_Angeles',
+    'northern-california': 'America/Los_Angeles',
+    'hawaii-north-shore': 'Pacific/Honolulu',
+}
+# Cards that are not about one coast (accuracy, highlight). The readership
+# skews US East Coast, so that is the clock they get judged against.
+DEFAULT_TZ = 'America/New_York'
+
+# Nobody is looking at a surf feed at 3am. A post that lands here is spent for
+# no gain, and on Instagram a poorly-timed post is worse than none: it burns
+# the card AND takes the weak early engagement into the ranking of whatever
+# posts next.
+DEAD_HOUR_START = 23   # inclusive, local
+DEAD_HOUR_END = 5      # exclusive, local
+
+
+def scheduled_fire(hhmm, now=None):
+    """The most recent UTC occurrence of HH:MM at or before now.
+
+    GitHub delivers a scheduled run whenever it gets around to it -- observed
+    at 0.4h late for weeks, then 5-9h late from 2026-08-26. The run therefore
+    cannot ask "what time is it" and expect that to be the slot it was fired
+    for; it has to be told which slot it belongs to and work back.
+    """
+    now = now or datetime.now(timezone.utc)
+    hour, minute = (int(x) for x in hhmm.split(':'))
+    fire = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if fire > now:
+        fire -= timedelta(days=1)
+    return fire
+
+
+def local_now(tz_name, now=None):
+    now = now or datetime.now(timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        return now.astimezone(ZoneInfo(tz_name))
+    except Exception:
+        return now
+
+
+def in_dead_hours(tz_name, now=None):
+    """True when it is the middle of the night on that coast."""
+    h = local_now(tz_name, now).hour
+    return h >= DEAD_HOUR_START or h < DEAD_HOUR_END
+
 
 # Below this the card is a flat day: score is roughly 10 points per foot of
 # face (_simple_surf_score in app.py), so 20 is about 2 ft.
@@ -315,6 +378,11 @@ def main():
                                            'strongest-wind'],
                         help='With --highlight: force one kind instead of '
                              'taking the day\'s rotation')
+    parser.add_argument('--scheduled-utc', metavar='HH:MM',
+                        help='The UTC slot this run was fired for. Scheduled '
+                             'runs pass their own cron time so a late delivery '
+                             'still posts the slot it belongs to, and so the '
+                             'dead-hour guard can measure how late it is.')
     parser.add_argument('--group', choices=['east', 'west'],
                         help='Only post if the day\'s region is in this group; '
                              'lets one schedule serve East Coast mornings and '
@@ -341,7 +409,16 @@ def main():
     if args.story_only and args.no_story:
         sys.exit('--story-only and --no-story cancel each other out')
 
-    today = datetime.now()
+    now_utc = datetime.now(timezone.utc)
+    # A scheduled run belongs to the slot it was fired for, not to whenever
+    # GitHub got around to starting it. Deriving the day from the wall clock
+    # meant a delivery that slipped past midnight UTC posted the NEXT day's
+    # region -- and if that region was in the other cron group, the run exited
+    # "nothing to do" and the slot silently posted nothing at all. Observed on
+    # 2026-08-28, when the 16:07 slot ran at 00:32 the following day.
+    slot = scheduled_fire(args.scheduled_utc, now_utc) if args.scheduled_utc else None
+    today = (slot or now_utc).astimezone(timezone.utc).replace(tzinfo=None)
+
     if args.accuracy:
         targets = [(today.strftime('%A %b %d'), ACCURACY_SLUG)]
     elif args.highlight:
@@ -364,6 +441,28 @@ def main():
             region = pick_region(args.base_url, region, args.group,
                                  dry_run=args.dry_run)
         targets = [(today.strftime('%A %b %d'), region)]
+
+    # Dead-hour guard. Only scheduled runs are gated: a manual dispatch is a
+    # deliberate act and should post whenever it is asked to.
+    #
+    # This deliberately checks the CURRENT local time, not how late the run is.
+    # Lateness is not the thing that hurts -- a post four hours late into an
+    # evening is fine; a post four hours late into 3am is spent. On Instagram
+    # that is worse than skipping, because the weak engagement a dead-hour post
+    # collects is carried into the ranking of whatever posts next.
+    if slot is not None and not args.dry_run:
+        if args.accuracy or args.highlight:
+            tz_name = DEFAULT_TZ
+        else:
+            tz_name = REGION_TZ.get(targets[0][1], DEFAULT_TZ)
+        if in_dead_hours(tz_name, now_utc):
+            late_h = (now_utc - slot).total_seconds() / 3600
+            print(f"Skipping: it is {local_now(tz_name, now_utc):%H:%M} in "
+                  f"{tz_name} ({DEAD_HOUR_START}:00-{DEAD_HOUR_END:02d}:00 is "
+                  f"the dead window) and this run is {late_h:.1f}h late for "
+                  f"its {args.scheduled_utc} UTC slot. The card is not worth "
+                  f"burning on an audience that is asleep.")
+            sys.exit(0)
 
     failures = 0
     for label, slug in targets:

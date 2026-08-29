@@ -71,6 +71,7 @@ jobs:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_KIND: ${{ inputs.kind }}
+          SCHEDULE: ${{ github.event.schedule }}
           INPUT_STORY_ONLY: ${{ inputs.story_only }}
         run: |
           ARGS="--highlight"
@@ -81,4 +82,8 @@ jobs:
           if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           if [ "$INPUT_STORY_ONLY" = "true" ]; then ARGS="$ARGS --story-only"; fi
           if [ -n "$INPUT_KIND" ]; then ARGS="$ARGS --kind $INPUT_KIND"; fi
+          # Tell the run which slot it is for, so the dead-hour guard can see
+          # how late GitHub delivered it. A card meant for 18:07 ET landed at
+          # 02:03 ET on 2026-08-28; that post is spent.
+          if [ -n "$SCHEDULE" ]; then ARGS="$ARGS --scheduled-utc 22:07"; fi
           python scripts/instagram_publish.py $ARGS

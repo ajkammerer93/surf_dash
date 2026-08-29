@@ -60,8 +60,13 @@ jobs:
           if [ "$INPUT_STORY_ONLY" = "true" ]; then ARGS="$ARGS --story-only"; fi
           # Which cron fired decides which coast posts. A manual run sends no
           # group, so it posts whatever region the rotation names today.
+          # The slot is passed explicitly so a late delivery still posts the
+          # region that slot belongs to. Deriving it from the wall clock meant
+          # a run that slipped past midnight UTC posted the next day's region,
+          # and if that fell in the other group the slot silently posted
+          # nothing (seen 2026-08-28: the 16:07 slot ran at 00:32).
           case "$SCHEDULE" in
-            "7 11 * * *") ARGS="$ARGS --group east" ;;
-            "7 16 * * *") ARGS="$ARGS --group west" ;;
+            "7 11 * * *") ARGS="$ARGS --group east --scheduled-utc 11:07" ;;
+            "7 16 * * *") ARGS="$ARGS --group west --scheduled-utc 16:07" ;;
           esac
           python scripts/instagram_publish.py $ARGS
