@@ -11007,11 +11007,12 @@
             var concentration = totalEnergy > 0 ? Math.round(peakBandEnergy / totalEnergy * 100) : 0;
             var swellType = peakPeriod >= 12 ? 'Ground swell' : peakPeriod >= 9 ? 'Mid-period swell' : 'Wind swell';
             var swellColor = peakPeriod >= 12 ? '#3388ff' : peakPeriod >= 9 ? '#d97706' : '#ff6644';
+            var swellTextColor = isDarkTheme() ? swellColor : (peakPeriod >= 12 ? '#286ccc' : peakPeriod >= 9 ? '#ad5f04' : '#bf4c33');
             var interpEl = document.getElementById('spectrum-interpretation');
             if (interpEl) {
                 interpEl.textContent = '';
                 var typeSpan = document.createElement('span');
-                typeSpan.style.color = swellColor;
+                typeSpan.style.color = swellTextColor;
                 typeSpan.textContent = swellType;
                 interpEl.appendChild(typeSpan);
                 var concLabel = concentration >= 70 ? 'Strong, consistent swell' : concentration >= 50 ? 'Moderate swell mix' : 'Mixed swell energy';
