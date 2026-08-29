@@ -6901,22 +6901,34 @@
                 const hl = window._tideHighLow || [];
                 ctx.textAlign = 'center';
                 ctx.font = '9px sans-serif';
+                // Widened with the label: "8:46a" is about twice the width of
+                // "8a", so the old 32px gate would have let neighbouring
+                // labels overlap instead of dropping one.
+                const TIDE_LABEL_MIN_PX = 52;
                 let lastHighX = -Infinity, lastLowX = -Infinity;
                 hl.forEach(function(ev) {
                     const d = new Date(ev.time);
                     const px = x.getPixelForValue(d);
                     if (px < left || px > right) return;
                     const py = tideY(ev.height);
-                    const label = formatLocationTime(d, { hour: 'numeric' })
+                    // MINUTES ARE REQUIRED HERE. Tide extremes do not land on
+                    // the hour, and Intl truncates rather than rounds, so an
+                    // hour-only label was up to 59 minutes EARLY and always in
+                    // that direction -- a high at 8:46am read "8a". Every other
+                    // tide readout on the page (Current Conditions, the chart
+                    // tooltip) shows minutes, so the same event was being
+                    // presented two ways that disagreed by up to an hour.
+                    const label = formatLocationTime(
+                            d, { hour: 'numeric', minute: '2-digit' })
                         .replace(/\s?([AP])M/i, function(m, p1) { return p1.toLowerCase(); });
                     ctx.fillStyle = tc.chartText;
                     if (ev.type === 'H') {
-                        if (px - lastHighX < 32) return;
+                        if (px - lastHighX < TIDE_LABEL_MIN_PX) return;
                         lastHighX = px;
                         ctx.textBaseline = 'bottom';
                         ctx.fillText('▲ ' + label, px, py - 2);
                     } else {
-                        if (px - lastLowX < 32) return;
+                        if (px - lastLowX < TIDE_LABEL_MIN_PX) return;
                         lastLowX = px;
                         ctx.textBaseline = 'top';
                         ctx.fillText('▼ ' + label, px, py + 3);

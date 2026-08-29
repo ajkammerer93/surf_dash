@@ -345,3 +345,48 @@ class TestHourlyReconstruction:
             raise ValueError("dead station")
         monkeypatch.setattr(app, "_fetch_tide_predictions", fake)
         assert app.get_tide_data("DEAD") is None
+
+
+class TestTideLabelPrecision:
+    """Tide extremes do not land on the hour, so an hour-only label is wrong.
+
+    Intl.DateTimeFormat TRUNCATES rather than rounds, so `{hour:'numeric'}`
+    rendered a high at 8:46am as "8a" -- up to 59 minutes early, and always
+    early, never late. Current Conditions and the chart tooltip both show
+    minutes, so the same tide event was being presented two ways that
+    disagreed by up to an hour. Reported by the user for the Surf City /
+    Topsail area on 2026-08-29.
+    """
+
+    @staticmethod
+    def _markers_block():
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, 'templates', 'index.html')) as f:
+            src = f.read()
+        start = src.index('const hl = window._tideHighLow || [];')
+        end = src.index('ctx.restore();', start)
+        return src[start:end]
+
+    def test_chart_tide_markers_show_minutes(self):
+        block = self._markers_block()
+        assert "minute: '2-digit'" in block, (
+            "the high/low markers on the wave chart must render minutes; "
+            "hour-only truncates a 8:46am high to '8a'")
+
+    def test_no_hour_only_formatting_survives_in_the_markers(self):
+        import re
+        block = self._markers_block()
+        bad = re.findall(r"formatLocationTime\([^)]*\{\s*hour:\s*'numeric'\s*\}", block)
+        assert not bad, (
+            f"{len(bad)} hour-only formatter(s) left in the tide markers")
+
+    def test_collision_gate_widened_for_the_longer_label(self):
+        """'8:46a' is roughly twice the width of '8a'. Leaving the gate at its
+        old 32px would overlap neighbouring labels rather than drop one."""
+        import re
+        block = self._markers_block()
+        m = re.search(r'TIDE_LABEL_MIN_PX\s*=\s*(\d+)', block)
+        assert m, 'TIDE_LABEL_MIN_PX not found in the marker block'
+        assert int(m.group(1)) >= 48, (
+            f'gate {m.group(1)}px is too narrow for a HH:MM label')
