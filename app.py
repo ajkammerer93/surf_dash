@@ -6566,6 +6566,49 @@ def _load_tide_stations():
     return stations
 
 
+# Spots where the NEAREST station is in a different tidal regime than the
+# water the spot actually faces, with the station to use instead.
+#
+# Ranking by distance alone -- which is what fixed the previous, worse bug of
+# considering only Reference stations -- still walks straight into a bay,
+# sound, ditch or creek when one happens to sit closer than the open coast. On
+# a barrier island the wrong side is always nearer, so distance is actively
+# misleading exactly where it matters most.
+#
+# A name heuristic was tried first and rejected: it read "Smith Creek, Flagler
+# Beach" as ocean-side on the word "Beach" and "Indian Rocks Beach (inside)"
+# the same way. NOAA's naming is not consistent enough to automate against,
+# so each entry below is justified by measured phase and range instead.
+#
+# Every override was verified against NOAA predictions on 2026-08-30. The
+# comment on each line is the measured error the override removes.
+TIDE_STATION_OVERRIDES = {
+    # Pamlico Sound is the BACK side of Hatteras Island; these are ocean
+    # breaks. The sound runs ~3 h late with 0.33 m less range. Cape Hatteras
+    # Fishing Pier is the open-coast station for this strip -- Oregon Inlet is
+    # nearer but its range is damped by the inlet (0.74 m vs 1.08 m) while its
+    # phase agrees with Cape Hatteras to within 5 minutes.
+    'rodanthe': '8654400',                     # was 8653215, ~179 min late
+    'waves': '8654400',                        # was 8653215, ~179 min late
+    'avon-pier': '8654400',                    # was 8653951 Peter's Ditch, ~161 min late
+    # Little Assawoman Bay is a near-enclosed lagoon behind the barrier: high
+    # tide lands 3 h 52 m after the ocean and the range is 0.21 m against the
+    # pier's 1.20 m -- a sixth of the water movement, which is the more
+    # damaging half of the error for anyone reading it.
+    'oc-md-princess-royale-beach': '8570280',  # was 8559957
+    'oc-md-carousel-beach': '8570280',         # was 8559957
+    # NOAA labels these two itself. The "(inside)" station is 0.4 km nearer
+    # than "(Coastal)" and runs ~96 min late.
+    'indian-rocks-beach-fl': '8726601',        # was 8726625 "(inside)"
+}
+
+
+def tide_station_override(target_lat, target_lon):
+    """The pinned station id for this spot, or None."""
+    slug = SLUG_BY_COORDS.get((round(target_lat, 4), round(target_lon, 4)))
+    return TIDE_STATION_OVERRIDES.get(slug) if slug else None
+
+
 def find_nearest_tide_stations(target_lat, target_lon, limit=TIDE_STATION_CANDIDATES):
     """
     Nearest NOAA tide prediction stations, closest first, REGARDLESS of type.
@@ -6615,7 +6658,24 @@ def find_nearest_tide_stations(target_lat, target_lon, limit=TIDE_STATION_CANDID
             }))
 
         scored.sort(key=lambda pair: pair[0])
-        return [station for _, station in scored[:limit]]
+        ranked = [station for _, station in scored[:limit]]
+
+        # A pinned station is promoted to the front rather than replacing the
+        # list, so the distance-ranked candidates stay behind it as fallback:
+        # if NOAA declines to serve the pinned one, the caller still has
+        # somewhere to go instead of losing tides entirely.
+        pinned_id = tide_station_override(target_lat, target_lon)
+        if pinned_id:
+            pinned = next((st for _, st in scored
+                           if str(st["id"]) == str(pinned_id)), None)
+            if pinned:
+                ranked = [pinned] + [st for st in ranked
+                                     if str(st["id"]) != str(pinned_id)]
+            else:
+                logger.warning(
+                    f"Tide override {pinned_id} is not in NOAA's station list; "
+                    f"falling back to nearest for {target_lat},{target_lon}")
+        return ranked
 
     except Exception as e:
         logger.error(f"Error finding nearest tide station: {e}")
