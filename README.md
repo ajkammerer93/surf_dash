@@ -4,7 +4,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 **Live:** [freesurfforecast.com](https://freesurfforecast.com/)
 
-**Current version:** v0.11.84
+**Current version:** v0.11.102
 
 ## Dashboard
 
@@ -42,10 +42,11 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 | Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) (point) / NOAA gfswave grib2 from [NODD S3](https://registry.opendata.aws/noaa-gfs-bdp-pds/) (grids), ERDDAP last resort | Free |
 | Swell partitions, gridded wind | NOAA gfswave (three partitioned swell trains + surface wind ride in the same files) | Free |
 | Wind columns, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with wave-store and ERDDAP fallbacks | Free |
-| Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged) | Free |
+| Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged; open-coast station preferred over a nearer backwater one) | Free |
 | Buoy observations | [NDBC](https://www.ndbc.noaa.gov/) / [CDIP](https://cdip.ucsd.edu/) | Free |
 | Surf cameras | Curated YouTube live embeds + [Windy Webcams API](https://api.windy.com/) + provider link-outs | Free tier |
 | Coastline data | [OpenStreetMap Overpass API](https://overpass-api.de/), world-atlas land polygons | Free |
+| Basemap tiles | [Esri](https://www.esri.com/) World Dark Gray Canvas (base + labels), keyless | Free |
 | Reverse geocoding | [Nominatim (OpenStreetMap)](https://nominatim.openstreetmap.org/) | Free |
 
 ## Getting Started
@@ -165,14 +166,25 @@ its own unprotected data branch, which the app or the next run reads back.
 | `youtube-cam-scan.yml` | weekly | `cam-data` + the rolling review issue |
 | `ux-audit.yml` | daily | `ux-data` |
 | `instagram-token-refresh.yml` | monthly | rotates the 60-day token |
-| `social-accuracy-post.yml` | manual only | posts the weekly accuracy card |
+| `social-accuracy-post.yml` | weekly, Sun 15:07 UTC | posts the weekly accuracy card |
 | `social-highlight-post.yml` | daily 22:07 UTC | posts the daily highlight card |
 | `seo-tests.yml` | weekly + on push | — |
 
-`social-accuracy-post.yml` has its schedule commented out on purpose and its
-`dry_run` input defaults to true, so it publishes nothing until I uncomment the
-cron. It posts a card built from the live verification stats, and refuses rather
-than posting when those stats are stale, thin or malformed.
+`social-accuracy-post.yml` posts a card built from the live verification
+stats, and refuses rather than posting when those stats are stale, thin or
+malformed - so a live schedule cannot publish a thin week, it just skips one.
+Its `dry_run` input still defaults to true, so a stray Run-workflow click shows
+the card instead of publishing it.
+
+All three Instagram workflows pass their own cron time to
+`scripts/instagram_publish.py` as `--scheduled-utc`. GitHub delivers scheduled
+runs late - typically under an hour, but 5-9 hours during the degradation that
+began 2026-08-26 - and a run that reads the wall clock instead of its slot
+posts the wrong day's region, or none at all when that region belongs to the
+other coast's schedule. The same flag drives a dead-hour guard: a post that
+would land between 23:00 and 05:00 **in the region's own local time** is
+skipped rather than published to a sleeping audience. Manual dispatches are
+never gated.
 
 `social-highlight-post.yml` posts the day's most notable buoy reading - biggest
 seas, longest swell period or strongest wind, whichever clears its bar - with a
@@ -190,6 +202,14 @@ after a fix ships, so on its own it reads as a flat line. The timing metrics
 arrive in microseconds and are converted on the way in; the keys carry an
 `_ms` suffix to say so. Cloudflare's CLS figure is deliberately not treated
 as a score - see the note in `collect_web_vitals`.
+
+It also runs a tide-station review queue (`collect_tide_stations`), rotating
+15 spots per run so the list turns over in about ten days. A spot assigned a
+station in the wrong body of water still returns a complete, plausible tide
+curve, so nothing errors and no other check would notice; this one flags the
+suspects for a human. It only ever flags - the station-name test behind it is
+too crude to pick stations automatically - and it alerts only on findings not
+seen before, so a standing backlog does not re-alert daily.
 
 `ux-audit.yml` runs `scripts/ux_audit.py`, which measures the live site with
 Playwright at two viewports across six pages and records CLS, LCP, console and
@@ -228,6 +248,24 @@ Two settings live only in the dashboard, with no Blueprint field to hold them:
   instead of going live.
 
 Security baseline: Content-Security-Policy, X-Frame-Options DENY (except `/embed/*`, which allows framing via `frame-ancestors *`), Referrer-Policy, Permissions-Policy, and SRI hashes on CDN script/style tags.
+
+## Known limitations
+
+- **Tide station selection is distance-ranked, with exceptions.** NOAA's nearest
+  station to an ocean beach is often on the other side of a barrier island - a
+  sound, lagoon, ditch or ICWW reach - which runs hours late and can carry a
+  fraction of the range. A handful of stretches are pinned to the correct
+  open-coast station in `TIDE_STATION_ZONES`, and the daily audit queues the
+  rest for review, but 66 of 140 tidal spots still sit where the two nearest
+  stations disagree by more than 30 minutes. The general fix is to select by
+  tidal phase against an open-coast reference; phase is the discriminator, not
+  range.
+- **Tides and buoy observations are US-only.** They come from NOAA CO-OPS and
+  NDBC/CDIP. Waves, wind and swell are global.
+- **Core Web Vitals have no field data.** Search Console reports "not enough
+  data" for this origin, so the site is not currently assessed on CWV.
+  Cloudflare's CLS figure is a rating rather than a score and is deliberately
+  not acted on.
 
 ## Support
 
