@@ -389,10 +389,36 @@ class TestSurfchexLinkOnly:
             assert 'stream' not in (c.get('url') or '')
 
     def test_surfchex_stream_urls_never_in_payload(self):
+        """No SurfChex playlist URL may appear in any field of any cam.
+
+        This asserted 'streams.surfchex' until SurfChex retired that host and
+        the catalog moved to www.surfchex.com/hls/<slug>/index.m3u8 - which
+        made the check vacuous, since the old string no longer existed to be
+        found. Match on the playlist itself, not on a host that can move
+        again: a leak is a .m3u8 reaching the client, wherever it is served.
+        """
         cams = surf_app.find_nearest_cameras(40.117, -74.036, count=10)
         for c in cams:
             for v in c.values():
-                assert 'streams.surfchex' not in str(v)
+                text = str(v).lower()
+                assert not ('surfchex' in text and '.m3u8' in text), c
+
+    def test_no_surfchex_cam_in_the_catalog_is_reachable_by_stream(self):
+        """The catalog still holds their stream URLs; the downgrade in
+        find_nearest_cameras is the only thing keeping them off the wire.
+        Pin that every SurfChex entry actually goes through it."""
+        for cam in surf_app.SURFCHEX_CAMERAS:
+            urls = (cam.get('stream_url') or '') + (cam.get('page_url') or '')
+            if 'surfchex' not in urls.lower():
+                continue
+            # Ask wide: results are ranked playable-first, so the cam at its
+            # own coordinates is not necessarily the top row.
+            served = surf_app.find_nearest_cameras(cam['lat'], cam['lon'], count=40)
+            mine = [c for c in served if c.get('page_url') == cam.get('page_url')]
+            assert mine, cam['name']
+            for c in mine:
+                assert c['type'] == 'link', cam['name']
+                assert '.m3u8' not in c['url'], cam['name']
 
     def test_non_surfchex_hls_cams_unchanged(self):
         cams = surf_app.find_nearest_cameras(34.43, -77.55, count=10)
