@@ -402,6 +402,129 @@ def _cf_vitals_schema_hint(token):
     }
 
 
+# How many spots to check per run. The whole list rotates through in about a
+# week, which is the same trick the URL-inspection collector uses -- a bounded
+# number of upstream calls per run, full coverage over time.
+TIDE_SPOTS_PER_RUN = 15
+
+# Words that mean a station is NOT on the open coast. This is a REVIEW TRIGGER,
+# never an automatic substitution: the same heuristic was tried for choosing
+# stations and rejected, because it reads "Smith Creek, Flagler Beach" as
+# ocean-side on the word "Beach". A false positive here costs a human one
+# glance; a false positive in the selector costs every user of that spot wrong
+# tides. Different tolerance, so a heuristic that is unfit for one job is fine
+# for the other.
+ENCLOSED_MARKERS = (
+    'sound', 'creek', 'ditch', 'slough', 'bay', 'icww', 'intracoastal',
+    '(inside)', 'landing', 'bight', 'bayou', 'canal', 'marina', 'harbor',
+    'harbour', 'basin', 'lagoon', 'river', 'lake', 'bridge', 'ferry',
+)
+# Above this, a station is far enough from the spot to be worth a look even if
+# nothing else about it is suspicious.
+TIDE_DISTANCE_REVIEW_KM = 25.0
+
+
+def _spot_slugs():
+    """Curated spots, from the repo rather than the network."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, 'surf_cameras.json')) as f:
+        cams = json.load(f)
+    rows = cams if isinstance(cams, list) else cams.get('cameras', [])
+    seen, out = set(), []
+    for c in rows:
+        lat, lon = c.get('lat'), c.get('lon')
+        if lat is None or lon is None:
+            continue
+        key = (round(lat, 4), round(lon, 4))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({'name': c.get('name') or '', 'lat': lat, 'lon': lon})
+    out.sort(key=lambda s: (s['lat'], s['lon']))
+    return out
+
+
+def collect_tide_stations(state):
+    """Which spots are reading a tide station that deserves a second look.
+
+    This exists because the failure is silent by construction. A spot assigned
+    a station in the wrong body of water still returns a complete, plausible
+    tide curve -- it is simply the wrong water, off by hours and sometimes by
+    most of the range. Nothing errors, so nothing else in this audit would
+    ever notice. Measured on 2026-08-30: 66 of 140 tidal spots sit where the
+    two nearest stations disagree by more than 30 minutes, and several ocean
+    breaks were reading a sound, a lagoon or a ditch.
+
+    Only flags for review. Fixing means adding a zone to TIDE_STATION_ZONES in
+    app.py, which is a judgement call backed by measured phase and range.
+    """
+    out = {}
+    try:
+        spots = _spot_slugs()
+        if not spots:
+            out['unavailable'] = 'no spots found'
+            return out
+        cursor = int(state.get('tide_cursor', 0)) % len(spots)
+        slice_ = spots[cursor:cursor + TIDE_SPOTS_PER_RUN]
+        if len(slice_) < TIDE_SPOTS_PER_RUN:
+            slice_ += spots[:TIDE_SPOTS_PER_RUN - len(slice_)]
+
+        checked, review = 0, []
+        for spot in slice_:
+            try:
+                r = requests.get(f'{SITE}/api/tides',
+                                 params={'lat': spot['lat'], 'lon': spot['lon']},
+                                 timeout=45)
+                if not r.ok:
+                    continue
+                d = r.json()
+            except Exception:
+                continue
+            if d.get('non_tidal'):
+                continue
+            st = d.get('station') or {}
+            name = st.get('name') or ''
+            if not name:
+                continue
+            checked += 1
+            hl = d.get('high_low') or []
+            highs = [e['height'] for e in hl if e.get('type') == 'H']
+            lows = [e['height'] for e in hl if e.get('type') == 'L']
+            rng = (round(sum(highs) / len(highs) - sum(lows) / len(lows), 3)
+                   if highs and lows else None)
+            low = name.lower()
+            reasons = []
+            hit = next((m for m in ENCLOSED_MARKERS if m in low), None)
+            if hit:
+                reasons.append(f'station name suggests enclosed water ({hit!r})')
+            if (st.get('distance_km') or 0) > TIDE_DISTANCE_REVIEW_KM:
+                reasons.append(f"{st['distance_km']} km away")
+            if reasons:
+                review.append({
+                    'spot': spot['name'], 'lat': spot['lat'], 'lon': spot['lon'],
+                    'station': st.get('id'), 'station_name': name,
+                    'distance_km': st.get('distance_km'),
+                    'range_m': rng, 'reasons': reasons,
+                })
+        # Warn only on findings that have not been seen before. The first
+        # sweep surfaces a backlog of dozens; warning about all of them every
+        # run would turn the whole audit into wallpaper and this check would
+        # be the thing that trained people to skim past warnings. The full
+        # list still goes into the snapshot every run -- it is the alerting
+        # that is deduplicated, not the record.
+        seen = set(state.get('tide_seen') or [])
+        fresh = [r for r in review if f"{r['spot']}|{r['station']}" not in seen]
+        out['checked'] = checked
+        out['review'] = review
+        out['new'] = fresh
+        out['seen_total'] = len(seen | {f"{r['spot']}|{r['station']}" for r in review})
+        out['cursor'] = (cursor + TIDE_SPOTS_PER_RUN) % len(spots)
+        out['spots_total'] = len(spots)
+    except Exception as e:
+        out['error'] = str(e)[:200]
+    return out
+
+
 def collect_web_vitals():
     """Core Web Vitals at P75 from Cloudflare RUM, 7-day and 1-day windows.
 
@@ -672,6 +795,7 @@ def build_audit(state):
         'cloudflare': collect_cloudflare(),
         'web_vitals': collect_web_vitals(),
         'edge_cache': collect_edge_cache(),
+        'tide_stations': collect_tide_stations(state),
     }
 
 
@@ -697,6 +821,16 @@ def main():
     cursor = audit.get('search_console', {}).get('inspection_cursor')
     if cursor is not None:
         state['inspect_cursor'] = cursor
+    tide = audit.get('tide_stations') or {}
+    if tide.get('cursor') is not None:
+        state['tide_cursor'] = tide['cursor']
+    if tide.get('review') is not None:
+        # Remember what has already been reported so a standing backlog does
+        # not re-alert daily. Delete tide_seen from audit-state.json to force
+        # the whole queue to be re-surfaced.
+        seen = set(state.get('tide_seen') or [])
+        seen |= {f"{r['spot']}|{r['station']}" for r in tide['review']}
+        state['tide_seen'] = sorted(seen)
     state['last_run'] = audit['generated']
     with open(state_path, 'w') as f:
         json.dump(state, f, indent=2)

@@ -6566,47 +6566,78 @@ def _load_tide_stations():
     return stations
 
 
-# Spots where the NEAREST station is in a different tidal regime than the
-# water the spot actually faces, with the station to use instead.
+# Stretches of coast where the NEAREST station is in a different tidal regime
+# than the water the spot faces, with the station to use instead.
 #
-# Ranking by distance alone -- which is what fixed the previous, worse bug of
-# considering only Reference stations -- still walks straight into a bay,
-# sound, ditch or creek when one happens to sit closer than the open coast. On
-# a barrier island the wrong side is always nearer, so distance is actively
-# misleading exactly where it matters most.
+# ZONES, not points. The first cut of this pinned six exact coordinates and so
+# fixed six pins and nothing around them: a dropped pin 500 m up the beach at
+# Rodanthe went straight back to Pamlico Sound, and 600 m at Ocean City MD went
+# back to Little Assawoman Bay. Most pins are not one of our curated spots, so
+# a point fix is barely a fix.
 #
-# A name heuristic was tried first and rejected: it read "Smith Creek, Flagler
-# Beach" as ocean-side on the word "Beach" and "Indian Rocks Beach (inside)"
-# the same way. NOAA's naming is not consistent enough to automate against,
-# so each entry below is justified by measured phase and range instead.
+# Ranking by distance -- which is what cured the earlier, worse bug of
+# considering only Reference stations -- still walks into a bay, sound, ditch or
+# creek whenever one sits nearer than the open coast. On a barrier island the
+# wrong side is ALWAYS nearer, so distance is not merely imprecise there, it is
+# actively misleading, and it fails hardest where the two regimes differ most.
 #
-# Every override was verified against NOAA predictions on 2026-08-30. The
-# comment on each line is the measured error the override removes.
-TIDE_STATION_OVERRIDES = {
-    # Pamlico Sound is the BACK side of Hatteras Island; these are ocean
-    # breaks. The sound runs ~3 h late with 0.33 m less range. Cape Hatteras
-    # Fishing Pier is the open-coast station for this strip -- Oregon Inlet is
-    # nearer but its range is damped by the inlet (0.74 m vs 1.08 m) while its
-    # phase agrees with Cape Hatteras to within 5 minutes.
-    'rodanthe': '8654400',                     # was 8653215, ~179 min late
-    'waves': '8654400',                        # was 8653215, ~179 min late
-    'avon-pier': '8654400',                    # was 8653951 Peter's Ditch, ~161 min late
-    # Little Assawoman Bay is a near-enclosed lagoon behind the barrier: high
-    # tide lands 3 h 52 m after the ocean and the range is 0.21 m against the
-    # pier's 1.20 m -- a sixth of the water movement, which is the more
-    # damaging half of the error for anyone reading it.
-    'oc-md-princess-royale-beach': '8570280',  # was 8559957
-    'oc-md-carousel-beach': '8570280',         # was 8559957
-    # NOAA labels these two itself. The "(inside)" station is 0.4 km nearer
-    # than "(Coastal)" and runs ~96 min late.
-    'indian-rocks-beach-fl': '8726601',        # was 8726625 "(inside)"
-}
+# ACCEPTED TRADE: a circle centred on an ocean beach also covers the water
+# behind the island, so a pin dropped IN Pamlico Sound gets the ocean station.
+# That is the rarer and milder error -- this is a surf app, an ocean beach
+# reading sound tides is both commoner and more misleading than the reverse.
+#
+# A name heuristic was tried and rejected: it read "Smith Creek, Flagler Beach"
+# as ocean-side on the word "Beach", and "Indian Rocks Beach (inside)" the same
+# way. Every zone below is justified by measured phase and range instead,
+# verified against NOAA on 2026-08-30.
+TIDE_STATION_ZONES = (
+    {
+        'label': 'Hatteras Island, ocean side',
+        'station': '8654400',          # CAPE HATTERAS FISHING PIER
+        'lat': 35.470, 'lon': -75.485, 'radius_km': 28.0,
+        # Pamlico Sound is the back side of the island: ~3 h late with 0.11 m
+        # of range against the pier's 0.99 m. Peter's Ditch is ~2 h 41 m late.
+        # Oregon Inlet is nearer to the north end and agrees on phase to within
+        # 5 minutes, but the inlet damps its range (0.74 m vs 1.08 m), so the
+        # open-coast pier is the better reference for the whole strip.
+        'displaces': ('8653215 Rodanthe Pamlico Sound', "8653951 Peter's Ditch"),
+    },
+    {
+        'label': 'Ocean City MD, ocean beach',
+        'station': '8570280',          # OCEAN CITY (FISHING PIER)
+        'lat': 38.434, 'lon': -75.052, 'radius_km': 8.0,
+        # Little Assawoman Bay is a near-enclosed lagoon behind the barrier:
+        # high tide lands 3 h 52 m after the ocean and the range is 0.21 m
+        # against the pier's 1.20 m. A sixth of the water movement is the more
+        # damaging half of that error. Radius kept tight so it does not reach
+        # Bethany Beach DE, whose Indian River Inlet station was not audited.
+        'displaces': ('8559957 Little Assawoman Bay',),
+    },
+    {
+        'label': 'Indian Rocks Beach FL, gulf side',
+        'station': '8726601',          # Indian Rocks Beach (Coastal)
+        'lat': 27.900, 'lon': -82.850, 'radius_km': 5.0,
+        # NOAA labels these itself. The "(inside)" station is 0.4 km nearer and
+        # runs ~96 min late. Note its range is LARGER (0.617 m vs 0.549 m), so
+        # a "biggest range wins" rule would pick the wrong one here -- phase,
+        # not amplitude, is what separates them (258 deg vs 212 deg).
+        'displaces': ('8726625 Indian Rocks Beach (inside)',),
+    },
+)
 
 
 def tide_station_override(target_lat, target_lon):
-    """The pinned station id for this spot, or None."""
-    slug = SLUG_BY_COORDS.get((round(target_lat, 4), round(target_lon, 4)))
-    return TIDE_STATION_OVERRIDES.get(slug) if slug else None
+    """The pinned station id for this position, or None.
+
+    Position-based rather than slug-based on purpose: a dropped pin is not a
+    curated spot, and dropped pins are the case the nearest-station rule gets
+    wrong most often.
+    """
+    for zone in TIDE_STATION_ZONES:
+        if haversine_distance(target_lat, target_lon,
+                              zone['lat'], zone['lon']) <= zone['radius_km']:
+            return zone['station']
+    return None
 
 
 def find_nearest_tide_stations(target_lat, target_lon, limit=TIDE_STATION_CANDIDATES):

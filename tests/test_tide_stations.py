@@ -392,25 +392,27 @@ class TestTideLabelPrecision:
             f'gate {m.group(1)}px is too narrow for a HH:MM label')
 
 
-class TestTideStationOverrides:
-    """Some ocean spots have an enclosed-water station closer than the coast.
+class TestTideStationZones:
+    """Some ocean coasts have an enclosed-water station closer than the sea.
 
-    Ranking by distance -- which is what cured the earlier, worse bug of
-    considering only Reference stations -- still walks into a bay, sound,
-    ditch or creek whenever one sits nearer than the open coast. On a barrier
-    island the wrong side is ALWAYS nearer, so distance is actively misleading
-    exactly where it matters most. Measured against NOAA on 2026-08-30:
-    Rodanthe read Pamlico Sound (~3 h late), Ocean City MD read Little
-    Assawoman Bay (high tide 3 h 52 m late, 0.21 m of range against the ocean
-    pier's 1.20 m), Indian Rocks Beach read the station NOAA labels
-    "(inside)".
+    Ranking by distance -- which cured the earlier, worse bug of considering
+    only Reference stations -- still walks into a bay, sound, ditch or creek
+    whenever one sits nearer than the open coast. On a barrier island the
+    wrong side is ALWAYS nearer, so distance is actively misleading exactly
+    where the regimes differ most. Measured against NOAA on 2026-08-30:
+    Rodanthe read Pamlico Sound (~3 h late, 0.11 m range against the ocean
+    pier's 0.99 m), Ocean City MD read Little Assawoman Bay (3 h 52 m late,
+    0.21 m against 1.20 m), Indian Rocks Beach read NOAA's own "(inside)".
 
-    These tests stay offline, like the rest of this file: the mechanism is
-    exercised against a purpose-built list, and the table itself is checked
-    for internal consistency only.
+    Zones, not points. The first cut pinned exact coordinates and so fixed six
+    pins and nothing around them -- a dropped pin 500 m up the beach regressed
+    straight back. Most pins are not curated spots, which is the whole case
+    for making this positional.
+
+    Offline, like the rest of this file: the mechanism runs against a
+    purpose-built station list and the table is checked for self-consistency.
     """
 
-    # A pinned ocean station plus a nearer decoy in the wrong water body.
     OVERRIDE_FIXTURE = [
         {"id": "8654400", "name": "CAPE HATTERAS FISHING PIER",
          "lat": 35.2228, "lng": -75.6358, "type": "R"},
@@ -420,66 +422,91 @@ class TestTideStationOverrides:
          "lat": 35.7950, "lng": -75.5480, "type": "R"},
     ]
 
-    def test_overrides_name_real_spots(self):
-        """A renamed slug would silently drop back to the nearest station,
-        which is the bug this table exists to prevent."""
-        for slug in app.TIDE_STATION_OVERRIDES:
-            assert slug in app.LOCATION_BY_SLUG, (
-                f'{slug} is pinned but is not a known spot')
+    RODANTHE = (35.5938, -75.4689)
 
-    def test_a_spot_is_pinned_at_most_once(self):
-        keys = list(app.TIDE_STATION_OVERRIDES)
-        assert len(keys) == len(set(keys))
+    def test_zone_table_is_well_formed(self):
+        for z in app.TIDE_STATION_ZONES:
+            for key in ('label', 'station', 'lat', 'lon', 'radius_km'):
+                assert key in z, f"{z.get('label')} missing {key}"
+            assert isinstance(z['station'], str) and z['station'].strip()
+            assert -90 <= z['lat'] <= 90 and -180 <= z['lon'] <= 180
+            assert 0 < z['radius_km'] < 100, (
+                f"{z['label']}: a zone this large will swallow coastline that "
+                f"was never audited")
 
-    def test_pinned_ids_look_like_station_ids(self):
-        for slug, sid in app.TIDE_STATION_OVERRIDES.items():
-            assert isinstance(sid, str) and sid.strip(), slug
+    def test_zones_do_not_overlap(self):
+        """Overlapping zones make the winner depend on table order, which is
+        not a thing anyone should have to reason about."""
+        zs = app.TIDE_STATION_ZONES
+        for i, a in enumerate(zs):
+            for b in zs[i + 1:]:
+                gap = app.haversine_distance(a['lat'], a['lon'], b['lat'], b['lon'])
+                assert gap > a['radius_km'] + b['radius_km'], (
+                    f"{a['label']} overlaps {b['label']}")
 
-    def test_pinned_station_is_promoted_over_a_nearer_one(self, monkeypatch):
+    def test_a_pin_inside_the_zone_gets_the_pinned_station(self, monkeypatch):
         monkeypatch.setattr(app, "_load_tide_stations",
                             lambda: self.OVERRIDE_FIXTURE)
-        loc = app.LOCATION_BY_SLUG['rodanthe']
-        monkeypatch.setitem(app.TIDE_STATION_OVERRIDES, 'rodanthe', '8654400')
-        top = app.find_nearest_tide_stations(loc['lat'], loc['lon'])
-        assert top[0]['id'] == '8654400', (
-            f"expected the pinned ocean pier, got {top[0]['name']}")
+        top = app.find_nearest_tide_stations(*self.RODANTHE)
+        assert top[0]['id'] == '8654400'
         # ...even though the sound station is far nearer
         assert top[0]['distance_km'] > top[1]['distance_km']
+
+    def test_a_pin_that_is_not_a_curated_spot_is_covered(self, monkeypatch):
+        """The point of zones. A pin 500 m up the beach used to fall straight
+        back to the sound station."""
+        monkeypatch.setattr(app, "_load_tide_stations",
+                            lambda: self.OVERRIDE_FIXTURE)
+        for dlat in (0.005, 0.02, 0.05):
+            top = app.find_nearest_tide_stations(self.RODANTHE[0] + dlat,
+                                                 self.RODANTHE[1])
+            assert top[0]['id'] == '8654400', f'+{dlat} deg fell back'
+
+    def test_outside_the_zone_the_nearest_station_still_wins(self, monkeypatch):
+        monkeypatch.setattr(app, "_load_tide_stations",
+                            lambda: self.OVERRIDE_FIXTURE)
+        # Well north of the Hatteras zone.
+        top = app.find_nearest_tide_stations(35.795, -75.548)
+        assert top[0]['id'] == '8652678'
 
     def test_the_displaced_station_survives_as_fallback(self, monkeypatch):
         """Promotion, not replacement: if NOAA declines the pinned station the
         caller must still have somewhere to go rather than losing tides."""
         monkeypatch.setattr(app, "_load_tide_stations",
                             lambda: self.OVERRIDE_FIXTURE)
-        loc = app.LOCATION_BY_SLUG['rodanthe']
-        top = app.find_nearest_tide_stations(loc['lat'], loc['lon'])
-        ids = [s['id'] for s in top]
+        ids = [s['id'] for s in app.find_nearest_tide_stations(*self.RODANTHE)]
         assert ids[0] == '8654400'
         assert '8653215' in ids[1:], 'the nearest station was dropped, not demoted'
-
-    def test_no_duplicate_entry_for_the_pinned_station(self, monkeypatch):
-        monkeypatch.setattr(app, "_load_tide_stations",
-                            lambda: self.OVERRIDE_FIXTURE)
-        loc = app.LOCATION_BY_SLUG['rodanthe']
-        ids = [s['id'] for s in app.find_nearest_tide_stations(loc['lat'], loc['lon'])]
         assert ids.count('8654400') == 1
 
-    def test_unpinned_spot_keeps_the_nearest_station(self, monkeypatch):
+    def test_a_zone_pointing_at_a_missing_station_degrades_quietly(self, monkeypatch):
+        """If NOAA drops a station the spot must fall back to nearest, not
+        lose tides."""
         monkeypatch.setattr(app, "_load_tide_stations",
                             lambda: self.OVERRIDE_FIXTURE)
-        # A coordinate with no override must be untouched by the table.
-        top = app.find_nearest_tide_stations(35.7950, -75.5480)
-        assert top[0]['id'] == '8652678'
+        broken = dict(app.TIDE_STATION_ZONES[0], station='0000000')
+        monkeypatch.setattr(app, "TIDE_STATION_ZONES",
+                            (broken,) + tuple(app.TIDE_STATION_ZONES[1:]))
+        top = app.find_nearest_tide_stations(*self.RODANTHE)
+        assert top and top[0]['id'] == '8653215'
 
-    def test_unknown_coordinates_have_no_override(self):
+    def test_unzoned_coordinates_have_no_override(self):
         assert app.tide_station_override(0.0, 0.0) is None
 
-    def test_a_pin_to_a_missing_station_falls_back_quietly(self, monkeypatch):
-        """If NOAA drops a station from its list the spot must degrade to the
-        nearest one, not lose tides."""
-        monkeypatch.setattr(app, "_load_tide_stations",
-                            lambda: self.OVERRIDE_FIXTURE)
-        monkeypatch.setitem(app.TIDE_STATION_OVERRIDES, 'rodanthe', '0000000')
-        loc = app.LOCATION_BY_SLUG['rodanthe']
-        top = app.find_nearest_tide_stations(loc['lat'], loc['lon'])
-        assert top and top[0]['id'] == '8653215'
+    def test_every_zone_still_covers_the_spots_it_was_built_for(self):
+        """Each zone came from measured spots. If a radius is tightened later,
+        this says which spot it dropped."""
+        expected = {
+            'Hatteras Island, ocean side': ('rodanthe', 'waves', 'avon-pier'),
+            'Ocean City MD, ocean beach': ('oc-md-princess-royale-beach',
+                                           'oc-md-carousel-beach'),
+            'Indian Rocks Beach FL, gulf side': ('indian-rocks-beach-fl',),
+        }
+        by_label = {z['label']: z for z in app.TIDE_STATION_ZONES}
+        for label, slugs in expected.items():
+            z = by_label.get(label)
+            assert z, f'zone {label!r} is gone'
+            for slug in slugs:
+                loc = app.LOCATION_BY_SLUG[slug]
+                assert app.tide_station_override(loc['lat'], loc['lon']) == z['station'], (
+                    f'{slug} is no longer covered by {label}')

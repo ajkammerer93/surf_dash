@@ -175,6 +175,30 @@ jobs:
                         f"n={r.get('samples')} "
                         f"{r.get('cumulativeLayoutShiftElement') or '(unattributed)'} "
                         f"on {r.get('cumulativeLayoutShiftPath') or '(any path)'}")
+          ts = a.get('tide_stations') or {}
+          if ts.get('error'):
+              print(f"::warning::Tide stations errored: {ts['error']}")
+          elif ts.get('checked'):
+              print(f"Tide stations: {ts['checked']} checked "
+                    f"({ts.get('spots_total')} total, rotating)")
+              # A warning, not a failure, and deliberately noisy about WHY:
+              # this is a review queue, not a verdict. The name test that
+              # feeds it is unfit for choosing a station automatically -- it
+              # reads "Smith Creek, Flagler Beach" as ocean-side -- but a
+              # false positive here only costs a glance.
+              queue = ts.get('review') or []
+              fresh = ts.get('new')
+              fresh = queue if fresh is None else fresh
+              if queue:
+                  print(f"  {len(queue)} flagged this slice, "
+                        f"{ts.get('seen_total', len(queue))} known in total")
+              for r in fresh:
+                  print(f"::warning::tide station review: {r['spot']} -> "
+                        f"{r['station_name']} ({r.get('distance_km')} km, "
+                        f"range {r.get('range_m')} m): {'; '.join(r['reasons'])}")
+              for r in queue:
+                  if r not in fresh:
+                      print(f"  known: {r['spot']} -> {r['station_name']}")
           for w in a['ci'].get('failing', []):
               print(f"::warning::workflow failing: {w}")
           for p in a['site'].get('problems', []):
