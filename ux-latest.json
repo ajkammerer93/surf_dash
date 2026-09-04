@@ -1,10 +1,10 @@
 {
-  "generated": "2026-09-03T19:26:13Z",
+  "generated": "2026-09-04T19:08:13Z",
   "base_url": "https://freesurfforecast.com",
   "build": {
-    "git_sha": "d05851fed5609a3efd3c51b46b1a90941592b94c",
-    "git_short": "d05851fe",
-    "version": "v0.11.106"
+    "git_sha": "7654f7c9832256f0acd944c2eb038d04d170e9f1",
+    "git_short": "7654f7c9",
+    "version": "v0.11.107"
   },
   "palette": {
     "count": 19,
@@ -135,9 +135,9 @@
       "onboarding_dismissed": true,
       "status": 200,
       "networkidle_timeout": "Timeout 15000ms exceeded.",
-      "ttfb_ms": 44,
-      "dcl_ms": 333,
-      "load_ms": 340,
+      "ttfb_ms": 26,
+      "dcl_ms": 339,
+      "load_ms": 346,
       "transfer_bytes": 125277,
       "theme_applied": "dark",
       "title": "Surf Forecast for Surf City, North Carolina, NC | Free Surf Forecast",
@@ -146,7 +146,7 @@
       "cls_top_shifts": [
         {
           "value": 0.0065,
-          "start_ms": 2235,
+          "start_ms": 2305,
           "phase": "load",
           "source_count": 5,
           "sources": [
@@ -214,7 +214,7 @@
         },
         {
           "value": 0.00234,
-          "start_ms": 19527,
+          "start_ms": 19520,
           "phase": "scroll",
           "source_count": 4,
           "sources": [
@@ -282,7 +282,7 @@
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 2256,
+      "lcp_ms": 2332,
       "scroll": {
         "scroll_height": 3485,
         "steps": 6
@@ -400,6 +400,34 @@
             "clipped_by_ancestor": true
           },
           {
+            "selector": "div#map-swell > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33)",
+            "right": 619,
+            "width": 24,
+            "position": "absolute",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg",
+            "right": 610,
+            "width": 15,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg > circle",
+            "right": 605,
+            "width": 5,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg > path",
+            "right": 608,
+            "width": 11,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
             "selector": "div#map-swell > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-fieldBase-pane:nth-of-type(8) > img.leaflet-image-layer.leaflet-zoom-animated",
             "right": 47057,
             "width": 65536,
@@ -414,8 +442,8 @@
             "clipped_by_ancestor": true
           }
         ],
-        "offender_count": 17,
-        "clipped_count": 17
+        "offender_count": 21,
+        "clipped_count": 21
       },
       "tap_targets": {
         "total": 59,
@@ -513,7 +541,7 @@
           },
           {
             "selector": "select#buoy-selector",
-            "w": 143,
+            "w": 149,
             "h": 19,
             "text": "NDBC 41110 \u2014 22 mi\nNDBC 41159 \u2014 37 mi\nND"
           },
@@ -664,7 +692,7 @@
         ]
       },
       "tiny_text": {
-        "count": 307,
+        "count": 306,
         "items": [
           {
             "selector": "h1#location-name",
@@ -714,7 +742,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -724,7 +752,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 8mph"
+            "text": "5s \u00b7 12mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -734,7 +762,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -744,7 +772,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 11mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -754,7 +782,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 12mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -764,7 +792,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -774,7 +802,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div.grid-stack-item-content > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -799,7 +827,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.6 ft"
+            "text": "2.2 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -814,7 +842,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.6 s"
+            "text": "6.2 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -829,7 +857,7 @@
           {
             "selector": "span#current_wave_direction",
             "font_size": 11,
-            "text": "SE 131\u00b0"
+            "text": "SE 140\u00b0"
           },
           {
             "selector": "li#wind-stat-item > span.stat-label:nth-of-type(1)",
@@ -839,17 +867,17 @@
           {
             "selector": "span#current_wind_speed",
             "font_size": 11,
-            "text": "7 mph"
+            "text": "11 mph"
           },
           {
             "selector": "span#current_wind_direction",
             "font_size": 11,
-            "text": "S 172\u00b0"
+            "text": "SSW 193\u00b0"
           },
           {
             "selector": "span#ctx_wind",
             "font_size": 9,
-            "text": "Onshore \u2014 choppy, disorganized"
+            "text": "Cross-shore \u2014 some bump"
           },
           {
             "selector": "ul#current-conditions-stats > li.stat-item:nth-of-type(5) > span.stat-label:nth-of-type(1)",
@@ -859,7 +887,7 @@
           {
             "selector": "span#current_air_temp",
             "font_size": 11,
-            "text": "85\u00b0F air"
+            "text": "86\u00b0F air"
           },
           {
             "selector": "span#current_water_temp",
@@ -892,14 +920,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 327,
+        "sampled": 326,
         "unparsed": 0,
         "indeterminate": 27,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/home-mobile-dark.jpg",
-      "screenshot_bytes": 406077,
+      "screenshot_bytes": 410585,
       "console": {
         "warning": 2
       },
@@ -915,7 +943,7 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=uYw7ALctKNCYQiGh&el=embedded&ns=yt&fexp=v1%2C23853953%2C150691%2C27058999%2C34656%2C47714%2C76960%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C26008%2C9671%2C14767%2C4665%2C6620%2C2784%2C23826%2C9500%2C184",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=gLxWeRKBIvBpd5Ja&el=embedded&ns=yt&fexp=v1%2C100673652%2C-76669008%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35404%2C65298%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C26008%2C13016%2C16087%2C7517%2C1887%2C23826%2C9500%",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -946,18 +974,18 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 68,
-      "dcl_ms": 309,
-      "load_ms": 315,
+      "ttfb_ms": 31,
+      "dcl_ms": 256,
+      "load_ms": 262,
       "transfer_bytes": 125277,
       "theme_applied": "light",
       "title": "Surf Forecast for Surf City, North Carolina, NC | Free Surf Forecast",
-      "cls": 0.0,
-      "cls_shifts": 0,
+      "cls": 0.0001,
+      "cls_shifts": 1,
       "cls_top_shifts": [
         {
           "value": 0.00234,
-          "start_ms": 7041,
+          "start_ms": 6508,
           "phase": "scroll",
           "source_count": 4,
           "sources": [
@@ -1022,30 +1050,53 @@
               }
             }
           ]
+        },
+        {
+          "value": 0.00011,
+          "start_ms": 791,
+          "phase": "load",
+          "source_count": 1,
+          "sources": [
+            {
+              "selector": "div.grid-stack-item-content > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
+              "previous_rect": {
+                "x": 283,
+                "y": 791,
+                "w": 94,
+                "h": 19
+              },
+              "current_rect": {
+                "x": 300,
+                "y": 791,
+                "w": 77,
+                "h": 19
+              }
+            }
+          ]
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 704,
+      "lcp_ms": 728,
       "scroll": {
         "scroll_height": 3485,
         "steps": 6
       },
-      "cls_after_scroll": 0.0023,
-      "cls_shifts_after_scroll": 1,
+      "cls_after_scroll": 0.0025,
+      "cls_shifts_after_scroll": 2,
       "overflow": {
         "scroll_width": 390,
         "inner_width": 390,
         "overflows": false,
         "offenders": [
           {
-            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(3)",
+            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated:nth-of-type(2) > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(3)",
             "right": 597,
             "width": 256,
             "position": "absolute",
             "clipped_by_ancestor": true
           },
           {
-            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(4)",
+            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated:nth-of-type(2) > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(4)",
             "right": 597,
             "width": 256,
             "position": "absolute",
@@ -1143,6 +1194,34 @@
             "clipped_by_ancestor": true
           },
           {
+            "selector": "div#map-swell > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33)",
+            "right": 619,
+            "width": 24,
+            "position": "absolute",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg",
+            "right": 610,
+            "width": 15,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg > circle",
+            "right": 605,
+            "width": 5,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
+            "selector": "div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > div.leaflet-marker-icon.buoy-marker-icon:nth-of-type(33) > svg > path",
+            "right": 608,
+            "width": 11,
+            "position": "static",
+            "clipped_by_ancestor": true
+          },
+          {
             "selector": "div#map-swell > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-fieldBase-pane:nth-of-type(8) > img.leaflet-image-layer.leaflet-zoom-animated",
             "right": 47057,
             "width": 65536,
@@ -1157,8 +1236,8 @@
             "clipped_by_ancestor": true
           }
         ],
-        "offender_count": 17,
-        "clipped_count": 17
+        "offender_count": 21,
+        "clipped_count": 21
       },
       "tap_targets": {
         "total": 59,
@@ -1256,7 +1335,7 @@
           },
           {
             "selector": "select#buoy-selector",
-            "w": 143,
+            "w": 149,
             "h": 19,
             "text": "NDBC 41110 \u2014 22 mi\nNDBC 41159 \u2014 37 mi\nND"
           },
@@ -1407,7 +1486,7 @@
         ]
       },
       "tiny_text": {
-        "count": 307,
+        "count": 306,
         "items": [
           {
             "selector": "h1#location-name",
@@ -1457,7 +1536,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -1467,7 +1546,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 8mph"
+            "text": "5s \u00b7 12mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -1477,7 +1556,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -1487,7 +1566,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 11mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -1497,7 +1576,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 12mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -1507,7 +1586,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -1517,7 +1596,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div.grid-stack-item-content > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -1542,7 +1621,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.6 ft"
+            "text": "2.2 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -1557,7 +1636,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.6 s"
+            "text": "6.2 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -1572,7 +1651,7 @@
           {
             "selector": "span#current_wave_direction",
             "font_size": 11,
-            "text": "SE 131\u00b0"
+            "text": "SE 140\u00b0"
           },
           {
             "selector": "li#wind-stat-item > span.stat-label:nth-of-type(1)",
@@ -1582,17 +1661,17 @@
           {
             "selector": "span#current_wind_speed",
             "font_size": 11,
-            "text": "7 mph"
+            "text": "11 mph"
           },
           {
             "selector": "span#current_wind_direction",
             "font_size": 11,
-            "text": "S 172\u00b0"
+            "text": "SSW 193\u00b0"
           },
           {
             "selector": "span#ctx_wind",
             "font_size": 9,
-            "text": "Onshore \u2014 choppy, disorganized"
+            "text": "Cross-shore \u2014 some bump"
           },
           {
             "selector": "ul#current-conditions-stats > li.stat-item:nth-of-type(5) > span.stat-label:nth-of-type(1)",
@@ -1602,7 +1681,7 @@
           {
             "selector": "span#current_air_temp",
             "font_size": 11,
-            "text": "85\u00b0F air"
+            "text": "86\u00b0F air"
           },
           {
             "selector": "span#current_water_temp",
@@ -1635,14 +1714,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 327,
+        "sampled": 326,
         "unparsed": 0,
         "indeterminate": 27,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/home-mobile-light.jpg",
-      "screenshot_bytes": 436808,
+      "screenshot_bytes": 443164,
       "console": {
         "warning": 2
       },
@@ -1658,7 +1737,7 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=9I22TpXmVJOVdny7&el=embedded&ns=yt&fexp=v1%2C100673651%2C-76669007%2C494889%2C26564110%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35403%2C34393%2C30906%2C2877%2C12228%2C25059%2C4174%2C30447%2C18705%2C26008%2C13015%2C13111%2C2977%2C940",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=AkQQgAHYXDWt4zEv&el=embedded&ns=yt&fexp=v1%2C24004644%2C494890%2C26564109%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35401%2C33147%2C1247%2C30907%2C2878%2C9730%2C2497%2C25059%2C4174%2C30446%2C18706%2C26008%2C13015%2C16088%2C9404%2C238",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -1677,9 +1756,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 49,
-      "dcl_ms": 303,
-      "load_ms": 308,
+      "ttfb_ms": 34,
+      "dcl_ms": 256,
+      "load_ms": 261,
       "transfer_bytes": 125277,
       "theme_applied": "dark",
       "title": "Surf Forecast for Surf City, North Carolina, NC | Free Surf Forecast",
@@ -1688,7 +1767,7 @@
       "cls_top_shifts": [
         {
           "value": 0.00065,
-          "start_ms": 536,
+          "start_ms": 456,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -1711,7 +1790,7 @@
         },
         {
           "value": 0.00038,
-          "start_ms": 310,
+          "start_ms": 263,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -1734,7 +1813,7 @@
         },
         {
           "value": 0.00033,
-          "start_ms": 769,
+          "start_ms": 733,
           "phase": "load",
           "source_count": 3,
           "sources": [
@@ -1787,7 +1866,7 @@
         },
         {
           "value": 8e-05,
-          "start_ms": 6307,
+          "start_ms": 6219,
           "phase": "scroll",
           "source_count": 2,
           "sources": [
@@ -1825,7 +1904,7 @@
         },
         {
           "value": 6e-05,
-          "start_ms": 291,
+          "start_ms": 244,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -1848,7 +1927,7 @@
         },
         {
           "value": 3e-05,
-          "start_ms": 888,
+          "start_ms": 798,
           "phase": "load",
           "source_count": 2,
           "sources": [
@@ -1886,7 +1965,7 @@
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 776,
+      "lcp_ms": 740,
       "scroll": {
         "scroll_height": 2544,
         "steps": 4
@@ -1978,12 +2057,12 @@
           {
             "selector": "span#header-clock",
             "font_size": 11,
-            "text": "19:27:18"
+            "text": "19:09:18"
           },
           {
             "selector": "header.header-wrap > div.header-brand > div.header-brand-right:nth-of-type(2) > span.header-version:nth-of-type(2)",
             "font_size": 9,
-            "text": "v0.11.106"
+            "text": "v0.11.107"
           },
           {
             "selector": "h1#location-name",
@@ -2063,7 +2142,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -2073,7 +2152,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 8mph"
+            "text": "5s \u00b7 12mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -2083,7 +2162,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -2093,7 +2172,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 11mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -2103,7 +2182,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 12mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -2113,7 +2192,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -2123,7 +2202,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -2148,7 +2227,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.6 ft"
+            "text": "2.2 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -2163,7 +2242,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.6 s"
+            "text": "6.2 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -2208,7 +2287,7 @@
         "low_count": 0
       },
       "screenshot": "shots/home-desktop-dark.jpg",
-      "screenshot_bytes": 340370,
+      "screenshot_bytes": 343281,
       "console": {
         "warning": 2
       },
@@ -2224,7 +2303,7 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=5SJSRgy54bHWFogS&el=embedded&ns=yt&fexp=v1%2C100673652%2C-76669008%2C494889%2C26564110%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6257%2C16949%2C35404%2C65298%2C2877%2C12228%2C25059%2C4174%2C30446%2C18706%2C26008%2C5236%2C7780%2C1191%2C14896%",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=E-1216r9o9um1k2J&el=embedded&ns=yt&fexp=v1%2C24004644%2C494889%2C26564110%2C34656%2C47715%2C76959%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2877%2C12228%2C25059%2C4174%2C30446%2C18706%2C20492%2C5516%2C13016%2C16087%2C9404%2C23826%2C9500%2C18",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -2243,18 +2322,18 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 34,
-      "dcl_ms": 264,
-      "load_ms": 268,
+      "ttfb_ms": 30,
+      "dcl_ms": 256,
+      "load_ms": 260,
       "transfer_bytes": 125277,
       "theme_applied": "light",
       "title": "Surf Forecast for Surf City, North Carolina, NC | Free Surf Forecast",
-      "cls": 0.0011,
+      "cls": 0.0016,
       "cls_shifts": 4,
       "cls_top_shifts": [
         {
           "value": 0.00065,
-          "start_ms": 693,
+          "start_ms": 461,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -2276,8 +2355,76 @@
           ]
         },
         {
+          "value": 0.00055,
+          "start_ms": 807,
+          "phase": "load",
+          "source_count": 5,
+          "sources": [
+            {
+              "selector": "ul#current-conditions-stats > li.stat-item:nth-of-type(5)",
+              "previous_rect": {
+                "x": 11,
+                "y": 518,
+                "w": 229,
+                "h": 75
+              },
+              "current_rect": {
+                "x": 11,
+                "y": 507,
+                "w": 229,
+                "h": 86
+              }
+            },
+            {
+              "selector": "li#wind-stat-item",
+              "previous_rect": {
+                "x": 240,
+                "y": 443,
+                "w": 229,
+                "h": 76
+              },
+              "current_rect": {
+                "x": 240,
+                "y": 437,
+                "w": 229,
+                "h": 70
+              }
+            },
+            {
+              "selector": "li#wave-dir-stat-item",
+              "previous_rect": {
+                "x": 11,
+                "y": 443,
+                "w": 229,
+                "h": 76
+              },
+              "current_rect": {
+                "x": 11,
+                "y": 437,
+                "w": 229,
+                "h": 70
+              }
+            },
+            {
+              "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
+              "previous_rect": {
+                "x": 853,
+                "y": 333,
+                "w": 94,
+                "h": 19
+              },
+              "current_rect": {
+                "x": 870,
+                "y": 333,
+                "w": 77,
+                "h": 19
+              }
+            }
+          ]
+        },
+        {
           "value": 0.00038,
-          "start_ms": 270,
+          "start_ms": 261,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -2300,7 +2447,7 @@
         },
         {
           "value": 8e-05,
-          "start_ms": 6468,
+          "start_ms": 6191,
           "phase": "scroll",
           "source_count": 2,
           "sources": [
@@ -2338,7 +2485,7 @@
         },
         {
           "value": 6e-05,
-          "start_ms": 252,
+          "start_ms": 244,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -2358,53 +2505,15 @@
               }
             }
           ]
-        },
-        {
-          "value": 3e-05,
-          "start_ms": 750,
-          "phase": "load",
-          "source_count": 2,
-          "sources": [
-            {
-              "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
-              "previous_rect": {
-                "x": 853,
-                "y": 333,
-                "w": 94,
-                "h": 19
-              },
-              "current_rect": {
-                "x": 870,
-                "y": 333,
-                "w": 77,
-                "h": 19
-              }
-            },
-            {
-              "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
-              "previous_rect": {
-                "x": 1333,
-                "y": 333,
-                "w": 94,
-                "h": 19
-              },
-              "current_rect": {
-                "x": 1350,
-                "y": 333,
-                "w": 77,
-                "h": 19
-              }
-            }
-          ]
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 732,
+      "lcp_ms": 824,
       "scroll": {
         "scroll_height": 2544,
         "steps": 4
       },
-      "cls_after_scroll": 0.0012,
+      "cls_after_scroll": 0.0017,
       "cls_shifts_after_scroll": 5,
       "overflow": {
         "scroll_width": 1440,
@@ -2491,12 +2600,12 @@
           {
             "selector": "span#header-clock",
             "font_size": 11,
-            "text": "19:27:35"
+            "text": "19:09:35"
           },
           {
             "selector": "header.header-wrap > div.header-brand > div.header-brand-right:nth-of-type(2) > span.header-version:nth-of-type(2)",
             "font_size": 9,
-            "text": "v0.11.106"
+            "text": "v0.11.107"
           },
           {
             "selector": "h1#location-name",
@@ -2576,7 +2685,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -2586,7 +2695,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 8mph"
+            "text": "5s \u00b7 12mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -2596,7 +2705,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -2606,7 +2715,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 11mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -2616,7 +2725,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 12mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -2626,7 +2735,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -2636,7 +2745,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -2661,7 +2770,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.6 ft"
+            "text": "2.2 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -2676,7 +2785,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.6 s"
+            "text": "6.2 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -2721,7 +2830,7 @@
         "low_count": 0
       },
       "screenshot": "shots/home-desktop-light.jpg",
-      "screenshot_bytes": 371538,
+      "screenshot_bytes": 376243,
       "console": {
         "warning": 2
       },
@@ -2737,7 +2846,7 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=sW-NGFC0lduIgZcU&el=embedded&ns=yt&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35404%2C65298%2C2877%2C12228%2C25059%2C4174%2C30447%2C18705%2C26008%2C9672%2C3344%2C1191%2C11919%2C2315%2C662%2C7518%2C1886%2C",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=7dBkZ75sXpY-Dfiq&el=embedded&ns=yt&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2877%2C12228%2C25059%2C4174%2C30447%2C18705%2C26008%2C13016%2C15425%2C662%2C9404%2C23826%2C9500%2C1840%2C94837%2C2058",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -2756,9 +2865,10 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 164,
-      "dcl_ms": 416,
-      "load_ms": 423,
+      "networkidle_timeout": "Timeout 15000ms exceeded.",
+      "ttfb_ms": 145,
+      "dcl_ms": 363,
+      "load_ms": 368,
       "transfer_bytes": 125271,
       "theme_applied": "dark",
       "title": "Surf Forecast for Wrightsville Beach, NC | Free Surf Forecast",
@@ -2767,7 +2877,7 @@
       "cls_top_shifts": [
         {
           "value": 0.0065,
-          "start_ms": 2445,
+          "start_ms": 3820,
           "phase": "load",
           "source_count": 5,
           "sources": [
@@ -2835,7 +2945,7 @@
         },
         {
           "value": 0.00234,
-          "start_ms": 7188,
+          "start_ms": 19549,
           "phase": "scroll",
           "source_count": 4,
           "sources": [
@@ -2903,7 +3013,7 @@
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 2468,
+      "lcp_ms": 3840,
       "scroll": {
         "scroll_height": 3485,
         "steps": 6
@@ -3127,9 +3237,9 @@
           },
           {
             "selector": "select#buoy-selector",
-            "w": 143,
+            "w": 149,
             "h": 19,
-            "text": "NDBC 41110 \u2014 6 mi\nNDBC 41108 \u2014 36 mi\nNDB"
+            "text": "NDBC 41110 \u2014 6 mi\nNDBC 41159 \u2014 49 mi\nNDB"
           },
           {
             "selector": "div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions:nth-of-type(2) > button.panel-btn",
@@ -3278,7 +3388,7 @@
         ]
       },
       "tiny_text": {
-        "count": 307,
+        "count": 306,
         "items": [
           {
             "selector": "h1#location-name",
@@ -3328,7 +3438,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -3338,7 +3448,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "6s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -3348,7 +3458,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 13mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -3358,7 +3468,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -3368,7 +3478,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 14mph"
+            "text": "5s \u00b7 15mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -3378,7 +3488,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -3388,7 +3498,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 11mph"
           },
           {
             "selector": "div.grid-stack-item-content > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -3413,7 +3523,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.0 ft"
+            "text": "1.7 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -3428,7 +3538,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.5 s"
+            "text": "6.0 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -3443,7 +3553,7 @@
           {
             "selector": "span#current_wave_direction",
             "font_size": 11,
-            "text": "SE 128\u00b0"
+            "text": "SE 135\u00b0"
           },
           {
             "selector": "li#wind-stat-item > span.stat-label:nth-of-type(1)",
@@ -3453,12 +3563,12 @@
           {
             "selector": "span#current_wind_speed",
             "font_size": 11,
-            "text": "7 mph"
+            "text": "10 mph"
           },
           {
             "selector": "span#current_wind_direction",
             "font_size": 11,
-            "text": "S 186\u00b0"
+            "text": "S 188\u00b0"
           },
           {
             "selector": "span#ctx_wind",
@@ -3473,7 +3583,7 @@
           {
             "selector": "span#current_air_temp",
             "font_size": 11,
-            "text": "87\u00b0F air"
+            "text": "90\u00b0F air"
           },
           {
             "selector": "span#current_water_temp",
@@ -3506,14 +3616,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 327,
+        "sampled": 326,
         "unparsed": 0,
         "indeterminate": 28,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/forecast-wrightsville-beach-mobile-dark.jpg",
-      "screenshot_bytes": 401915,
+      "screenshot_bytes": 404954,
       "console": {
         "warning": 2
       },
@@ -3529,7 +3639,19 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=qXMCTLwTXtRLU892&el=embedded&ns=yt&fexp=v1%2C100673651%2C-76669007%2C494890%2C26564109%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35405%2C33142%2C32155%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C26008%2C5239%2C7777%2C11422%2C4665",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=W8nwBocHH1U92GVu&el=embedded&ns=yt&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C26008%2C13015%2C11422%2C4666%2C9404%2C23826%2C9500%2C1840%2C53631%2C412",
+          "status": "failed",
+          "reason": "net::ERR_ABORTED",
+          "first_party": false
+        },
+        {
+          "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/9/203/145",
+          "status": "failed",
+          "reason": "net::ERR_ABORTED",
+          "first_party": false
+        },
+        {
+          "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/9/204/145",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -3548,9 +3670,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 66,
-      "dcl_ms": 291,
-      "load_ms": 296,
+      "ttfb_ms": 63,
+      "dcl_ms": 289,
+      "load_ms": 295,
       "transfer_bytes": 125271,
       "theme_applied": "light",
       "title": "Surf Forecast for Wrightsville Beach, NC | Free Surf Forecast",
@@ -3559,7 +3681,7 @@
       "cls_top_shifts": [
         {
           "value": 0.00234,
-          "start_ms": 6449,
+          "start_ms": 7002,
           "phase": "scroll",
           "source_count": 4,
           "sources": [
@@ -3627,7 +3749,7 @@
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 788,
+      "lcp_ms": 856,
       "scroll": {
         "scroll_height": 3485,
         "steps": 6
@@ -3640,7 +3762,7 @@
         "overflows": false,
         "offenders": [
           {
-            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated:nth-of-type(2) > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(2)",
+            "selector": "div.leaflet-pane.leaflet-tile-pane:nth-of-type(1) > div.leaflet-layer.basemap-muted > div.leaflet-tile-container.leaflet-zoom-animated > img.leaflet-tile.leaflet-tile-loaded:nth-of-type(2)",
             "right": 588,
             "width": 256,
             "position": "absolute",
@@ -3851,9 +3973,9 @@
           },
           {
             "selector": "select#buoy-selector",
-            "w": 143,
+            "w": 149,
             "h": 19,
-            "text": "NDBC 41110 \u2014 6 mi\nNDBC 41108 \u2014 36 mi\nNDB"
+            "text": "NDBC 41110 \u2014 6 mi\nNDBC 41159 \u2014 49 mi\nNDB"
           },
           {
             "selector": "div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions:nth-of-type(2) > button.panel-btn",
@@ -4002,7 +4124,7 @@
         ]
       },
       "tiny_text": {
-        "count": 307,
+        "count": 306,
         "items": [
           {
             "selector": "h1#location-name",
@@ -4052,7 +4174,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -4062,7 +4184,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "6s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -4072,7 +4194,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 13mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -4082,7 +4204,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -4092,7 +4214,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 14mph"
+            "text": "5s \u00b7 15mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -4102,7 +4224,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -4112,7 +4234,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 11mph"
           },
           {
             "selector": "div.grid-stack-item-content > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -4137,7 +4259,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.0 ft"
+            "text": "1.7 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -4152,7 +4274,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.5 s"
+            "text": "6.0 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -4167,7 +4289,7 @@
           {
             "selector": "span#current_wave_direction",
             "font_size": 11,
-            "text": "SE 128\u00b0"
+            "text": "SE 135\u00b0"
           },
           {
             "selector": "li#wind-stat-item > span.stat-label:nth-of-type(1)",
@@ -4177,12 +4299,12 @@
           {
             "selector": "span#current_wind_speed",
             "font_size": 11,
-            "text": "7 mph"
+            "text": "10 mph"
           },
           {
             "selector": "span#current_wind_direction",
             "font_size": 11,
-            "text": "S 186\u00b0"
+            "text": "S 188\u00b0"
           },
           {
             "selector": "span#ctx_wind",
@@ -4197,7 +4319,7 @@
           {
             "selector": "span#current_air_temp",
             "font_size": 11,
-            "text": "87\u00b0F air"
+            "text": "90\u00b0F air"
           },
           {
             "selector": "span#current_water_temp",
@@ -4230,14 +4352,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 327,
+        "sampled": 326,
         "unparsed": 0,
         "indeterminate": 28,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/forecast-wrightsville-beach-mobile-light.jpg",
-      "screenshot_bytes": 432517,
+      "screenshot_bytes": 436653,
       "console": {
         "warning": 2
       },
@@ -4253,7 +4375,19 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=_nkA0bHSe9ta1W6r&el=embedded&ns=yt&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C26008%2C9672%2C19431%2C6621%2C2783%2C23826%2C9500%2C1840%2C115426%2C34313%2C91",
+          "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/9/203/145",
+          "status": "failed",
+          "reason": "net::ERR_ABORTED",
+          "first_party": false
+        },
+        {
+          "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/9/204/145",
+          "status": "failed",
+          "reason": "net::ERR_ABORTED",
+          "first_party": false
+        },
+        {
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=qcX1YZw95JWFb4Os&el=embedded&ns=yt&fexp=v1%2C100673652%2C-76825442%2C156434%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C35403%2C65299%2C2878%2C12227%2C25059%2C4174%2C5470%2C24977%2C18705%2C26008%2C13015%2C1191%2C14897%2C9404",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -4272,9 +4406,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 62,
-      "dcl_ms": 306,
-      "load_ms": 311,
+      "ttfb_ms": 34,
+      "dcl_ms": 261,
+      "load_ms": 266,
       "transfer_bytes": 125271,
       "theme_applied": "dark",
       "title": "Surf Forecast for Wrightsville Beach, NC | Free Surf Forecast",
@@ -4283,7 +4417,7 @@
       "cls_top_shifts": [
         {
           "value": 0.00065,
-          "start_ms": 524,
+          "start_ms": 467,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -4306,7 +4440,7 @@
         },
         {
           "value": 0.00038,
-          "start_ms": 313,
+          "start_ms": 266,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -4329,7 +4463,7 @@
         },
         {
           "value": 0.00033,
-          "start_ms": 816,
+          "start_ms": 693,
           "phase": "load",
           "source_count": 3,
           "sources": [
@@ -4382,7 +4516,7 @@
         },
         {
           "value": 8e-05,
-          "start_ms": 6537,
+          "start_ms": 6293,
           "phase": "scroll",
           "source_count": 2,
           "sources": [
@@ -4420,7 +4554,7 @@
         },
         {
           "value": 6e-05,
-          "start_ms": 294,
+          "start_ms": 249,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -4443,7 +4577,7 @@
         },
         {
           "value": 3e-05,
-          "start_ms": 882,
+          "start_ms": 812,
           "phase": "load",
           "source_count": 2,
           "sources": [
@@ -4481,7 +4615,7 @@
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 828,
+      "lcp_ms": 704,
       "scroll": {
         "scroll_height": 2544,
         "steps": 4
@@ -4573,12 +4707,12 @@
           {
             "selector": "span#header-clock",
             "font_size": 11,
-            "text": "19:28:26"
+            "text": "19:10:39"
           },
           {
             "selector": "header.header-wrap > div.header-brand > div.header-brand-right:nth-of-type(2) > span.header-version:nth-of-type(2)",
             "font_size": 9,
-            "text": "v0.11.106"
+            "text": "v0.11.107"
           },
           {
             "selector": "h1#location-name",
@@ -4658,7 +4792,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -4668,7 +4802,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "6s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -4678,7 +4812,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 13mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -4688,7 +4822,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -4698,7 +4832,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 14mph"
+            "text": "5s \u00b7 15mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -4708,7 +4842,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -4718,7 +4852,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 11mph"
           },
           {
             "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -4743,7 +4877,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.0 ft"
+            "text": "1.7 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -4758,7 +4892,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.5 s"
+            "text": "6.0 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -4803,7 +4937,7 @@
         "low_count": 0
       },
       "screenshot": "shots/forecast-wrightsville-beach-desktop-dark.jpg",
-      "screenshot_bytes": 339861,
+      "screenshot_bytes": 341300,
       "console": {
         "warning": 2
       },
@@ -4819,7 +4953,7 @@
       ],
       "failed_requests": [
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=9Xo_Ww6VJNnwaG8h&el=embedded&ns=yt&fexp=v1%2C24004644%2C494889%2C26564110%2C34656%2C47715%2C76959%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C26008%2C14207%2C14896%2C6620%2C2784%2C23826%2C9500%2C1840%2C11",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=lxZwOHz3TVHIHFY4&el=embedded&ns=yt&fexp=v1%2C24004644%2C494889%2C26564110%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2877%2C12228%2C25059%2C4174%2C30447%2C18705%2C26008%2C13016%2C16087%2C9404%2C23826%2C9500%2C1840%2C29673%2C1",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -4838,20 +4972,20 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 46,
-      "dcl_ms": 293,
-      "load_ms": 297,
+      "ttfb_ms": 29,
+      "dcl_ms": 257,
+      "load_ms": 262,
       "transfer_bytes": 125271,
       "theme_applied": "light",
       "title": "Surf Forecast for Wrightsville Beach, NC | Free Surf Forecast",
-      "cls": 0.007,
-      "cls_shifts": 4,
+      "cls": 0.0011,
+      "cls_shifts": 3,
       "cls_top_shifts": [
         {
-          "value": 0.00649,
-          "start_ms": 694,
+          "value": 0.00065,
+          "start_ms": 802,
           "phase": "load",
-          "source_count": 5,
+          "source_count": 1,
           "sources": [
             {
               "selector": "div.grid-stack-item.ui-resizable-autohide:nth-of-type(4) > div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-content:nth-of-type(2)",
@@ -4867,57 +5001,12 @@
                 "w": 1434,
                 "h": 261
               }
-            },
-            {
-              "selector": "li#tide-stat-item",
-              "previous_rect": {
-                "x": 240,
-                "y": 500,
-                "w": 229,
-                "h": 93
-              },
-              "current_rect": {
-                "x": 240,
-                "y": 507,
-                "w": 229,
-                "h": 86
-              }
-            },
-            {
-              "selector": "ul#current-conditions-stats > li.stat-item:nth-of-type(5)",
-              "previous_rect": {
-                "x": 11,
-                "y": 500,
-                "w": 229,
-                "h": 93
-              },
-              "current_rect": {
-                "x": 11,
-                "y": 507,
-                "w": 229,
-                "h": 86
-              }
-            },
-            {
-              "selector": "li#wind-stat-item",
-              "previous_rect": {
-                "x": 240,
-                "y": 433,
-                "w": 229,
-                "h": 67
-              },
-              "current_rect": {
-                "x": 240,
-                "y": 437,
-                "w": 229,
-                "h": 70
-              }
             }
           ]
         },
         {
           "value": 0.00038,
-          "start_ms": 300,
+          "start_ms": 261,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -4940,7 +5029,7 @@
         },
         {
           "value": 8e-05,
-          "start_ms": 6252,
+          "start_ms": 6299,
           "phase": "scroll",
           "source_count": 2,
           "sources": [
@@ -4978,7 +5067,7 @@
         },
         {
           "value": 6e-05,
-          "start_ms": 281,
+          "start_ms": 244,
           "phase": "load",
           "source_count": 1,
           "sources": [
@@ -4998,54 +5087,16 @@
               }
             }
           ]
-        },
-        {
-          "value": 3e-05,
-          "start_ms": 804,
-          "phase": "load",
-          "source_count": 2,
-          "sources": [
-            {
-              "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
-              "previous_rect": {
-                "x": 853,
-                "y": 333,
-                "w": 94,
-                "h": 19
-              },
-              "current_rect": {
-                "x": 870,
-                "y": 333,
-                "w": 77,
-                "h": 19
-              }
-            },
-            {
-              "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > div.panel-header-actions",
-              "previous_rect": {
-                "x": 1333,
-                "y": 333,
-                "w": 94,
-                "h": 19
-              },
-              "current_rect": {
-                "x": 1350,
-                "y": 333,
-                "w": 77,
-                "h": 19
-              }
-            }
-          ]
         }
       ],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 728,
+      "lcp_ms": 836,
       "scroll": {
         "scroll_height": 2544,
         "steps": 4
       },
-      "cls_after_scroll": 0.0071,
-      "cls_shifts_after_scroll": 5,
+      "cls_after_scroll": 0.0012,
+      "cls_shifts_after_scroll": 4,
       "overflow": {
         "scroll_width": 1440,
         "inner_width": 1440,
@@ -5131,12 +5182,12 @@
           {
             "selector": "span#header-clock",
             "font_size": 11,
-            "text": "19:28:43"
+            "text": "19:10:56"
           },
           {
             "selector": "header.header-wrap > div.header-brand > div.header-brand-right:nth-of-type(2) > span.header-version:nth-of-type(2)",
             "font_size": 9,
-            "text": "v0.11.106"
+            "text": "v0.11.107"
           },
           {
             "selector": "h1#location-name",
@@ -5216,7 +5267,7 @@
           {
             "selector": "span#forecast-hero-sub",
             "font_size": 10,
-            "text": "Thu, Sep 3"
+            "text": "Fri, Sep 4"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.hour:nth-of-type(1)",
@@ -5226,7 +5277,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(1) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 10mph"
+            "text": "6s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.hour:nth-of-type(1)",
@@ -5236,7 +5287,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(2) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "7s \u00b7 13mph"
+            "text": "5s \u00b7 14mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.hour:nth-of-type(1)",
@@ -5246,7 +5297,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(3) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.hour:nth-of-type(1)",
@@ -5256,7 +5307,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(4) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 14mph"
+            "text": "5s \u00b7 15mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.hour:nth-of-type(1)",
@@ -5266,7 +5317,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(5) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 13mph"
+            "text": "5s \u00b7 13mph"
           },
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.hour:nth-of-type(1)",
@@ -5276,7 +5327,7 @@
           {
             "selector": "div#forecast-hero-rows > div.forecast-hero-row:nth-of-type(6) > div.meta:nth-of-type(3)",
             "font_size": 10,
-            "text": "6s \u00b7 11mph"
+            "text": "5s \u00b7 11mph"
           },
           {
             "selector": "div.grid-stack-item-content:nth-of-type(1) > div.panel > div.panel-header:nth-of-type(1) > span.panel-title:nth-of-type(1)",
@@ -5301,7 +5352,7 @@
           {
             "selector": "span#current_wave_height",
             "font_size": 11,
-            "text": "2.0 ft"
+            "text": "1.7 ft"
           },
           {
             "selector": "span#ctx_wave_height",
@@ -5316,7 +5367,7 @@
           {
             "selector": "span#current_wave_period",
             "font_size": 11,
-            "text": "8.5 s"
+            "text": "6.0 s"
           },
           {
             "selector": "span#ctx_wave_period",
@@ -5361,7 +5412,7 @@
         "low_count": 0
       },
       "screenshot": "shots/forecast-wrightsville-beach-desktop-light.jpg",
-      "screenshot_bytes": 371044,
+      "screenshot_bytes": 373126,
       "console": {
         "warning": 2
       },
@@ -5407,7 +5458,7 @@
           "first_party": false
         },
         {
-          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=cZ91PybBotMZMgye&el=embedded&ns=yt&fexp=v1%2C24004644%2C494890%2C26564109%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C35404%2C33143%2C32155%2C2877%2C12228%2C25059%2C4174%2C30446%2C18706%2C26008%2C13016%2C1191%2C14896%2C9404%2C23",
+          "url": "https://www.youtube-nocookie.com/api/stats/qoe?cpn=-rnf17-iCLCN1pQE&el=embedded&ns=yt&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C35405%2C65297%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C26008%2C13015%2C16088%2C9404%2C23826%2C9500%2C1840%2C9483",
           "status": "failed",
           "reason": "net::ERR_ABORTED",
           "first_party": false
@@ -5426,20 +5477,20 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 127,
-      "dcl_ms": 202,
-      "load_ms": 205,
-      "transfer_bytes": 6266,
+      "ttfb_ms": 93,
+      "dcl_ms": 143,
+      "load_ms": 147,
+      "transfer_bytes": 6289,
       "theme_applied": "dark",
       "title": "Surf Forecast Locations | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 220,
+      "lcp_ms": 168,
       "scroll": {
-        "scroll_height": 6394,
-        "steps": 11
+        "scroll_height": 9122,
+        "steps": 15
       },
       "cls_after_scroll": 0.0,
       "cls_shifts_after_scroll": 0,
@@ -5453,7 +5504,7 @@
       },
       "tap_targets": {
         "total": 151,
-        "small_count": 150,
+        "small_count": 5,
         "small": [
           {
             "selector": "html > body > header.loc-header > a",
@@ -5468,232 +5519,22 @@
             "text": "DASHBOARD"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(1) > div.region-list > a",
-            "w": 350,
-            "h": 25.2,
-            "text": "Gulf Shores AL"
+            "selector": "body > div.loc-content > div.anywhere-panel:nth-of-type(26) > a.anywhere-btn",
+            "w": 224,
+            "h": 37.2,
+            "text": "Pick a spot on the map"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Del Mar CA"
+            "selector": "body > footer.site-footer > div > a:nth-of-type(1)",
+            "w": 30.1,
+            "h": 11,
+            "text": "About"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Encinitas - Moonlight Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Half Moon Bay CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(4)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Hermosa Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(5)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Huntington Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(6)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Laguna Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(7)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Malibu CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(8)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Manhattan Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(9)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Oceanside CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(10)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Pismo Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(11)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Point Arena CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(12)",
-            "w": 350,
-            "h": 25.2,
-            "text": "San Clemente CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(13)",
-            "w": 350,
-            "h": 25.2,
-            "text": "San Diego - Pacific Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(14)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Santa Cruz CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(15)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Santa Monica CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(16)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Seal Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(17)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Venice Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Bethany Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Dewey Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Rehoboth Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Boca Grande FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Clearwater Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Cocoa Beach Pier FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(4)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Daytona Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(5)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Deerfield Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(6)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Destin FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(7)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Flagler Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(8)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Fort Lauderdale FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(9)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Fort Myers Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(10)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Hollywood Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(11)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Indian Rocks Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(12)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Jacksonville Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(13)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Juno Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(14)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Jupiter Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(15)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Key West FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(16)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Madeira Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(17)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Melbourne Beach FL"
+            "selector": "body > footer.site-footer > div > a:nth-of-type(2)",
+            "w": 90.3,
+            "h": 11,
+            "text": "Buy me a coffee"
           }
         ]
       },
@@ -5782,7 +5623,7 @@
         "low_count": 0
       },
       "screenshot": "shots/locations-mobile-dark.jpg",
-      "screenshot_bytes": 432275,
+      "screenshot_bytes": 463662,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -5799,10 +5640,10 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 32,
-      "dcl_ms": 97,
-      "load_ms": 101,
-      "transfer_bytes": 6266,
+      "ttfb_ms": 56,
+      "dcl_ms": 94,
+      "load_ms": 98,
+      "transfer_bytes": 6289,
       "theme_applied": "light",
       "title": "Surf Forecast Locations | Free Surf Forecast",
       "cls": 0.0,
@@ -5811,8 +5652,8 @@
       "cls_shifts_dropped": 0,
       "lcp_ms": 116,
       "scroll": {
-        "scroll_height": 6394,
-        "steps": 11
+        "scroll_height": 9122,
+        "steps": 15
       },
       "cls_after_scroll": 0.0,
       "cls_shifts_after_scroll": 0,
@@ -5826,7 +5667,7 @@
       },
       "tap_targets": {
         "total": 151,
-        "small_count": 150,
+        "small_count": 5,
         "small": [
           {
             "selector": "html > body > header.loc-header > a",
@@ -5841,232 +5682,22 @@
             "text": "DASHBOARD"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(1) > div.region-list > a",
-            "w": 350,
-            "h": 25.2,
-            "text": "Gulf Shores AL"
+            "selector": "body > div.loc-content > div.anywhere-panel:nth-of-type(26) > a.anywhere-btn",
+            "w": 224,
+            "h": 37.2,
+            "text": "Pick a spot on the map"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Del Mar CA"
+            "selector": "body > footer.site-footer > div > a:nth-of-type(1)",
+            "w": 30.1,
+            "h": 11,
+            "text": "About"
           },
           {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Encinitas - Moonlight Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Half Moon Bay CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(4)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Hermosa Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(5)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Huntington Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(6)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Laguna Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(7)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Malibu CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(8)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Manhattan Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(9)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Oceanside CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(10)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Pismo Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(11)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Point Arena CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(12)",
-            "w": 350,
-            "h": 25.2,
-            "text": "San Clemente CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(13)",
-            "w": 350,
-            "h": 25.2,
-            "text": "San Diego - Pacific Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(14)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Santa Cruz CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(15)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Santa Monica CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(16)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Seal Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(2) > div.region-list > a:nth-of-type(17)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Venice Beach CA"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Bethany Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Dewey Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(3) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Rehoboth Beach DE"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(1)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Boca Grande FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(2)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Clearwater Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(3)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Cocoa Beach Pier FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(4)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Daytona Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(5)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Deerfield Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(6)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Destin FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(7)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Flagler Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(8)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Fort Lauderdale FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(9)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Fort Myers Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(10)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Hollywood Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(11)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Indian Rocks Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(12)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Jacksonville Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(13)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Juno Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(14)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Jupiter Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(15)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Key West FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(16)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Madeira Beach FL"
-          },
-          {
-            "selector": "div.loc-content > div.region-group:nth-of-type(4) > div.region-list > a:nth-of-type(17)",
-            "w": 350,
-            "h": 25.2,
-            "text": "Melbourne Beach FL"
+            "selector": "body > footer.site-footer > div > a:nth-of-type(2)",
+            "w": 90.3,
+            "h": 11,
+            "text": "Buy me a coffee"
           }
         ]
       },
@@ -6155,7 +5786,7 @@
         "low_count": 0
       },
       "screenshot": "shots/locations-mobile-light.jpg",
-      "screenshot_bytes": 462635,
+      "screenshot_bytes": 493569,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -6172,17 +5803,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 40,
-      "dcl_ms": 122,
-      "load_ms": 122,
-      "transfer_bytes": 6266,
+      "ttfb_ms": 23,
+      "dcl_ms": 58,
+      "load_ms": 62,
+      "transfer_bytes": 6289,
       "theme_applied": "dark",
       "title": "Surf Forecast Locations | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 136,
+      "lcp_ms": 84,
       "scroll": {
         "scroll_height": 3708,
         "steps": 6
@@ -6299,17 +5930,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 65,
-      "dcl_ms": 143,
-      "load_ms": 147,
-      "transfer_bytes": 6266,
+      "ttfb_ms": 38,
+      "dcl_ms": 95,
+      "load_ms": 99,
+      "transfer_bytes": 6289,
       "theme_applied": "light",
       "title": "Surf Forecast Locations | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 168,
+      "lcp_ms": 124,
       "scroll": {
         "scroll_height": 3708,
         "steps": 6
@@ -6426,17 +6057,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 113,
-      "dcl_ms": 212,
-      "load_ms": 214,
-      "transfer_bytes": 5601,
+      "ttfb_ms": 102,
+      "dcl_ms": 132,
+      "load_ms": 145,
+      "transfer_bytes": 5617,
       "theme_applied": "dark",
       "title": "Forecast Accuracy Report | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 240,
+      "lcp_ms": 168,
       "scroll": {
         "scroll_height": 3473,
         "steps": 6
@@ -6862,14 +6493,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 99,
+        "sampled": 98,
         "unparsed": 0,
         "indeterminate": 0,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/accuracy-mobile-dark.jpg",
-      "screenshot_bytes": 391030,
+      "screenshot_bytes": 390738,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -6886,17 +6517,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 40,
-      "dcl_ms": 120,
-      "load_ms": 132,
-      "transfer_bytes": 5601,
+      "ttfb_ms": 49,
+      "dcl_ms": 95,
+      "load_ms": 97,
+      "transfer_bytes": 5617,
       "theme_applied": "light",
       "title": "Forecast Accuracy Report | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 140,
+      "lcp_ms": 116,
       "scroll": {
         "scroll_height": 3473,
         "steps": 6
@@ -7322,14 +6953,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 99,
+        "sampled": 98,
         "unparsed": 0,
         "indeterminate": 0,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/accuracy-mobile-light.jpg",
-      "screenshot_bytes": 433057,
+      "screenshot_bytes": 432543,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -7346,17 +6977,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 58,
-      "dcl_ms": 123,
-      "load_ms": 125,
-      "transfer_bytes": 5601,
+      "ttfb_ms": 19,
+      "dcl_ms": 53,
+      "load_ms": 54,
+      "transfer_bytes": 5617,
       "theme_applied": "dark",
       "title": "Forecast Accuracy Report | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 152,
+      "lcp_ms": 80,
       "scroll": {
         "scroll_height": 2813,
         "steps": 5
@@ -7504,14 +7135,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 99,
+        "sampled": 98,
         "unparsed": 0,
         "indeterminate": 0,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/accuracy-desktop-dark.jpg",
-      "screenshot_bytes": 233314,
+      "screenshot_bytes": 233157,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -7528,17 +7159,17 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 38,
-      "dcl_ms": 108,
-      "load_ms": 110,
-      "transfer_bytes": 5601,
+      "ttfb_ms": 31,
+      "dcl_ms": 79,
+      "load_ms": 80,
+      "transfer_bytes": 5617,
       "theme_applied": "light",
       "title": "Forecast Accuracy Report | Free Surf Forecast",
       "cls": 0.0,
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 136,
+      "lcp_ms": 108,
       "scroll": {
         "scroll_height": 2813,
         "steps": 5
@@ -7686,14 +7317,14 @@
         "skips": []
       },
       "contrast": {
-        "sampled": 99,
+        "sampled": 98,
         "unparsed": 0,
         "indeterminate": 0,
         "low": [],
         "low_count": 0
       },
       "screenshot": "shots/accuracy-desktop-light.jpg",
-      "screenshot_bytes": 261307,
+      "screenshot_bytes": 261218,
       "console": {},
       "console_samples": [],
       "failed_requests": []
@@ -7710,9 +7341,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 105,
-      "dcl_ms": 166,
-      "load_ms": 167,
+      "ttfb_ms": 96,
+      "dcl_ms": 140,
+      "load_ms": 149,
       "transfer_bytes": 5752,
       "theme_applied": "dark",
       "title": "Surf Forecast FAQ | Free Surf Forecast",
@@ -7720,7 +7351,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 192,
+      "lcp_ms": 156,
       "scroll": {
         "scroll_height": 1727,
         "steps": 3
@@ -7926,9 +7557,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 59,
-      "dcl_ms": 115,
-      "load_ms": 116,
+      "ttfb_ms": 44,
+      "dcl_ms": 75,
+      "load_ms": 76,
       "transfer_bytes": 5752,
       "theme_applied": "light",
       "title": "Surf Forecast FAQ | Free Surf Forecast",
@@ -7936,7 +7567,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 132,
+      "lcp_ms": 92,
       "scroll": {
         "scroll_height": 1727,
         "steps": 3
@@ -8142,9 +7773,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 41,
-      "dcl_ms": 118,
-      "load_ms": 119,
+      "ttfb_ms": 35,
+      "dcl_ms": 102,
+      "load_ms": 103,
       "transfer_bytes": 5752,
       "theme_applied": "dark",
       "title": "Surf Forecast FAQ | Free Surf Forecast",
@@ -8152,7 +7783,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 144,
+      "lcp_ms": 128,
       "scroll": {
         "scroll_height": 1460,
         "steps": 3
@@ -8250,9 +7881,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 42,
-      "dcl_ms": 233,
-      "load_ms": 234,
+      "ttfb_ms": 26,
+      "dcl_ms": 73,
+      "load_ms": 74,
       "transfer_bytes": 5752,
       "theme_applied": "light",
       "title": "Surf Forecast FAQ | Free Surf Forecast",
@@ -8260,7 +7891,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 256,
+      "lcp_ms": 100,
       "scroll": {
         "scroll_height": 1460,
         "steps": 3
@@ -8358,9 +7989,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 105,
-      "dcl_ms": 181,
-      "load_ms": 182,
+      "ttfb_ms": 97,
+      "dcl_ms": 147,
+      "load_ms": 147,
       "transfer_bytes": 5245,
       "theme_applied": "dark",
       "title": "About | Free Surf Forecast",
@@ -8368,7 +7999,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 208,
+      "lcp_ms": 156,
       "scroll": {
         "scroll_height": 2087,
         "steps": 4
@@ -8619,9 +8250,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 36,
-      "dcl_ms": 117,
-      "load_ms": 117,
+      "ttfb_ms": 53,
+      "dcl_ms": 111,
+      "load_ms": 112,
       "transfer_bytes": 5245,
       "theme_applied": "light",
       "title": "About | Free Surf Forecast",
@@ -8629,7 +8260,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 124,
+      "lcp_ms": 120,
       "scroll": {
         "scroll_height": 2087,
         "steps": 4
@@ -8880,9 +8511,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 74,
-      "dcl_ms": 149,
-      "load_ms": 149,
+      "ttfb_ms": 25,
+      "dcl_ms": 56,
+      "load_ms": 57,
       "transfer_bytes": 5245,
       "theme_applied": "dark",
       "title": "About | Free Surf Forecast",
@@ -8890,7 +8521,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 164,
+      "lcp_ms": 84,
       "scroll": {
         "scroll_height": 1448,
         "steps": 3
@@ -9031,9 +8662,9 @@
       },
       "onboarding_dismissed": true,
       "status": 200,
-      "ttfb_ms": 37,
-      "dcl_ms": 121,
-      "load_ms": 121,
+      "ttfb_ms": 36,
+      "dcl_ms": 93,
+      "load_ms": 94,
       "transfer_bytes": 5245,
       "theme_applied": "light",
       "title": "About | Free Surf Forecast",
@@ -9041,7 +8672,7 @@
       "cls_shifts": 0,
       "cls_top_shifts": [],
       "cls_shifts_dropped": 0,
-      "lcp_ms": 128,
+      "lcp_ms": 120,
       "scroll": {
         "scroll_height": 1448,
         "steps": 3
