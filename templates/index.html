@@ -1900,6 +1900,14 @@
             padding-bottom: 2px;
         }
 
+        /* Names the band window the polar plot is filtered to, so the plot is
+           not silently claiming to show the whole spectrum. */
+        .spectrum-band-note {
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 0.75;
+        }
+
         .spectrum-interpretation {
             font-size: 10px;
             color: var(--text-dim);
@@ -3252,7 +3260,7 @@
                                     <canvas id="spectrumChart"></canvas>
                                 </div>
                                 <div class="spectrum-chart-wrap" id="spectrum-2d-wrap">
-                                    <div class="spectrum-label">Directional Spectrum</div>
+                                    <div class="spectrum-label">Directional Spectrum <span class="spectrum-band-note">swell only, 5&ndash;25s</span></div>
                                     <canvas id="polarCanvas"></canvas>
                                     <div class="chart-unavailable" id="directional-unavailable" style="display:none">No directional data</div>
                                 </div>
@@ -3580,6 +3588,25 @@
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0" integrity="sha384-Ukv1p/xTma6P4/2bY5KzWBw+ydSpXmhCMtyciIQVDJ1RmOxtCYNMF1uXT9T63H67" crossorigin="anonymous"></script>
 
     <script>
+        // === Directional spectrum band window ===
+        // The polar spectrum is drawn for this period range only. Below 5s the
+        // energy is local wind chop: broadband in direction, and on an ordinary
+        // day the single largest value in the grid -- normalising the colour
+        // ramp to it left the swell bands unreadable at the dark end. The radial
+        // axis spans the same window, so 5-25s gets the whole plot radius
+        // instead of the outer 80% of it. The 1D energy spectrum is deliberately
+        // NOT filtered: the chop hump is informative on a line chart.
+        const SPECTRUM_MIN_PERIOD = 5;
+        const SPECTRUM_MAX_PERIOD = 25;
+        function spectrumRadius(period, maxR) {
+            return ((period - SPECTRUM_MIN_PERIOD) /
+                    (SPECTRUM_MAX_PERIOD - SPECTRUM_MIN_PERIOD)) * maxR;
+        }
+        function spectrumPeriodAt(dist, maxR) {
+            return SPECTRUM_MIN_PERIOD +
+                   (dist / maxR) * (SPECTRUM_MAX_PERIOD - SPECTRUM_MIN_PERIOD);
+        }
+
         // === Theme Toggle ===
         function getPreferredTheme() {
             var saved = localStorage.getItem('theme');
@@ -4001,8 +4028,13 @@
                     var nDir = 72;
                     var sMaxE = 0;
                     var sGrid = [];
+                    var sPeriods = [];
 
                     for (var fi = 0; fi < sFreqs.length; fi++) {
+                        // Same band window as the panel plot: sub-5s chop would
+                        // own the colour ramp on the card too.
+                        var bandPeriod = 1 / sFreqs[fi];
+                        if (bandPeriod < SPECTRUM_MIN_PERIOD || bandPeriod > SPECTRUM_MAX_PERIOD) continue;
                         var row = [];
                         for (var di = 0; di < nDir; di++) {
                             var theta = di * 5 * Math.PI / 180;
@@ -4024,9 +4056,10 @@
                             row.push(val);
                         }
                         sGrid.push(row);
+                        sPeriods.push(bandPeriod);
                     }
 
-                    if (sMaxE > 0) {
+                    if (sMaxE > 0 && sGrid.length > 1) {
                         // Clip to circle
                         ctx.save();
                         ctx.beginPath();
@@ -4039,28 +4072,25 @@
                         ctx.arc(specCx, specCy, specR + 2, 0, Math.PI * 2);
                         ctx.fill();
 
-                        // Period rings
-                        var ringPeriods = [5, 10, 15, 20];
+                        // Period rings. The centre is SPECTRUM_MIN_PERIOD.
+                        var ringPeriods = [10, 15, 20, 25];
                         ctx.strokeStyle = _dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
                         ctx.lineWidth = 0.8;
                         ringPeriods.forEach(function(p) {
-                            var r = (p / 25) * specR;
+                            var r = spectrumRadius(p, specR);
                             ctx.beginPath();
                             ctx.arc(specCx, specCy, r, 0, Math.PI * 2);
                             ctx.stroke();
                         });
 
                         // Heatmap cells
-                        for (var fi = 0; fi < sFreqs.length - 1; fi++) {
-                            var period = 1 / sFreqs[fi];
-                            var periodNext = 1 / sFreqs[fi + 1];
-                            if (period > 25 || period < 1) continue;
-                            var r1 = (period / 25) * specR;
-                            var r2 = (periodNext / 25) * specR;
+                        for (var bi = 0; bi < sGrid.length - 1; bi++) {
+                            var r1 = spectrumRadius(sPeriods[bi], specR);
+                            var r2 = spectrumRadius(sPeriods[bi + 1], specR);
                             var rInner = Math.min(r1, r2);
                             var rOuter = Math.max(r1, r2);
                             for (var di = 0; di < nDir; di++) {
-                                var val = sGrid[fi][di];
+                                var val = sGrid[bi][di];
                                 if (val < sMaxE * 0.01) continue;
                                 var frac = Math.min(1, val / sMaxE);
                                 var angle1 = (di * 5 - 90) * Math.PI / 180;
@@ -4096,7 +4126,7 @@
                         ctx.fillStyle = _dark ? '#666' : '#999';
                         ctx.font = (isPost ? 12 : 14) + 'px ' + fontStack;
                         ringPeriods.forEach(function(p) {
-                            var r = (p / 25) * specR;
+                            var r = spectrumRadius(p, specR);
                             ctx.fillText(p + 's', specCx + 3, specCy - r - 2);
                         });
                     }
@@ -11157,8 +11187,8 @@
             ctx.fillStyle = themeColors().canvasBg;
             ctx.fillRect(0, 0, w, h);
 
-            // Period rings
-            var ringPeriods = [5, 10, 15, 20];
+            // Period rings. The centre is SPECTRUM_MIN_PERIOD, not zero.
+            var ringPeriods = [10, 15, 20, 25];
             ctx.strokeStyle = _dk ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
             ctx.lineWidth = 0.5;
             ctx.fillStyle = _dk ? '#666' : '#999';
@@ -11166,7 +11196,7 @@
             ctx.textAlign = 'left';
             ctx.textBaseline = 'bottom';
             ringPeriods.forEach(function(p) {
-                var r = (p / 25) * maxR;
+                var r = spectrumRadius(p, maxR);
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, Math.PI * 2);
                 ctx.stroke();
@@ -11192,8 +11222,13 @@
             var nDir = 72; // 5-degree bins
             var maxEnergy = 0;
             var grid = [];
+            var periods = [];   // period of each RETAINED band, aligned with grid
 
             for (var fi = 0; fi < freqs.length; fi++) {
+                // Bands outside the window contribute neither colour nor the
+                // maximum the colour ramp is normalised to.
+                var bandPeriod = 1 / freqs[fi];
+                if (bandPeriod < SPECTRUM_MIN_PERIOD || bandPeriod > SPECTRUM_MAX_PERIOD) continue;
                 var row = [];
                 for (var di = 0; di < nDir; di++) {
                     var theta = di * 5 * Math.PI / 180;
@@ -11220,25 +11255,23 @@
                     row.push(val);
                 }
                 grid.push(row);
+                periods.push(bandPeriod);
             }
 
-            if (maxEnergy === 0) return;
+            if (maxEnergy === 0 || grid.length < 2) return;
 
             // Store data for hover tooltip
-            canvas._polarData = { cx: cx, cy: cy, maxR: maxR, freqs: freqs, grid: grid, maxEnergy: maxEnergy, nDir: nDir };
+            canvas._polarData = { cx: cx, cy: cy, maxR: maxR, periods: periods, grid: grid, maxEnergy: maxEnergy, nDir: nDir };
 
             // Draw polar heatmap
-            for (var fi = 0; fi < freqs.length - 1; fi++) {
-                var period = 1 / freqs[fi];
-                var periodNext = 1 / freqs[fi + 1];
-                if (period > 25 || period < 1) continue;
-                var r1 = (period / 25) * maxR;
-                var r2 = (periodNext / 25) * maxR;
+            for (var bi = 0; bi < grid.length - 1; bi++) {
+                var r1 = spectrumRadius(periods[bi], maxR);
+                var r2 = spectrumRadius(periods[bi + 1], maxR);
                 var rInner = Math.min(r1, r2);
                 var rOuter = Math.max(r1, r2);
 
                 for (var di = 0; di < nDir; di++) {
-                    var val = grid[fi][di];
+                    var val = grid[bi][di];
                     if (val < maxEnergy * 0.01) continue;
                     var frac = Math.min(1, val / maxEnergy);
 
@@ -11278,6 +11311,8 @@
             });
             ctx.font = titleFont;
             var titleText = compact ? 'm\u00B2/Hz/\u00B0' : 'Energy (m\u00B2/Hz/\u00B0)';
+            // The ramp is normalised over the retained bands only, so the top
+            // swatch is the strongest SWELL band, not the strongest chop band.
             var titleW = ctx.measureText(titleText).width;
             var lineH = compact ? 12 : 14;
             var titleH = lineH + 2;
@@ -11342,20 +11377,19 @@
                 var dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist > d.maxR || dist < 2) { tooltip.style.display = 'none'; return; }
 
-                // Convert pixel distance to period
-                var period = (dist / d.maxR) * 25;
+                // Convert pixel distance to period (centre is SPECTRUM_MIN_PERIOD)
+                var period = spectrumPeriodAt(dist, d.maxR);
 
                 // Convert pixel angle to direction (canvas 0° is East, polar 0° is North)
                 var angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
                 if (angle < 0) angle += 360;
                 var dirIndex = Math.round(angle / 5) % d.nDir;
 
-                // Find closest frequency index by period
+                // Find the closest retained band by period
                 var fi = -1;
                 var bestDiff = Infinity;
-                for (var i = 0; i < d.freqs.length; i++) {
-                    var p = 1 / d.freqs[i];
-                    var diff = Math.abs(p - period);
+                for (var i = 0; i < d.periods.length; i++) {
+                    var diff = Math.abs(d.periods[i] - period);
                     if (diff < bestDiff) { bestDiff = diff; fi = i; }
                 }
                 if (fi < 0 || fi >= d.grid.length) { tooltip.style.display = 'none'; return; }
