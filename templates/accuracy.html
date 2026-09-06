@@ -152,14 +152,27 @@
             border-bottom: 1px solid var(--border);
         }
 
-        .table-wrap { overflow-x: auto; }
+        /* Fades whichever edge still has columns scrolled out of view, and
+           self-cancels once that edge is reached (or the table never
+           overflowed) -- see https://lea.verou.me/blog/2012/04/background-attachment-local/ */
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background:
+                linear-gradient(to right, var(--surface) 30%, rgba(0, 0, 0, 0)),
+                linear-gradient(to right, rgba(0, 0, 0, 0), var(--surface) 70%) 100% 0,
+                radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)),
+                radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) 100% 0;
+            background-repeat: no-repeat;
+            background-color: var(--surface);
+            background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+            background-attachment: local, local, scroll, scroll;
+        }
         table.stats {
             width: 100%;
             border-collapse: collapse;
             font-size: 12px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 6px;
         }
         table.stats th, table.stats td {
             padding: 8px 12px;
