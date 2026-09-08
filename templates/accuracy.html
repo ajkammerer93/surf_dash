@@ -40,6 +40,9 @@
             --accent: #fff;
             --status-live: #44ff88;
             --font-body: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+            /* A dark overlay can't read as a gradient against a surface this
+               close to black already -- a light glow has the headroom instead. */
+            --edge-fade: rgba(255, 255, 255, 0.14);
         }
         [data-theme="light"] {
             --bg: #f5f5f5;
@@ -50,6 +53,7 @@
             --text-muted: #6b6b6b;
             --accent: #111;
             --status-live: #16a34a;
+            --edge-fade: rgba(0, 0, 0, 0.2);
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -162,8 +166,8 @@
             background:
                 linear-gradient(to right, var(--surface) 30%, rgba(0, 0, 0, 0)),
                 linear-gradient(to right, rgba(0, 0, 0, 0), var(--surface) 70%) 100% 0,
-                radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)),
-                radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) 100% 0;
+                radial-gradient(farthest-side at 0 50%, var(--edge-fade), rgba(0, 0, 0, 0)),
+                radial-gradient(farthest-side at 100% 50%, var(--edge-fade), rgba(0, 0, 0, 0)) 100% 0;
             background-repeat: no-repeat;
             background-color: var(--surface);
             background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
