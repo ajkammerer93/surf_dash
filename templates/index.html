@@ -954,12 +954,14 @@
             color: var(--text-muted);
             border: none;
             cursor: pointer;
-            /* Padding grows the actual hit area (was 12x12, unreliable to tap
-               on mobile); the matching negative margin keeps the visible
-               glyph and the surrounding header layout exactly where they
-               were, so neighboring header buttons don't shift. */
-            padding: 8px;
-            margin: -8px;
+            /* Padding grows the actual hit area; the matching negative
+               margin keeps the header layout close to where it was so
+               neighboring buttons barely shift. The glyph is narrower
+               than it is tall, so the padding is uneven on purpose --
+               an even 8px last time left this at 24x28, short of the
+               header icon buttons' own 36px minimum. */
+            padding: 10px 12px;
+            margin: -10px -12px;
             line-height: 1;
             transition: color 0.15s;
         }
