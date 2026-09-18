@@ -958,10 +958,10 @@
                margin keeps the header layout close to where it was so
                neighboring buttons barely shift. The glyph is narrower
                than it is tall, so the padding is uneven on purpose --
-               an even 8px last time left this at 24x28, short of the
-               header icon buttons' own 36px minimum. */
-            padding: 10px 12px;
-            margin: -10px -12px;
+               the previous 10px/12px pass landed at 32x32, still short
+               of the header icon buttons' own 36px, so this rounds up. */
+            padding: 12px 14px;
+            margin: -12px -14px;
             line-height: 1;
             transition: color 0.15s;
         }
