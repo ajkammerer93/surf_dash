@@ -1,54 +1,62 @@
 {
- "generated": "2026-09-21T15:21:05Z",
+ "generated": "2026-09-21T23:39:46Z",
  "window_days": 30,
- "n_pairs": 56032,
+ "n_pairs": 55997,
  "overall": {
   "all": {
-   "n": 56032,
-   "bias_m": -0.048,
+   "n": 55997,
+   "bias_m": -0.049,
    "mae_m": 0.158,
-   "rmse_m": 0.215,
+   "rmse_m": 0.216,
    "period_by_source": {
     "Open-Meteo": {
-     "bias_s": -1.12,
-     "n": 42411
+     "bias_s": -1.11,
+     "n": 42292
+    },
+    "WW3-ERDDAP": {
+     "bias_s": -1.32,
+     "n": 28
     }
    }
   },
   "bins": {
    "0-24": {
-    "n": 18543,
-    "bias_m": -0.046,
+    "n": 18521,
+    "bias_m": -0.047,
     "mae_m": 0.143,
-    "rmse_m": 0.196,
+    "rmse_m": 0.197,
     "period_by_source": {
      "Open-Meteo": {
       "bias_s": -1.0,
-      "n": 14000
+      "n": 13942
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -1.32,
+      "n": 28
      }
     }
    },
    "24-48": {
-    "n": 18679,
-    "bias_m": -0.048,
-    "mae_m": 0.158,
-    "rmse_m": 0.215,
+    "n": 18662,
+    "bias_m": -0.049,
+    "mae_m": 0.159,
+    "rmse_m": 0.216,
     "period_by_source": {
      "Open-Meteo": {
       "bias_s": -1.13,
-      "n": 14153
+      "n": 14112
      }
     }
    },
    "48-72": {
-    "n": 18810,
-    "bias_m": -0.048,
-    "mae_m": 0.173,
-    "rmse_m": 0.233,
+    "n": 18814,
+    "bias_m": -0.049,
+    "mae_m": 0.174,
+    "rmse_m": 0.235,
     "period_by_source": {
      "Open-Meteo": {
       "bias_s": -1.21,
-      "n": 14258
+      "n": 14238
      }
     }
    }
@@ -61,51 +69,51 @@
    "lon": -80.866,
    "region": "Southeast",
    "all": {
-    "n": 2644,
-    "bias_m": -0.09,
+    "n": 2642,
+    "bias_m": -0.092,
     "mae_m": 0.13,
     "rmse_m": 0.196,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.62,
-      "n": 791
+      "bias_s": -0.58,
+      "n": 779
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 875,
-     "bias_m": -0.064,
+     "n": 874,
+     "bias_m": -0.067,
      "mae_m": 0.098,
      "rmse_m": 0.135,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.6,
-       "n": 257
+       "bias_s": -0.57,
+       "n": 254
       }
      }
     },
     "24-48": {
-     "n": 881,
-     "bias_m": -0.099,
-     "mae_m": 0.135,
-     "rmse_m": 0.198,
+     "n": 880,
+     "bias_m": -0.101,
+     "mae_m": 0.134,
+     "rmse_m": 0.197,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.64,
-       "n": 266
+       "bias_s": -0.58,
+       "n": 261
       }
      }
     },
     "48-72": {
      "n": 888,
-     "bias_m": -0.106,
+     "bias_m": -0.108,
      "mae_m": 0.157,
      "rmse_m": 0.241,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.63,
-       "n": 268
+       "bias_s": -0.59,
+       "n": 264
       }
      }
     }
@@ -117,51 +125,59 @@
    "lon": -66.099,
    "region": "Puerto Rico",
    "all": {
-    "n": 2479,
+    "n": 2488,
     "bias_m": -0.168,
     "mae_m": 0.172,
-    "rmse_m": 0.214,
+    "rmse_m": 0.213,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.56,
-      "n": 2413
+      "bias_s": -0.55,
+      "n": 2420
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.75,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 820,
-     "bias_m": -0.152,
+     "n": 822,
+     "bias_m": -0.153,
      "mae_m": 0.158,
      "rmse_m": 0.197,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.4,
+       "bias_s": -0.39,
        "n": 798
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.75,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 823,
+     "n": 826,
      "bias_m": -0.165,
      "mae_m": 0.169,
      "rmse_m": 0.211,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.59,
-       "n": 800
+       "bias_s": -0.57,
+       "n": 803
       }
      }
     },
     "48-72": {
-     "n": 836,
+     "n": 840,
      "bias_m": -0.185,
      "mae_m": 0.189,
-     "rmse_m": 0.231,
+     "rmse_m": 0.23,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.69,
-       "n": 815
+       "bias_s": -0.68,
+       "n": 819
       }
      }
     }
@@ -173,50 +189,58 @@
    "lon": -77.715,
    "region": "Southeast",
    "all": {
-    "n": 2704,
-    "bias_m": -0.102,
+    "n": 2702,
+    "bias_m": -0.104,
     "mae_m": 0.141,
     "rmse_m": 0.206,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.73,
-      "n": 2704
+      "bias_s": -0.68,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.41,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.089,
+     "n": 894,
+     "bias_m": -0.09,
      "mae_m": 0.116,
      "rmse_m": 0.169,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.7,
-       "n": 895
+       "bias_s": -0.67,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.41,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.114,
-     "mae_m": 0.153,
+     "n": 901,
+     "bias_m": -0.117,
+     "mae_m": 0.152,
      "rmse_m": 0.225,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.73,
-       "n": 902
+       "bias_s": -0.67,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.102,
-     "mae_m": 0.155,
+     "bias_m": -0.105,
+     "mae_m": 0.154,
      "rmse_m": 0.218,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.75,
+       "bias_s": -0.7,
        "n": 907
       }
      }
@@ -229,50 +253,58 @@
    "lon": -80.533,
    "region": "Southeast",
    "all": {
-    "n": 2704,
-    "bias_m": -0.176,
-    "mae_m": 0.176,
-    "rmse_m": 0.204,
+    "n": 2702,
+    "bias_m": -0.177,
+    "mae_m": 0.177,
+    "rmse_m": 0.205,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.54,
-      "n": 2679
+      "bias_s": -1.49,
+      "n": 2675
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -2.23,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.178,
-     "mae_m": 0.178,
+     "n": 894,
+     "bias_m": -0.179,
+     "mae_m": 0.179,
      "rmse_m": 0.207,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.34,
-       "n": 887
+       "bias_s": -1.3,
+       "n": 884
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -2.23,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.175,
-     "mae_m": 0.175,
-     "rmse_m": 0.204,
+     "n": 901,
+     "bias_m": -0.176,
+     "mae_m": 0.177,
+     "rmse_m": 0.205,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.59,
-       "n": 894
+       "bias_s": -1.53,
+       "n": 893
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.175,
-     "mae_m": 0.175,
-     "rmse_m": 0.202,
+     "bias_m": -0.176,
+     "mae_m": 0.176,
+     "rmse_m": 0.203,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.7,
+       "bias_s": -1.65,
        "n": 898
       }
      }
@@ -285,50 +317,58 @@
    "lon": -81.079,
    "region": "Southeast",
    "all": {
-    "n": 2704,
-    "bias_m": -0.15,
-    "mae_m": 0.167,
-    "rmse_m": 0.24,
+    "n": 2702,
+    "bias_m": -0.151,
+    "mae_m": 0.168,
+    "rmse_m": 0.241,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.51,
-      "n": 2704
+      "bias_s": -1.49,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -1.67,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.141,
+     "n": 894,
+     "bias_m": -0.142,
      "mae_m": 0.155,
-     "rmse_m": 0.216,
+     "rmse_m": 0.217,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.39,
-       "n": 895
+       "bias_s": -1.37,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -1.67,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.152,
-     "mae_m": 0.169,
-     "rmse_m": 0.24,
+     "n": 901,
+     "bias_m": -0.153,
+     "mae_m": 0.17,
+     "rmse_m": 0.241,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.49,
-       "n": 902
+       "bias_s": -1.45,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.157,
-     "mae_m": 0.179,
-     "rmse_m": 0.261,
+     "bias_m": -0.158,
+     "mae_m": 0.18,
+     "rmse_m": 0.262,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.66,
+       "bias_s": -1.65,
        "n": 907
       }
      }
@@ -341,51 +381,51 @@
    "lon": -94.41,
    "region": "Gulf",
    "all": {
-    "n": 2656,
+    "n": 2654,
     "bias_m": -0.147,
     "mae_m": 0.16,
     "rmse_m": 0.208,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.88,
-      "n": 844
+      "bias_s": -0.89,
+      "n": 832
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 879,
+     "n": 878,
      "bias_m": -0.12,
      "mae_m": 0.135,
      "rmse_m": 0.181,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.79,
-       "n": 274
+       "bias_s": -0.8,
+       "n": 271
       }
      }
     },
     "24-48": {
-     "n": 885,
+     "n": 884,
      "bias_m": -0.154,
      "mae_m": 0.165,
      "rmse_m": 0.208,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.89,
-       "n": 285
+       "bias_s": -0.9,
+       "n": 280
       }
      }
     },
     "48-72": {
      "n": 892,
-     "bias_m": -0.166,
-     "mae_m": 0.178,
+     "bias_m": -0.167,
+     "mae_m": 0.179,
      "rmse_m": 0.232,
      "period_by_source": {
       "Open-Meteo": {
        "bias_s": -0.96,
-       "n": 285
+       "n": 281
       }
      }
     }
@@ -397,50 +437,58 @@
    "lon": -73.175,
    "region": "Mid-Atlantic",
    "all": {
-    "n": 2656,
-    "bias_m": 0.014,
-    "mae_m": 0.137,
-    "rmse_m": 0.192,
+    "n": 2654,
+    "bias_m": 0.008,
+    "mae_m": 0.142,
+    "rmse_m": 0.201,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.73,
-      "n": 2656
+      "bias_s": -0.74,
+      "n": 2652
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.9,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 879,
-     "bias_m": 0.009,
-     "mae_m": 0.108,
-     "rmse_m": 0.151,
+     "n": 878,
+     "bias_m": 0.005,
+     "mae_m": 0.112,
+     "rmse_m": 0.158,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.55,
-       "n": 879
+       "bias_s": -0.57,
+       "n": 876
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.9,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 885,
-     "bias_m": 0.013,
-     "mae_m": 0.136,
-     "rmse_m": 0.19,
+     "n": 884,
+     "bias_m": 0.007,
+     "mae_m": 0.142,
+     "rmse_m": 0.2,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.77,
-       "n": 885
+       "bias_s": -0.79,
+       "n": 884
       }
      }
     },
     "48-72": {
      "n": 892,
-     "bias_m": 0.019,
-     "mae_m": 0.166,
-     "rmse_m": 0.226,
+     "bias_m": 0.012,
+     "mae_m": 0.171,
+     "rmse_m": 0.236,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.86,
+       "bias_s": -0.87,
        "n": 892
       }
      }
@@ -453,51 +501,51 @@
    "lon": -73.701,
    "region": "Mid-Atlantic",
    "all": {
-    "n": 2644,
-    "bias_m": 0.022,
-    "mae_m": 0.121,
-    "rmse_m": 0.17,
+    "n": 2642,
+    "bias_m": 0.02,
+    "mae_m": 0.12,
+    "rmse_m": 0.169,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.18,
-      "n": 1303
+      "bias_s": -1.19,
+      "n": 1291
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 875,
-     "bias_m": 0.021,
+     "n": 874,
+     "bias_m": 0.02,
      "mae_m": 0.094,
      "rmse_m": 0.133,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.97,
-       "n": 424
+       "bias_s": -0.99,
+       "n": 421
       }
      }
     },
     "24-48": {
-     "n": 881,
-     "bias_m": 0.023,
+     "n": 880,
+     "bias_m": 0.02,
      "mae_m": 0.119,
-     "rmse_m": 0.168,
+     "rmse_m": 0.167,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.26,
-       "n": 437
+       "bias_s": -1.28,
+       "n": 432
       }
      }
     },
     "48-72": {
      "n": 888,
-     "bias_m": 0.024,
-     "mae_m": 0.148,
-     "rmse_m": 0.201,
+     "bias_m": 0.02,
+     "mae_m": 0.146,
+     "rmse_m": 0.199,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.3,
-       "n": 442
+       "bias_s": -1.31,
+       "n": 438
       }
      }
     }
@@ -509,50 +557,58 @@
    "lon": -73.769,
    "region": "Mid-Atlantic",
    "all": {
-    "n": 2704,
-    "bias_m": -0.071,
-    "mae_m": 0.143,
-    "rmse_m": 0.207,
+    "n": 2702,
+    "bias_m": -0.075,
+    "mae_m": 0.147,
+    "rmse_m": 0.216,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.9,
-      "n": 2704
+      "bias_s": -0.92,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -1.26,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.076,
-     "mae_m": 0.117,
-     "rmse_m": 0.166,
+     "n": 894,
+     "bias_m": -0.079,
+     "mae_m": 0.12,
+     "rmse_m": 0.175,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.76,
-       "n": 895
+       "bias_s": -0.78,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -1.26,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.074,
-     "mae_m": 0.138,
-     "rmse_m": 0.201,
+     "n": 901,
+     "bias_m": -0.079,
+     "mae_m": 0.143,
+     "rmse_m": 0.212,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.94,
-       "n": 902
+       "bias_s": -0.96,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.063,
-     "mae_m": 0.174,
-     "rmse_m": 0.245,
+     "bias_m": -0.068,
+     "mae_m": 0.179,
+     "rmse_m": 0.254,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.01,
+       "bias_s": -1.02,
        "n": 907
       }
      }
@@ -565,50 +621,58 @@
    "lon": -75.33,
    "region": "Southeast",
    "all": {
-    "n": 2704,
-    "bias_m": 0.029,
-    "mae_m": 0.107,
-    "rmse_m": 0.145,
+    "n": 2702,
+    "bias_m": 0.027,
+    "mae_m": 0.106,
+    "rmse_m": 0.144,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.39,
-      "n": 2704
+      "bias_s": -1.33,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.92,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": 0.029,
+     "n": 894,
+     "bias_m": 0.028,
      "mae_m": 0.091,
      "rmse_m": 0.119,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.16,
-       "n": 895
+       "bias_s": -1.12,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.92,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": 0.025,
-     "mae_m": 0.106,
-     "rmse_m": 0.141,
+     "n": 901,
+     "bias_m": 0.023,
+     "mae_m": 0.105,
+     "rmse_m": 0.14,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.47,
-       "n": 902
+       "bias_s": -1.4,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
      "bias_m": 0.032,
-     "mae_m": 0.124,
-     "rmse_m": 0.171,
+     "mae_m": 0.123,
+     "rmse_m": 0.17,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.54,
+       "bias_s": -1.48,
        "n": 907
       }
      }
@@ -621,50 +685,58 @@
    "lon": -71.124,
    "region": "New England",
    "all": {
-    "n": 2693,
-    "bias_m": 0.023,
+    "n": 2691,
+    "bias_m": 0.021,
     "mae_m": 0.138,
     "rmse_m": 0.197,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.53,
-      "n": 2693
+      "bias_s": -0.5,
+      "n": 2689
+     },
+     "WW3-ERDDAP": {
+      "bias_s": 0.83,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 890,
-     "bias_m": 0.007,
+     "n": 889,
+     "bias_m": 0.006,
      "mae_m": 0.11,
-     "rmse_m": 0.157,
+     "rmse_m": 0.158,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.38,
-       "n": 890
+       "bias_s": -0.36,
+       "n": 887
+      },
+      "WW3-ERDDAP": {
+       "bias_s": 0.83,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 899,
-     "bias_m": 0.036,
+     "n": 898,
+     "bias_m": 0.033,
      "mae_m": 0.137,
      "rmse_m": 0.194,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.58,
-       "n": 899
+       "bias_s": -0.56,
+       "n": 898
       }
      }
     },
     "48-72": {
      "n": 904,
-     "bias_m": 0.026,
+     "bias_m": 0.024,
      "mae_m": 0.165,
      "rmse_m": 0.232,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.61,
+       "bias_s": -0.59,
        "n": 904
       }
      }
@@ -677,51 +749,51 @@
    "lon": -86.411,
    "region": "Great Lakes",
    "all": {
-    "n": 2656,
-    "bias_m": -0.108,
-    "mae_m": 0.174,
+    "n": 2652,
+    "bias_m": -0.11,
+    "mae_m": 0.175,
     "rmse_m": 0.242,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.1,
-      "n": 725
+      "bias_s": -1.11,
+      "n": 713
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 879,
-     "bias_m": -0.102,
-     "mae_m": 0.155,
-     "rmse_m": 0.215,
+     "n": 876,
+     "bias_m": -0.104,
+     "mae_m": 0.156,
+     "rmse_m": 0.216,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.09,
-       "n": 238
+       "bias_s": -1.1,
+       "n": 235
       }
      }
     },
     "24-48": {
-     "n": 885,
-     "bias_m": -0.107,
-     "mae_m": 0.169,
-     "rmse_m": 0.236,
+     "n": 884,
+     "bias_m": -0.109,
+     "mae_m": 0.17,
+     "rmse_m": 0.237,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.08,
-       "n": 242
+       "bias_s": -1.1,
+       "n": 237
       }
      }
     },
     "48-72": {
      "n": 892,
-     "bias_m": -0.115,
-     "mae_m": 0.197,
+     "bias_m": -0.116,
+     "mae_m": 0.198,
      "rmse_m": 0.271,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.13,
-       "n": 245
+       "bias_s": -1.14,
+       "n": 241
       }
      }
     }
@@ -733,51 +805,51 @@
    "lon": -77.401,
    "region": "Great Lakes",
    "all": {
-    "n": 2680,
-    "bias_m": -0.045,
+    "n": 2676,
+    "bias_m": -0.044,
     "mae_m": 0.152,
     "rmse_m": 0.205,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.76,
-      "n": 900
+      "bias_s": -0.74,
+      "n": 886
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 887,
+     "n": 884,
      "bias_m": -0.054,
-     "mae_m": 0.124,
+     "mae_m": 0.123,
      "rmse_m": 0.169,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.77,
-       "n": 292
+       "bias_s": -0.75,
+       "n": 287
       }
      }
     },
     "24-48": {
-     "n": 893,
-     "bias_m": -0.047,
+     "n": 892,
+     "bias_m": -0.046,
      "mae_m": 0.158,
      "rmse_m": 0.21,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.75,
-       "n": 299
+       "bias_s": -0.74,
+       "n": 294
       }
      }
     },
     "48-72": {
      "n": 900,
      "bias_m": -0.033,
-     "mae_m": 0.173,
+     "mae_m": 0.174,
      "rmse_m": 0.231,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.75,
-       "n": 309
+       "bias_s": -0.74,
+       "n": 305
       }
      }
     }
@@ -789,50 +861,58 @@
    "lon": -122.838,
    "region": "Northern California",
    "all": {
-    "n": 2656,
+    "n": 2654,
     "bias_m": 0.11,
     "mae_m": 0.158,
     "rmse_m": 0.196,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -2.13,
-      "n": 1057
+      "bias_s": -2.15,
+      "n": 1055
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.48,
+      "n": 1
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 879,
-     "bias_m": 0.102,
+     "n": 878,
+     "bias_m": 0.101,
      "mae_m": 0.149,
      "rmse_m": 0.184,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.02,
-       "n": 348
+       "bias_s": -2.04,
+       "n": 347
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.48,
+       "n": 1
       }
      }
     },
     "24-48": {
-     "n": 885,
+     "n": 884,
      "bias_m": 0.115,
      "mae_m": 0.161,
      "rmse_m": 0.2,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.12,
-       "n": 353
+       "bias_s": -2.14,
+       "n": 352
       }
      }
     },
     "48-72": {
      "n": 892,
-     "bias_m": 0.113,
-     "mae_m": 0.163,
+     "bias_m": 0.114,
+     "mae_m": 0.164,
      "rmse_m": 0.204,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.24,
+       "bias_s": -2.25,
        "n": 356
       }
      }
@@ -845,50 +925,58 @@
    "lon": -124.508,
    "region": "Pacific Northwest",
    "all": {
-    "n": 2620,
-    "bias_m": -0.01,
-    "mae_m": 0.145,
-    "rmse_m": 0.201,
+    "n": 2618,
+    "bias_m": -0.012,
+    "mae_m": 0.146,
+    "rmse_m": 0.202,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.6,
-      "n": 1011
+      "bias_s": -0.65,
+      "n": 1009
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -0.29,
+      "n": 1
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 867,
-     "bias_m": -0.012,
+     "n": 866,
+     "bias_m": -0.013,
      "mae_m": 0.134,
      "rmse_m": 0.184,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.63,
-       "n": 329
+       "bias_s": -0.66,
+       "n": 328
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -0.29,
+       "n": 1
       }
      }
     },
     "24-48": {
-     "n": 873,
-     "bias_m": -0.01,
+     "n": 872,
+     "bias_m": -0.012,
      "mae_m": 0.142,
      "rmse_m": 0.195,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.59,
-       "n": 341
+       "bias_s": -0.65,
+       "n": 340
       }
      }
     },
     "48-72": {
      "n": 880,
-     "bias_m": -0.008,
-     "mae_m": 0.159,
-     "rmse_m": 0.223,
+     "bias_m": -0.01,
+     "mae_m": 0.162,
+     "rmse_m": 0.225,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.58,
+       "bias_s": -0.65,
        "n": 341
       }
      }
@@ -901,51 +989,51 @@
    "lon": -122.408,
    "region": "Northern California",
    "all": {
-    "n": 2656,
+    "n": 2654,
     "bias_m": 0.033,
     "mae_m": 0.147,
     "rmse_m": 0.179,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -1.46,
-      "n": 1051
+      "bias_s": -1.5,
+      "n": 1039
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 879,
+     "n": 878,
      "bias_m": 0.022,
      "mae_m": 0.136,
      "rmse_m": 0.166,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.32,
-       "n": 345
+       "bias_s": -1.35,
+       "n": 342
       }
      }
     },
     "24-48": {
-     "n": 885,
+     "n": 884,
      "bias_m": 0.039,
      "mae_m": 0.143,
      "rmse_m": 0.175,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.44,
-       "n": 350
+       "bias_s": -1.49,
+       "n": 345
       }
      }
     },
     "48-72": {
      "n": 892,
-     "bias_m": 0.038,
-     "mae_m": 0.161,
-     "rmse_m": 0.194,
+     "bias_m": 0.039,
+     "mae_m": 0.162,
+     "rmse_m": 0.195,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.62,
-       "n": 356
+       "bias_s": -1.66,
+       "n": 352
       }
      }
     }
@@ -957,39 +1045,47 @@
    "lon": -124.243,
    "region": "Pacific Northwest",
    "all": {
-    "n": 2680,
-    "bias_m": -0.037,
-    "mae_m": 0.128,
-    "rmse_m": 0.169,
+    "n": 2678,
+    "bias_m": -0.036,
+    "mae_m": 0.127,
+    "rmse_m": 0.168,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.64,
-      "n": 2680
+      "bias_s": -0.67,
+      "n": 2676
+     },
+     "WW3-ERDDAP": {
+      "bias_s": 0.44,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 887,
-     "bias_m": -0.044,
-     "mae_m": 0.119,
-     "rmse_m": 0.155,
+     "n": 886,
+     "bias_m": -0.041,
+     "mae_m": 0.118,
+     "rmse_m": 0.154,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.62,
-       "n": 887
+       "bias_s": -0.63,
+       "n": 884
+      },
+      "WW3-ERDDAP": {
+       "bias_s": 0.44,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 894,
-     "bias_m": -0.035,
-     "mae_m": 0.128,
-     "rmse_m": 0.17,
+     "n": 893,
+     "bias_m": -0.033,
+     "mae_m": 0.126,
+     "rmse_m": 0.167,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.65,
-       "n": 894
+       "bias_s": -0.69,
+       "n": 893
       }
      }
     },
@@ -1000,7 +1096,7 @@
      "rmse_m": 0.181,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.66,
+       "bias_s": -0.7,
        "n": 899
       }
      }
@@ -1013,50 +1109,58 @@
    "lon": -118.314,
    "region": "Southern California",
    "all": {
-    "n": 2704,
-    "bias_m": -0.043,
-    "mae_m": 0.146,
-    "rmse_m": 0.197,
+    "n": 2702,
+    "bias_m": -0.042,
+    "mae_m": 0.145,
+    "rmse_m": 0.196,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -2.13,
-      "n": 2704
+      "bias_s": -2.17,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -4.73,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.063,
+     "n": 894,
+     "bias_m": -0.062,
      "mae_m": 0.137,
-     "rmse_m": 0.187,
+     "rmse_m": 0.186,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -1.96,
-       "n": 895
+       "bias_s": -1.99,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -4.73,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.045,
-     "mae_m": 0.15,
+     "n": 901,
+     "bias_m": -0.044,
+     "mae_m": 0.149,
      "rmse_m": 0.199,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.13,
-       "n": 902
+       "bias_s": -2.17,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.02,
+     "bias_m": -0.019,
      "mae_m": 0.15,
      "rmse_m": 0.204,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.31,
+       "bias_s": -2.35,
        "n": 907
       }
      }
@@ -1069,50 +1173,58 @@
    "lon": -117.391,
    "region": "Southern California",
    "all": {
-    "n": 2704,
-    "bias_m": -0.038,
+    "n": 2702,
+    "bias_m": -0.037,
     "mae_m": 0.126,
     "rmse_m": 0.171,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -2.78,
-      "n": 2704
+      "bias_s": -2.79,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": -8.52,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.048,
+     "n": 894,
+     "bias_m": -0.047,
      "mae_m": 0.123,
      "rmse_m": 0.166,
      "period_by_source": {
       "Open-Meteo": {
        "bias_s": -2.62,
-       "n": 895
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": -8.52,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.037,
+     "n": 901,
+     "bias_m": -0.036,
      "mae_m": 0.125,
-     "rmse_m": 0.173,
+     "rmse_m": 0.172,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.78,
-       "n": 902
+       "bias_s": -2.79,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.028,
+     "bias_m": -0.027,
      "mae_m": 0.13,
      "rmse_m": 0.173,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -2.93,
+       "bias_s": -2.95,
        "n": 907
       }
      }
@@ -1125,47 +1237,55 @@
    "lon": -158.118,
    "region": "Hawaii",
    "all": {
-    "n": 2680,
-    "bias_m": 0.211,
-    "mae_m": 0.246,
-    "rmse_m": 0.31,
+    "n": 2678,
+    "bias_m": 0.214,
+    "mae_m": 0.249,
+    "rmse_m": 0.313,
     "period_by_source": {
      "Open-Meteo": {
       "bias_s": -0.01,
-      "n": 2680
+      "n": 2676
+     },
+     "WW3-ERDDAP": {
+      "bias_s": 1.73,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 887,
-     "bias_m": 0.23,
-     "mae_m": 0.254,
-     "rmse_m": 0.325,
+     "n": 886,
+     "bias_m": 0.231,
+     "mae_m": 0.256,
+     "rmse_m": 0.327,
      "period_by_source": {
       "Open-Meteo": {
        "bias_s": 0.02,
-       "n": 887
+       "n": 884
+      },
+      "WW3-ERDDAP": {
+       "bias_s": 1.73,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 894,
-     "bias_m": 0.21,
-     "mae_m": 0.243,
-     "rmse_m": 0.303,
+     "n": 893,
+     "bias_m": 0.214,
+     "mae_m": 0.246,
+     "rmse_m": 0.307,
      "period_by_source": {
       "Open-Meteo": {
        "bias_s": -0.02,
-       "n": 894
+       "n": 893
       }
      }
     },
     "48-72": {
      "n": 899,
-     "bias_m": 0.193,
-     "mae_m": 0.24,
-     "rmse_m": 0.301,
+     "bias_m": 0.196,
+     "mae_m": 0.244,
+     "rmse_m": 0.306,
      "period_by_source": {
       "Open-Meteo": {
        "bias_s": -0.02,
@@ -1181,50 +1301,58 @@
    "lon": -157.681,
    "region": "Hawaii",
    "all": {
-    "n": 2704,
-    "bias_m": -0.262,
+    "n": 2702,
+    "bias_m": -0.263,
     "mae_m": 0.302,
     "rmse_m": 0.362,
     "period_by_source": {
      "Open-Meteo": {
-      "bias_s": -0.94,
-      "n": 2704
+      "bias_s": -0.96,
+      "n": 2700
+     },
+     "WW3-ERDDAP": {
+      "bias_s": 0.37,
+      "n": 2
      }
     }
    },
    "bins": {
     "0-24": {
-     "n": 895,
-     "bias_m": -0.252,
+     "n": 894,
+     "bias_m": -0.254,
      "mae_m": 0.301,
      "rmse_m": 0.358,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.94,
-       "n": 895
+       "bias_s": -0.96,
+       "n": 892
+      },
+      "WW3-ERDDAP": {
+       "bias_s": 0.37,
+       "n": 2
       }
      }
     },
     "24-48": {
-     "n": 902,
-     "bias_m": -0.259,
-     "mae_m": 0.298,
+     "n": 901,
+     "bias_m": -0.261,
+     "mae_m": 0.297,
      "rmse_m": 0.359,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.91,
-       "n": 902
+       "bias_s": -0.93,
+       "n": 901
       }
      }
     },
     "48-72": {
      "n": 907,
-     "bias_m": -0.273,
+     "bias_m": -0.274,
      "mae_m": 0.308,
      "rmse_m": 0.369,
      "period_by_source": {
       "Open-Meteo": {
-       "bias_s": -0.98,
+       "bias_s": -0.99,
        "n": 907
       }
      }
