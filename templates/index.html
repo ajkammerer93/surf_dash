@@ -958,10 +958,10 @@
                margin keeps the header layout close to where it was so
                neighboring buttons barely shift. The glyph is narrower
                than it is tall, so the padding is uneven on purpose --
-               an even 8px last time left this at 24x28, short of the
-               header icon buttons' own 36px minimum. */
-            padding: 10px 12px;
-            margin: -10px -12px;
+               the previous 10px/12px pass landed at 32x32, still short
+               of the header icon buttons' own 36px, so this rounds up. */
+            padding: 12px 14px;
+            margin: -12px -14px;
             line-height: 1;
             transition: color 0.15s;
         }
@@ -2135,7 +2135,7 @@
         }
 
         .session-score-prime { background: rgba(68,255,136,0.15); color: var(--status-live); }
-        .session-score-good { background: rgba(68,136,255,0.15); color: #5a99ff; }  /* was --status-good #4488ff on this tint: 4.27:1, below AA */
+        .session-score-good { background: rgba(68,136,255,0.15); color: #66a3ff; }  /* #5a99ff (5.1:1 on the plain chip) drops to 4.27:1, below AA, once .session-best's green tint stacks underneath; this clears 4.5:1 against that composited background too */
         .session-score-fair { background: rgba(255,170,0,0.15); color: var(--status-warning); }
         .session-score-poor { background: rgba(102,102,102,0.15); color: var(--text-muted); }
 
