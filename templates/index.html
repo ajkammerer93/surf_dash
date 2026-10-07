@@ -5551,7 +5551,7 @@
 
         // Horizontal gradient-bar legend (replaces stacked color chips)
         function addGradientLegend(map, title, vmin, vmax, fmt, labelValues) {
-            var legend = L.control({ position: 'bottomright' });
+            var legend = L.control({ position: 'topright' });
             legend.onAdd = function() {
                 var div = L.DomUtil.create('div', 'legend gradient-legend');
                 var t = document.createElement('div');
