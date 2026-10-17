@@ -8366,6 +8366,43 @@
                     m.addTo(localSpotLayer);
                 });
             localSpotLayer.addTo(mapSwell);
+            requestAnimationFrame(resolveSpotLabelCollisions);
+        }
+
+        // The up to 12 spot labels are placed independently at their own
+        // lat/lon with no awareness of each other, so any cluster of
+        // close-together breaks stacks its labels into an unreadable pile.
+        // This nudges colliding labels straight down (dots stay put) just
+        // enough to clear the label above them, re-run whenever the labels'
+        // screen positions can have changed.
+        function resolveSpotLabelCollisions() {
+            if (!localSpotLayer || !mapSwell) return;
+            const items = [];
+            localSpotLayer.eachLayer(function(m) {
+                const el = m.getElement();
+                const label = el && el.querySelector('.spot-marker-label');
+                if (!label) return;
+                label.style.transform = '';
+                const r = label.getBoundingClientRect();
+                items.push({ label: label, top: r.top, bottom: r.bottom, left: r.left, right: r.right, offset: 0 });
+            });
+            items.sort(function(a, b) { return a.top - b.top; });
+            const GAP = 2;
+            for (let i = 0; i < items.length; i++) {
+                const b = items[i];
+                let need = 0;
+                for (let j = 0; j < i; j++) {
+                    const a = items[j];
+                    const overlapsX = b.left < a.right && b.right > a.left;
+                    if (!overlapsX) continue;
+                    const req = (a.bottom + a.offset) + GAP - b.top;
+                    if (req > need) need = req;
+                }
+                b.offset = need;
+            }
+            items.forEach(function(it) {
+                if (it.offset > 0) it.label.style.transform = 'translateY(' + Math.round(it.offset) + 'px)';
+            });
         }
 
         function updateLocalCamMarkers(visible) {
@@ -8743,6 +8780,13 @@
                     const slider = document.getElementById('time-slider');
                     updateSwellMap(parseInt(slider.value) || 0);
                 }
+            });
+
+            // Panning and zooming move every spot label's screen position
+            // even when the local/basin mode doesn't change, so the label
+            // collision fix above needs to be redone after either settles.
+            mapSwell.on('zoomend moveend', function() {
+                if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
             });
 
             setTimeout(() => { mapSwell.invalidateSize(); }, 100);
