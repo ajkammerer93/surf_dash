@@ -95,27 +95,30 @@ def fetch_forecast_snapshot(base_url, station, timeout=150):
     compact wave series (3-hourly, 0-72h lead)."""
     url = f"{base_url}/api/forecast"
     params = {"lat": station["lat"], "lon": station["lon"]}
-    resp = None
+    data = None
     for attempt in range(3):
         try:
             resp = requests.get(url, params=params, timeout=timeout)
             if resp.ok:
-                break
+                candidate = resp.json()
+                entries = candidate.get("forecast") or []
+                # A stale-served forecast was issued up to 24h ago; its lead
+                # times are unknowable from here, so retry instead of
+                # scoring it -- "all wave sources down" on the live site is
+                # usually a transient blip that clears within a few seconds.
+                if entries and not candidate.get("stale"):
+                    data = candidate
+                    break
+                print(f"  {station['id']}: attempt {attempt + 1} stale "
+                      f"(stale={candidate.get('stale')})")
         except requests.RequestException as e:
             print(f"  {station['id']}: attempt {attempt + 1} failed: {e}")
         time.sleep(10 * (attempt + 1))
-    if resp is None or not resp.ok:
+    if data is None:
         print(f"  {station['id']}: forecast fetch failed")
         return None
 
-    data = resp.json()
-    entries = data.get("forecast") or []
-    if not entries or data.get("stale"):
-        # A stale-served forecast was issued up to 24h ago; its lead times
-        # are unknowable from here, so don't score it.
-        print(f"  {station['id']}: no usable forecast (stale={data.get('stale')})")
-        return None
-
+    entries = data["forecast"]
     issued = _utcnow()
     times, wh, tp = [], [], []
     for e in entries:
