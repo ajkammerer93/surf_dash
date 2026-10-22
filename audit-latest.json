@@ -1,30 +1,30 @@
 {
-  "generated": "2026-10-21T08:42:48Z",
+  "generated": "2026-10-22T08:45:04Z",
   "ci": {
     "workflows": {
       "forecast-verification.yml": {
         "latest_status": "completed",
         "latest_conclusion": "success",
-        "latest_at": "2026-10-21T07:59:48Z",
-        "recent_failures": 1,
+        "latest_at": "2026-10-22T07:57:58Z",
+        "recent_failures": 0,
         "recent_checked": 5,
-        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39565950252"
+        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39744242687"
       },
       "social-post.yml": {
         "latest_status": "completed",
         "latest_conclusion": "success",
-        "latest_at": "2026-10-20T19:58:14Z",
+        "latest_at": "2026-10-21T20:05:12Z",
         "recent_failures": 0,
         "recent_checked": 5,
-        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39487963847"
+        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39667233706"
       },
       "social-highlight-post.yml": {
         "latest_status": "completed",
         "latest_conclusion": "success",
-        "latest_at": "2026-10-21T00:30:30Z",
+        "latest_at": "2026-10-22T00:34:02Z",
         "recent_failures": 0,
         "recent_checked": 5,
-        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39521733655"
+        "url": "https://github.com/ajkammerer93/surf_dash/actions/runs/39700458581"
       },
       "social-accuracy-post.yml": {
         "latest_status": "completed",
@@ -67,42 +67,42 @@
     "pages": {
       "/": {
         "status": 200,
-        "ms": 221,
+        "ms": 486,
         "bytes": 566656
       },
       "/locations": {
         "status": 200,
-        "ms": 166,
+        "ms": 231,
         "bytes": 29364
       },
       "/accuracy": {
         "status": 200,
-        "ms": 181,
-        "bytes": 37986
+        "ms": 185,
+        "bytes": 37978
       },
       "/faq": {
         "status": 200,
-        "ms": 180,
+        "ms": 190,
         "bytes": 23312
       },
       "/compare/surfline": {
         "status": 200,
-        "ms": 216,
+        "ms": 178,
         "bytes": 19861
       },
       "/forecast/wrightsville-beach": {
         "status": 200,
-        "ms": 263,
+        "ms": 298,
         "bytes": 566642
       },
       "/regions/great-lakes": {
         "status": 200,
-        "ms": 156,
+        "ms": 184,
         "bytes": 14927
       },
       "/ig": {
         "status": 200,
-        "ms": 287,
+        "ms": 288,
         "bytes": 566656
       }
     },
@@ -113,34 +113,35 @@
       "has_query_params": false
     },
     "verification": {
-      "n_pairs": 46669,
-      "mae_m": 0.214,
+      "n_pairs": 46277,
+      "mae_m": 0.216,
       "stations": 21,
-      "age_hours": 9.2
+      "age_hours": 9.1
     },
     "upstreams": {
       "breakers": {
         "pae-paha.pacioos.hawaii.edu": {
-          "retry_in_s": 0,
-          "state": "half-open"
+          "failures": 0,
+          "state": "closed"
         }
       },
-      "checked_at": "2026-10-21T08:43:05.490302+00:00",
+      "checked_at": "2026-10-22T08:45:14.086004+00:00",
       "erddap-coastwatch-gfs": {
-        "seconds": 1.3,
-        "status": 404
+        "redirects_to": "pae-paha.pacioos.hawaii.edu",
+        "seconds": 0.38,
+        "status": 302
       },
       "erddap-pacioos-ww3": {
-        "seconds": 8.3,
-        "status": "ReadTimeout"
+        "seconds": 0.88,
+        "status": 200
       },
       "erddap-upwell-ww3": {
         "redirects_to": "pae-paha.pacioos.hawaii.edu",
-        "seconds": 0.31,
+        "seconds": 0.47,
         "status": 302
       },
       "open-meteo-marine": {
-        "seconds": 0.43,
+        "seconds": 0.44,
         "status": 200
       },
       "open-meteo-weather": {
@@ -152,10 +153,10 @@
   "search_console": {
     "property": "sc-domain:freesurfforecast.com",
     "totals_28d": {
-      "clicks": 43,
-      "impressions": 3193,
-      "ctr": 0.0135,
-      "position": 14.02
+      "clicks": 44,
+      "impressions": 3111,
+      "ctr": 0.0141,
+      "position": 13.73
     },
     "top_queries": [
       {
@@ -173,8 +174,14 @@
       {
         "query": "surf forecast wrightsville beach",
         "clicks": 1,
-        "impressions": 7,
-        "position": 34.6
+        "impressions": 4,
+        "position": 21
+      },
+      {
+        "query": "surf report wrightsville beach",
+        "clicks": 1,
+        "impressions": 2,
+        "position": 24
       },
       {
         "query": "%magicseaweed current status surfline 2026",
@@ -185,8 +192,8 @@
       {
         "query": "10 day forecast surf city nc",
         "clicks": 0,
-        "impressions": 1,
-        "position": 45
+        "impressions": 2,
+        "position": 44.5
       },
       {
         "query": "10 day surf forecast",
@@ -257,13 +264,13 @@
       {
         "query": "carolina beach surf forecast",
         "clicks": 0,
-        "impressions": 18,
-        "position": 17.3
+        "impressions": 15,
+        "position": 13.2
       },
       {
         "query": "carolina beach surf report",
         "clicks": 0,
-        "impressions": 12,
+        "impressions": 11,
         "position": 11.8
       },
       {
@@ -305,14 +312,8 @@
       {
         "query": "cocoa beach conditions",
         "clicks": 0,
-        "impressions": 2,
-        "position": 54.5
-      },
-      {
-        "query": "cocoa beach fl surf report",
-        "clicks": 0,
-        "impressions": 2,
-        "position": 37.5
+        "impressions": 1,
+        "position": 55
       },
       {
         "query": "cocoa beach magicseaweed",
@@ -341,14 +342,14 @@
       {
         "query": "cocoa beach surf forecast",
         "clicks": 0,
-        "impressions": 2,
-        "position": 33.5
+        "impressions": 1,
+        "position": 34
       },
       {
         "query": "cocoa beach surf report",
         "clicks": 0,
-        "impressions": 10,
-        "position": 44.3
+        "impressions": 9,
+        "position": 44.1
       },
       {
         "query": "cocoa beach surf report today",
@@ -375,12 +376,6 @@
         "position": 12
       },
       {
-        "query": "crash boat beach puerto rico weather",
-        "clicks": 0,
-        "impressions": 1,
-        "position": 38
-      },
-      {
         "query": "crash boat beach weather",
         "clicks": 0,
         "impressions": 1,
@@ -389,8 +384,8 @@
       {
         "query": "crystal pier wrightsville beach surf forecast today",
         "clicks": 0,
-        "impressions": 3,
-        "position": 49.7
+        "impressions": 1,
+        "position": 30
       },
       {
         "query": "current surf conditions",
@@ -407,7 +402,7 @@
       {
         "query": "forecast surf",
         "clicks": 0,
-        "impressions": 2,
+        "impressions": 1,
         "position": 39
       },
       {
@@ -419,8 +414,8 @@
       {
         "query": "free surf report",
         "clicks": 0,
-        "impressions": 16,
-        "position": 8.5
+        "impressions": 15,
+        "position": 8.3
       },
       {
         "query": "frisco surf report",
@@ -471,6 +466,12 @@
         "position": 9
       },
       {
+        "query": "is today a good day to surf",
+        "clicks": 0,
+        "impressions": 2,
+        "position": 7
+      },
+      {
         "query": "jennette's pier surfline",
         "clicks": 0,
         "impressions": 1,
@@ -481,6 +482,12 @@
         "clicks": 0,
         "impressions": 2,
         "position": 41.5
+      },
+      {
+        "query": "jennette's pier weather",
+        "clicks": 0,
+        "impressions": 1,
+        "position": 38
       },
       {
         "query": "lido beach surf cam",
@@ -743,76 +750,52 @@
       {
         "query": "surf charts",
         "clicks": 0,
-        "impressions": 4,
-        "position": 15.5
+        "impressions": 3,
+        "position": 9.3
       },
       {
         "query": "surf check",
         "clicks": 0,
         "impressions": 12,
         "position": 4.8
-      },
-      {
-        "query": "surf check surf city",
-        "clicks": 0,
-        "impressions": 1,
-        "position": 39
       }
     ],
     "top_pages": [
       {
         "page": "/",
-        "clicks": 7,
-        "impressions": 199,
-        "position": 16.7
+        "clicks": 8,
+        "impressions": 193,
+        "position": 15.4
       },
       {
         "page": "/about",
         "clicks": 6,
         "impressions": 45,
-        "position": 5.3
+        "position": 5.4
       },
       {
         "page": "/forecast/nags-head-jennettes-pier",
         "clicks": 3,
-        "impressions": 115,
-        "position": 13.7
+        "impressions": 105,
+        "position": 14.0
       },
       {
-        "page": "/regions/long-island",
+        "page": "/forecast/wrightsville-beach",
         "clicks": 3,
-        "impressions": 117,
-        "position": 8.7
+        "impressions": 134,
+        "position": 33.8
       },
       {
         "page": "/compare/surfline",
         "clicks": 2,
-        "impressions": 47,
+        "impressions": 46,
         "position": 5.5
-      },
-      {
-        "page": "/forecast/hilton-head-island-sc",
-        "clicks": 2,
-        "impressions": 72,
-        "position": 8.8
-      },
-      {
-        "page": "/forecast/spring-lake-nj",
-        "clicks": 2,
-        "impressions": 47,
-        "position": 8.0
-      },
-      {
-        "page": "/forecast/wrightsville-beach",
-        "clicks": 2,
-        "impressions": 140,
-        "position": 33.9
       },
       {
         "page": "/regions/great-lakes",
         "clicks": 2,
-        "impressions": 26,
-        "position": 8.2
+        "impressions": 25,
+        "position": 8.1
       },
       {
         "page": "/regions/jersey-shore",
@@ -821,22 +804,40 @@
         "position": 8.3
       },
       {
+        "page": "/regions/long-island",
+        "clicks": 2,
+        "impressions": 112,
+        "position": 8.8
+      },
+      {
         "page": "/forecast/carolina-beach",
         "clicks": 1,
-        "impressions": 90,
-        "position": 18.7
+        "impressions": 88,
+        "position": 19.2
       },
       {
         "page": "/forecast/cocoa-beach-pier-fl",
         "clicks": 1,
-        "impressions": 102,
-        "position": 35.3
+        "impressions": 92,
+        "position": 34.8
+      },
+      {
+        "page": "/forecast/hilton-head-island-sc",
+        "clicks": 1,
+        "impressions": 72,
+        "position": 8.9
+      },
+      {
+        "page": "/forecast/marquette-mi",
+        "clicks": 1,
+        "impressions": 56,
+        "position": 8.0
       },
       {
         "page": "/forecast/montauk-ny",
         "clicks": 1,
-        "impressions": 23,
-        "position": 9.4
+        "impressions": 21,
+        "position": 9.5
       },
       {
         "page": "/forecast/nags-head-abalone-st",
@@ -847,8 +848,8 @@
       {
         "page": "/forecast/oc-md-beach-cam",
         "clicks": 1,
-        "impressions": 3,
-        "position": 9.3
+        "impressions": 4,
+        "position": 9.2
       },
       {
         "page": "/forecast/rochester-ontario-beach-ny",
@@ -859,8 +860,8 @@
       {
         "page": "/forecast/rockaway-beach-ny",
         "clicks": 1,
-        "impressions": 16,
-        "position": 13.6
+        "impressions": 15,
+        "position": 13.8
       },
       {
         "page": "/forecast/san-clemente-ca",
@@ -871,8 +872,14 @@
       {
         "page": "/forecast/san-diego-pacific-beach-ca",
         "clicks": 1,
-        "impressions": 26,
-        "position": 11.7
+        "impressions": 27,
+        "position": 11.6
+      },
+      {
+        "page": "/forecast/spring-lake-nj",
+        "clicks": 1,
+        "impressions": 46,
+        "position": 8.1
       },
       {
         "page": "/forecast/wildwood-nj",
@@ -883,14 +890,20 @@
       {
         "page": "/learn/beach-orientation-and-waves",
         "clicks": 1,
-        "impressions": 32,
-        "position": 6.6
+        "impressions": 31,
+        "position": 7.0
+      },
+      {
+        "page": "/learn/wave-period-explained",
+        "clicks": 1,
+        "impressions": 21,
+        "position": 7.8
       },
       {
         "page": "/regions/new-england",
         "clicks": 1,
-        "impressions": 21,
-        "position": 7.9
+        "impressions": 20,
+        "position": 7.2
       },
       {
         "page": "/accuracy",
@@ -902,49 +915,49 @@
         "page": "/compare/magicseaweed",
         "clicks": 0,
         "impressions": 31,
-        "position": 10.9
+        "position": 10.8
       },
       {
         "page": "/faq",
         "clicks": 0,
-        "impressions": 35,
-        "position": 5.3
+        "impressions": 34,
+        "position": 5.4
       },
       {
         "page": "/forecast/aguadilla-crash-boat-pr",
         "clicks": 0,
-        "impressions": 67,
-        "position": 10.5
+        "impressions": 72,
+        "position": 11.5
       },
       {
         "page": "/forecast/atlantic-beach-nc",
         "clicks": 0,
-        "impressions": 12,
-        "position": 8.8
+        "impressions": 13,
+        "position": 8.6
       },
       {
         "page": "/forecast/atlantic-city-nj",
         "clicks": 0,
-        "impressions": 21,
-        "position": 12.6
+        "impressions": 20,
+        "position": 12.8
       },
       {
         "page": "/forecast/avalon-nj",
         "clicks": 0,
-        "impressions": 5,
-        "position": 9.8
+        "impressions": 4,
+        "position": 10
       },
       {
         "page": "/forecast/bandon-or",
         "clicks": 0,
-        "impressions": 3,
-        "position": 11
+        "impressions": 2,
+        "position": 11.5
       },
       {
         "page": "/forecast/belmar-nj",
         "clicks": 0,
-        "impressions": 9,
-        "position": 11.3
+        "impressions": 10,
+        "position": 12.1
       },
       {
         "page": "/forecast/bethany-beach-de",
@@ -955,8 +968,8 @@
       {
         "page": "/forecast/buffalo-ny",
         "clicks": 0,
-        "impressions": 2,
-        "position": 5.5
+        "impressions": 3,
+        "position": 5.3
       },
       {
         "page": "/forecast/cape-may-cove-nj",
@@ -967,14 +980,14 @@
       {
         "page": "/forecast/cape-may-nj",
         "clicks": 0,
-        "impressions": 9,
-        "position": 11.1
+        "impressions": 10,
+        "position": 10.9
       },
       {
         "page": "/forecast/carolina-beach-center-pier",
         "clicks": 0,
-        "impressions": 12,
-        "position": 7.6
+        "impressions": 13,
+        "position": 7.8
       },
       {
         "page": "/forecast/chicago-montrose-beach-il",
@@ -985,8 +998,8 @@
       {
         "page": "/forecast/cleveland-edgewater-oh",
         "clicks": 0,
-        "impressions": 55,
-        "position": 8.3
+        "impressions": 51,
+        "position": 8.2
       },
       {
         "page": "/forecast/daytona-beach-fl",
@@ -1021,13 +1034,13 @@
       {
         "page": "/forecast/emerald-isle-nc",
         "clicks": 0,
-        "impressions": 8,
-        "position": 10.4
+        "impressions": 6,
+        "position": 10.3
       },
       {
         "page": "/forecast/encinitas-moonlight-beach-ca",
         "clicks": 0,
-        "impressions": 71,
+        "impressions": 72,
         "position": 9.8
       },
       {
@@ -1039,8 +1052,8 @@
       {
         "page": "/forecast/flagler-beach-fl",
         "clicks": 0,
-        "impressions": 15,
-        "position": 11.9
+        "impressions": 14,
+        "position": 12.1
       },
       {
         "page": "/forecast/folly-beach-sc",
@@ -1069,20 +1082,14 @@
       {
         "page": "/forecast/half-moon-bay-ca",
         "clicks": 0,
-        "impressions": 8,
-        "position": 8.5
+        "impressions": 9,
+        "position": 8.7
       },
       {
         "page": "/forecast/hampton-beach-nh",
         "clicks": 0,
         "impressions": 22,
         "position": 10.1
-      },
-      {
-        "page": "/forecast/hatteras",
-        "clicks": 0,
-        "impressions": 3,
-        "position": 10
       },
       {
         "page": "/forecast/hermosa-beach-ca",
@@ -1093,8 +1100,8 @@
       {
         "page": "/forecast/hollywood-beach-fl",
         "clicks": 0,
-        "impressions": 10,
-        "position": 9.1
+        "impressions": 12,
+        "position": 9.3
       },
       {
         "page": "/forecast/huntington-beach-ca",
@@ -1129,25 +1136,25 @@
       {
         "page": "/forecast/key-west-fl",
         "clicks": 0,
-        "impressions": 8,
-        "position": 13.1
+        "impressions": 9,
+        "position": 12.9
       },
       {
         "page": "/forecast/kitty-hawk",
         "clicks": 0,
-        "impressions": 2,
-        "position": 10.5
+        "impressions": 4,
+        "position": 8.2
       },
       {
         "page": "/forecast/laguna-beach-ca",
         "clicks": 0,
-        "impressions": 22,
-        "position": 10.1
+        "impressions": 24,
+        "position": 10.2
       },
       {
         "page": "/forecast/lido-beach-ny",
         "clicks": 0,
-        "impressions": 21,
+        "impressions": 22,
         "position": 10.9
       },
       {
@@ -1159,8 +1166,8 @@
       {
         "page": "/forecast/long-beach-ny",
         "clicks": 0,
-        "impressions": 25,
-        "position": 11.7
+        "impressions": 28,
+        "position": 11.6
       },
       {
         "page": "/forecast/malibu-ca",
@@ -1177,14 +1184,8 @@
       {
         "page": "/forecast/manhattan-beach-ca",
         "clicks": 0,
-        "impressions": 12,
-        "position": 10.3
-      },
-      {
-        "page": "/forecast/marquette-mi",
-        "clicks": 0,
-        "impressions": 54,
-        "position": 8.2
+        "impressions": 11,
+        "position": 10.5
       },
       {
         "page": "/forecast/miami-beach-fl",
@@ -1195,7 +1196,7 @@
       {
         "page": "/forecast/milwaukee-bradford-beach-wi",
         "clicks": 0,
-        "impressions": 30,
+        "impressions": 27,
         "position": 7.7
       },
       {
@@ -1213,8 +1214,8 @@
       {
         "page": "/forecast/narragansett-ri",
         "clicks": 0,
-        "impressions": 10,
-        "position": 9.8
+        "impressions": 11,
+        "position": 9.5
       },
       {
         "page": "/forecast/new-buffalo-mi",
@@ -1225,20 +1226,20 @@
       {
         "page": "/forecast/new-smyrna-beach-fl",
         "clicks": 0,
-        "impressions": 3,
-        "position": 12.3
+        "impressions": 5,
+        "position": 11.6
       },
       {
         "page": "/forecast/north-topsail-island",
         "clicks": 0,
-        "impressions": 47,
-        "position": 23.6
+        "impressions": 48,
+        "position": 23.2
       },
       {
         "page": "/forecast/oak-island",
         "clicks": 0,
-        "impressions": 8,
-        "position": 8.8
+        "impressions": 7,
+        "position": 9.3
       },
       {
         "page": "/forecast/oc-md-assateague-cam",
@@ -1267,8 +1268,8 @@
       {
         "page": "/forecast/ocean-city-md",
         "clicks": 0,
-        "impressions": 9,
-        "position": 10.6
+        "impressions": 7,
+        "position": 10.9
       },
       {
         "page": "/forecast/ocean-city-nj",
@@ -1297,26 +1298,26 @@
       {
         "page": "/forecast/ocracoke",
         "clicks": 0,
-        "impressions": 7,
-        "position": 9
+        "impressions": 8,
+        "position": 8.6
       },
       {
         "page": "/forecast/oswego-ny",
         "clicks": 0,
-        "impressions": 4,
-        "position": 5.5
+        "impressions": 3,
+        "position": 5
       },
       {
         "page": "/forecast/pismo-beach-ca",
         "clicks": 0,
-        "impressions": 14,
-        "position": 10.4
+        "impressions": 11,
+        "position": 10.7
       },
       {
         "page": "/forecast/presque-isle-pa",
         "clicks": 0,
         "impressions": 36,
-        "position": 8.8
+        "position": 8.9
       },
       {
         "page": "/forecast/rehoboth-beach-de",
@@ -1333,20 +1334,20 @@
       {
         "page": "/forecast/rodanthe",
         "clicks": 0,
-        "impressions": 18,
+        "impressions": 15,
         "position": 9.7
       },
       {
         "page": "/forecast/santa-cruz-ca",
         "clicks": 0,
-        "impressions": 34,
-        "position": 14.1
+        "impressions": 36,
+        "position": 13.7
       },
       {
         "page": "/forecast/sea-isle-city-nj",
         "clicks": 0,
-        "impressions": 6,
-        "position": 8.2
+        "impressions": 5,
+        "position": 9.4
       },
       {
         "page": "/forecast/seal-beach-ca",
@@ -1367,6 +1368,18 @@
         "clicks": 1,
         "impressions": 17,
         "position": 9.1
+      },
+      {
+        "query": "surf forecast wrightsville beach",
+        "clicks": 1,
+        "impressions": 4,
+        "position": 21
+      },
+      {
+        "query": "surf report wrightsville beach",
+        "clicks": 1,
+        "impressions": 2,
+        "position": 24
       },
       {
         "query": "beach wave report",
@@ -1395,13 +1408,13 @@
       {
         "query": "carolina beach surf forecast",
         "clicks": 0,
-        "impressions": 18,
-        "position": 17.3
+        "impressions": 15,
+        "position": 13.2
       },
       {
         "query": "carolina beach surf report",
         "clicks": 0,
-        "impressions": 12,
+        "impressions": 11,
         "position": 11.8
       },
       {
@@ -1431,8 +1444,8 @@
       {
         "query": "free surf report",
         "clicks": 0,
-        "impressions": 16,
-        "position": 8.5
+        "impressions": 15,
+        "position": 8.3
       },
       {
         "query": "hows the surf today",
@@ -1503,353 +1516,353 @@
       {
         "query": "surf charts",
         "clicks": 0,
-        "impressions": 4,
-        "position": 15.5
+        "impressions": 3,
+        "position": 9.3
       }
     ],
     "inspection": {
-      "/forecast/juno-beach-fl": {
+      "/forecast/rehoboth-beach-de": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T21:40:11Z"
+        "last_crawl": "2026-08-22T03:39:19Z"
       },
-      "/forecast/jupiter-beach-fl": {
+      "/forecast/rincon-domes-pr": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-08T07:40:10Z"
+        "last_crawl": "2026-09-25T20:42:02Z"
       },
-      "/forecast/key-west-fl": {
+      "/forecast/rochester-ontario-beach-ny": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-21T07:57:06Z"
+        "last_crawl": "2026-09-07T14:27:57Z"
       },
-      "/forecast/kitty-hawk": {
+      "/forecast/rockaway-beach-ny": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-09T01:13:02Z"
+        "last_crawl": "2026-08-23T10:17:22Z"
       },
-      "/forecast/kure-beach": {
+      "/forecast/rodanthe": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-07T15:44:48Z"
+      },
+      "/forecast/san-clemente-ca": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-07T11:10:17Z"
+      },
+      "/forecast/san-diego-pacific-beach-ca": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-05T22:51:14Z"
+      },
+      "/forecast/santa-cruz-ca": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-07T16:02:43Z"
+      },
+      "/forecast/santa-monica-ca": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-18T12:57:10Z"
+      },
+      "/forecast/sea-isle-city-nj": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-31T10:51:35Z"
+      },
+      "/forecast/seal-beach-ca": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-06T18:07:30Z"
+      },
+      "/forecast/seaside-heights-nj": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-01T16:52:54Z"
+      },
+      "/forecast/seaside-park-nj": {
         "verdict": "NEUTRAL",
         "coverage": "Discovered - currently not indexed",
         "last_crawl": null
       },
-      "/forecast/laguna-beach-ca": {
+      "/forecast/sebastian-inlet-fl": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T10:45:13Z"
+        "last_crawl": "2026-10-01T03:28:57Z"
       },
-      "/forecast/lavallette-beach-nj": {
+      "/forecast/sheboygan-wi": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-05T10:09:53Z"
+      },
+      "/forecast/south-padre-island-tx": {
         "verdict": "NEUTRAL",
         "coverage": "URL is unknown to Google",
         "last_crawl": null
       },
-      "/forecast/lido-beach-ny": {
+      "/forecast/spring-lake-nj": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-28T09:14:53Z"
+        "last_crawl": "2026-08-20T17:47:49Z"
       },
-      "/forecast/long-beach-island-nj": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-09-01T04:20:38Z"
-      },
-      "/forecast/long-beach-ny": {
+      "/forecast/st-augustine-beach-fl": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-23T09:16:13Z"
+        "last_crawl": "2026-08-31T14:04:33Z"
       },
-      "/forecast/longport-nj": {
+      "/forecast/st-joseph-mi": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-15T09:09:01Z"
+        "last_crawl": "2026-10-15T02:53:54Z"
       },
-      "/forecast/madeira-beach-fl": {
-        "verdict": "NEUTRAL",
-        "coverage": "Discovered - currently not indexed",
-        "last_crawl": null
-      },
-      "/forecast/malibu-ca": {
+      "/forecast/stoney-point-mn": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T13:15:05Z"
+        "last_crawl": "2026-09-07T13:35:05Z"
       },
-      "/forecast/manasquan-nj": {
+      "/forecast/sunset-beach": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-04T16:49:00Z"
+        "last_crawl": "2026-09-07T14:17:14Z"
       },
-      "/forecast/manhattan-beach-ca": {
+      "/forecast/surf-city-line": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-05T22:52:14Z"
+        "last_crawl": "2026-09-29T11:38:47Z"
       },
-      "/forecast/marquette-mi": {
+      "/forecast/surf-city-pier-north": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T12:55:05Z"
+        "last_crawl": "2026-10-09T15:30:45Z"
       },
-      "/forecast/melbourne-beach-fl": {
-        "verdict": "NEUTRAL",
-        "coverage": "Discovered - currently not indexed",
-        "last_crawl": null
-      },
-      "/forecast/miami-beach-fl": {
+      "/forecast/topsail-beach": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-08T02:40:12Z"
+        "last_crawl": "2026-10-19T01:25:58Z"
       },
-      "/forecast/milwaukee-bradford-beach-wi": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-07-30T09:57:47Z"
-      },
-      "/forecast/montauk-ny": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-23T00:42:28Z"
-      },
-      "/forecast/myrtle-beach-sc": {
+      "/forecast/two-harbors-mn": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-28T02:31:26Z"
+        "last_crawl": "2026-09-07T15:17:33Z"
       },
-      "/forecast/nags-head-abalone-st": {
+      "/forecast/tybee-island-ga": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-21T20:44:38Z"
+        "last_crawl": "2026-09-28T01:48:27Z"
       },
-      "/forecast/nags-head-jennettes-pier": {
+      "/forecast/venice-beach-ca": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-19T00:10:58Z"
+        "last_crawl": "2026-09-07T11:35:18Z"
       },
-      "/forecast/naples-pier-fl": {
+      "/forecast/ventnor-nj": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-25T21:39:52Z"
+        "last_crawl": "2026-08-31T10:42:12Z"
       },
-      "/forecast/narragansett-ri": {
+      "/forecast/vero-beach-fl": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-23T13:01:13Z"
+        "last_crawl": "2026-09-30T02:50:37Z"
       },
-      "/forecast/new-buffalo-mi": {
+      "/forecast/virginia-beach": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T14:49:22Z"
+        "last_crawl": "2026-10-19T05:28:20Z"
       },
-      "/forecast/new-smyrna-beach-fl": {
+      "/forecast/waikiki-beach-hi": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-01T18:56:22Z"
+        "last_crawl": "2026-09-01T11:04:42Z"
       },
-      "/forecast/north-topsail-island": {
+      "/forecast/waves": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-19T09:03:44Z"
+        "last_crawl": "2026-09-25T14:23:02Z"
       },
-      "/forecast/oak-island": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-09T04:47:56Z"
-      },
-      "/forecast/oc-md-assateague-cam": {
+      "/forecast/wb-mercers-pier": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-28T12:44:55Z"
+        "last_crawl": "2026-10-02T17:44:08Z"
       },
-      "/forecast/oc-md-beach-cam": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-24T23:41:53Z"
-      },
-      "/forecast/oc-md-carousel-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-20T09:17:01Z"
-      },
-      "/forecast/oc-md-econo-lodge-beachfront": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-22T19:02:50Z"
-      },
-      "/forecast/oc-md-grand-hotel-ocean-view": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-22T08:44:56Z"
-      },
-      "/forecast/oc-md-hojo-12th-st-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-23T20:36:50Z"
-      },
-      "/forecast/oc-md-hojo-oceanfront-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-27T08:42:34Z"
-      },
-      "/forecast/oc-md-hyatt-place-oceanfront": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-09-02T19:28:20Z"
-      },
-      "/forecast/oc-md-inlet-cam": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-22T23:11:23Z"
-      },
-      "/forecast/oc-md-kite-loft-beach": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-22T20:35:54Z"
-      },
-      "/forecast/oc-md-ocean-1-hotel-beach": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-22T22:52:38Z"
-      },
-      "/forecast/oc-md-park-place-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-01T17:41:21Z"
-      },
-      "/forecast/oc-md-princess-royale-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-22T17:57:47Z"
-      },
-      "/forecast/ocean-city-md": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-22T19:16:22Z"
-      },
-      "/forecast/ocean-city-nj": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-08-20T15:01:17Z"
-      },
-      "/forecast/ocean-isle-beach": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T13:25:07Z"
-      },
-      "/forecast/ocean-isle-beach-pier": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-06T03:07:02Z"
-      },
-      "/forecast/oceanside-ca": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T12:50:05Z"
-      },
-      "/forecast/ocracoke": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-27T22:58:46Z"
-      },
-      "/forecast/ogunquit-beach-me": {
-        "verdict": "PASS",
-        "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-30T10:20:39Z"
-      },
-      "/forecast/old-orchard-beach-me": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-23T19:01:58Z"
-      },
-      "/forecast/ormond-beach-fl": {
+      "/forecast/westport-wa": {
         "verdict": "NEUTRAL",
         "coverage": "Discovered - currently not indexed",
         "last_crawl": null
       },
-      "/forecast/oswego-ny": {
+      "/forecast/wildwood-nj": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T13:05:05Z"
+        "last_crawl": "2026-08-31T12:18:03Z"
       },
-      "/forecast/panama-city-beach-fl": {
-        "verdict": "NEUTRAL",
-        "coverage": "Discovered - currently not indexed",
-        "last_crawl": null
-      },
-      "/forecast/pensacola-beach-fl": {
+      "/forecast/wrightsville-beach": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-10-17T19:26:05Z"
+        "last_crawl": "2026-10-19T09:41:14Z"
       },
-      "/forecast/pipeline-north-shore-hi": {
-        "verdict": "NEUTRAL",
-        "coverage": "Discovered - currently not indexed",
-        "last_crawl": null
-      },
-      "/forecast/pismo-beach-ca": {
+      "/": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-25T11:58:03Z"
+        "last_crawl": "2026-10-19T11:43:20Z"
       },
-      "/forecast/pistol-river-or": {
-        "verdict": "NEUTRAL",
-        "coverage": "Crawled - currently not indexed",
-        "last_crawl": "2026-08-20T08:25:51Z"
+      "/locations": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-15T05:23:54Z"
       },
-      "/forecast/point-arena-ca": {
+      "/about": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-19T10:18:44Z"
+      },
+      "/glossary": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-07T12:45:05Z"
+      },
+      "/faq": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-19T02:58:20Z"
+      },
+      "/accuracy": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-22T17:47:15Z"
+      },
+      "/compare/surfline": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-31T11:58:15Z"
+      },
+      "/compare/magicseaweed": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
         "last_crawl": "2026-09-21T06:41:05Z"
       },
-      "/forecast/port-aransas-tx": {
-        "verdict": "NEUTRAL",
-        "coverage": "Discovered - currently not indexed",
-        "last_crawl": null
-      },
-      "/forecast/presque-isle-pa": {
+      "/learn": {
         "verdict": "PASS",
         "coverage": "Submitted and indexed",
-        "last_crawl": "2026-09-07T13:45:05Z"
+        "last_crawl": "2026-09-30T12:50:39Z"
+      },
+      "/learn/how-to-read-a-surf-forecast": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-02T20:43:23Z"
+      },
+      "/learn/wave-period-explained": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-20T09:31:47Z"
+      },
+      "/learn/what-is-a-swell-window": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-28T21:59:24Z"
+      },
+      "/learn/best-tide-for-surfing": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-20T11:07:24Z"
+      },
+      "/learn/beach-orientation-and-waves": {
+        "verdict": "NEUTRAL",
+        "coverage": "Crawled - currently not indexed",
+        "last_crawl": "2026-08-29T07:37:03Z"
+      },
+      "/learn/reading-buoy-reports": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-20T07:01:47Z"
+      },
+      "/learn/storms-and-groundswell": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-07T13:00:05Z"
+      },
+      "/learn/surf-safety-basics": {
+        "verdict": "NEUTRAL",
+        "coverage": "Crawled - currently not indexed",
+        "last_crawl": "2026-08-30T11:37:48Z"
+      },
+      "/regions": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-25T15:53:12Z"
+      },
+      "/regions/outer-banks": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-06T15:49:01Z"
+      },
+      "/regions/north-carolina-coast": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-26T00:23:53Z"
+      },
+      "/regions/virginia-coast": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-09-25T16:52:57Z"
+      },
+      "/regions/jersey-shore": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-08-20T12:31:17Z"
+      },
+      "/regions/long-island": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-15T12:53:54Z"
+      },
+      "/regions/florida-space-coast": {
+        "verdict": "PASS",
+        "coverage": "Submitted and indexed",
+        "last_crawl": "2026-10-07T18:34:05Z"
       }
     },
-    "inspection_cursor": 143,
+    "inspection_cursor": 24,
     "inspection_summary": {
       "checked": 60,
-      "indexed": 42,
-      "not_indexed": 18
+      "indexed": 55,
+      "not_indexed": 5
     }
   },
   "cloudflare": {
     "window_days": 7,
-    "pageviews": 172,
+    "pageviews": 164,
     "top_paths": [
       {
         "path": "/",
-        "views": 41
-      },
-      {
-        "path": "/learn/wave-period-explained",
-        "views": 13
+        "views": 43
       },
       {
         "path": "/forecast/virginia-beach",
-        "views": 12
+        "views": 10
+      },
+      {
+        "path": "/learn/wave-period-explained",
+        "views": 10
       },
       {
         "path": "/ig",
-        "views": 7
+        "views": 9
       },
       {
-        "path": "/forecast/marquette-mi",
+        "path": "/forecast/carolina-beach",
         "views": 6
       },
       {
         "path": "/forecast/cape-may-cove-nj",
-        "views": 6
+        "views": 5
       },
       {
         "path": "/forecast/frankfort-mi",
         "views": 5
       },
       {
-        "path": "/forecast/carolina-beach",
+        "path": "/learn/best-tide-for-surfing",
         "views": 4
       },
       {
@@ -1861,15 +1874,19 @@
         "views": 3
       },
       {
-        "path": "/regions",
+        "path": "/forecast/marquette-mi",
+        "views": 3
+      },
+      {
+        "path": "/forecast/ocracoke",
         "views": 2
       },
       {
-        "path": "/forecast/port-aransas-tx",
+        "path": "/forecast/hatteras",
         "views": 2
       },
       {
-        "path": "/learn/best-tide-for-surfing",
+        "path": "/forecast/presque-isle-pa",
         "views": 2
       },
       {
@@ -1877,7 +1894,7 @@
         "views": 2
       },
       {
-        "path": "/forecast/santa-cruz-ca",
+        "path": "/forecast/port-aransas-tx",
         "views": 2
       },
       {
@@ -1893,11 +1910,11 @@
         "views": 2
       },
       {
-        "path": "/compare/surfline",
+        "path": "/forecast/rochester-ontario-beach-ny",
         "views": 2
       },
       {
-        "path": "/forecast/ocracoke",
+        "path": "/forecast/westport-wa",
         "views": 2
       },
       {
@@ -1905,34 +1922,30 @@
         "views": 2
       },
       {
-        "path": "/forecast/presque-isle-pa",
-        "views": 2
+        "path": "/forecast/wb-mercers-pier",
+        "views": 1
       },
       {
-        "path": "/forecast/rochester-ontario-beach-ny",
-        "views": 2
+        "path": "/forecast/manasquan-nj",
+        "views": 1
       },
       {
-        "path": "/forecast/hatteras",
-        "views": 2
-      },
-      {
-        "path": "/about",
-        "views": 2
+        "path": "/regions",
+        "views": 1
       }
     ],
     "top_referrers": [
       {
         "host": "(none)",
-        "views": 109
+        "views": 103
       },
       {
         "host": "www.google.com",
-        "views": 27
+        "views": 26
       },
       {
         "host": "freesurfforecast.com",
-        "views": 22
+        "views": 19
       },
       {
         "host": "l.instagram.com",
@@ -1947,11 +1960,15 @@
         "views": 2
       },
       {
-        "host": "search.yahoo.com",
-        "views": 1
+        "host": "m.facebook.com",
+        "views": 2
       },
       {
         "host": "www.google.com.hk",
+        "views": 1
+      },
+      {
+        "host": "surf-dash-ayik.onrender.com",
         "views": 1
       }
     ]
@@ -1960,93 +1977,75 @@
     "percentile": "p75",
     "sitewide_7d": {
       "samples": 163,
-      "cumulativeLayoutShiftP75": 0.009,
-      "firstContentfulPaintP75_ms": 754.0,
-      "interactionToNextPaintP75_ms": 72.0,
-      "largestContentfulPaintP75_ms": 2025.0,
-      "timeToFirstByteP75_ms": 347.0
+      "cumulativeLayoutShiftP75": 0.019,
+      "firstContentfulPaintP75_ms": 868.0,
+      "interactionToNextPaintP75_ms": 80.0,
+      "largestContentfulPaintP75_ms": 2279.0,
+      "timeToFirstByteP75_ms": 398.0
     },
     "sitewide_1d": {
-      "samples": 17,
-      "cumulativeLayoutShiftP75": 0.002,
-      "firstContentfulPaintP75_ms": 734.0,
-      "interactionToNextPaintP75_ms": 48.0,
-      "largestContentfulPaintP75_ms": 3576.0,
-      "timeToFirstByteP75_ms": 373.0
+      "samples": 25,
+      "cumulativeLayoutShiftP75": 0.019,
+      "firstContentfulPaintP75_ms": 1032.0,
+      "interactionToNextPaintP75_ms": 80.0,
+      "largestContentfulPaintP75_ms": 2879.0,
+      "timeToFirstByteP75_ms": 681.0
     },
     "cls_spread_7d": {
       "samples": 163,
       "cumulativeLayoutShiftP25": 0,
       "cumulativeLayoutShiftP50": 0.001,
-      "cumulativeLayoutShiftP75": 0.009,
+      "cumulativeLayoutShiftP75": 0.019,
       "cumulativeLayoutShiftP90": 0.08,
       "cumulativeLayoutShiftP95": 0.08,
-      "cumulativeLayoutShiftP99": 0.438,
+      "cumulativeLayoutShiftP99": 0.097,
       "cumulativeLayoutShiftP999": 0.438
     },
     "by_path_7d": [
       {
         "requestPath": "/",
-        "samples": 42,
-        "cumulativeLayoutShiftP75": 0.001,
+        "samples": 43,
+        "cumulativeLayoutShiftP75": 0.019,
         "firstContentfulPaintP75_ms": 1035.0,
         "interactionToNextPaintP75_ms": 120.0,
-        "largestContentfulPaintP75_ms": 2279.0,
-        "timeToFirstByteP75_ms": 480.0
-      },
-      {
-        "requestPath": "/learn/wave-period-explained",
-        "samples": 10,
-        "cumulativeLayoutShiftP75": 0,
-        "firstContentfulPaintP75_ms": 272.0,
-        "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 272.0,
-        "timeToFirstByteP75_ms": 251.0
+        "largestContentfulPaintP75_ms": 2416.0,
+        "timeToFirstByteP75_ms": 743.0
       },
       {
         "requestPath": "/forecast/virginia-beach",
-        "samples": 10,
+        "samples": 8,
         "cumulativeLayoutShiftP75": 0.039,
         "firstContentfulPaintP75_ms": 496.0,
-        "interactionToNextPaintP75_ms": 72.0,
-        "largestContentfulPaintP75_ms": 5336.0,
+        "interactionToNextPaintP75_ms": 80.0,
+        "largestContentfulPaintP75_ms": 5092.0,
         "timeToFirstByteP75_ms": 338.0
       },
       {
+        "requestPath": "/forecast/carolina-beach",
+        "samples": 7,
+        "cumulativeLayoutShiftP75": 0.001,
+        "firstContentfulPaintP75_ms": 672.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 2496.0,
+        "timeToFirstByteP75_ms": 373.0
+      },
+      {
         "requestPath": "/ig",
-        "samples": 6,
+        "samples": 7,
         "cumulativeLayoutShiftP75": -1,
-        "firstContentfulPaintP75_ms": 937.0,
+        "firstContentfulPaintP75_ms": 1024.0,
         "interactionToNextPaintP75_ms": 48.0,
-        "largestContentfulPaintP75_ms": 1815.0,
+        "largestContentfulPaintP75_ms": 1903.0,
         "timeToFirstByteP75_ms": 187.0
       },
       {
-        "requestPath": "/forecast/carolina-beach",
-        "samples": 5,
-        "cumulativeLayoutShiftP75": 0.001,
-        "firstContentfulPaintP75_ms": 472.0,
+        "requestPath": "/learn/wave-period-explained",
+        "samples": 7,
+        "cumulativeLayoutShiftP75": 0,
+        "firstContentfulPaintP75_ms": 312.0,
         "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 1668.0,
-        "timeToFirstByteP75_ms": 263.0
-      },
-      {
-        "requestPath": "/forecast/cape-may-cove-nj",
-        "samples": 5,
-        "cumulativeLayoutShiftP75": 0.001,
-        "firstContentfulPaintP75_ms": 485.0,
-        "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 2307.0,
-        "timeToFirstByteP75_ms": 260.0
-      },
-      {
-        "requestPath": "/forecast/atlantic-beach-nc",
-        "samples": 4,
-        "cumulativeLayoutShiftP75": 0.019,
-        "firstContentfulPaintP75_ms": 2716.0,
-        "interactionToNextPaintP75_ms": 144.0,
-        "largestContentfulPaintP75_ms": 3992.0,
-        "timeToFirstByteP75_ms": 2607.0
+        "largestContentfulPaintP75_ms": 312.0,
+        "timeToFirstByteP75_ms": 281.0
       },
       {
         "requestPath": "/forecast/gulf-shores-al",
@@ -2058,13 +2057,40 @@
         "timeToFirstByteP75_ms": 112.0
       },
       {
-        "requestPath": "/forecast/atlantic-city-nj",
+        "requestPath": "/forecast/cape-may-cove-nj",
+        "samples": 4,
+        "cumulativeLayoutShiftP75": 0.001,
+        "firstContentfulPaintP75_ms": 212.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 1092.0,
+        "timeToFirstByteP75_ms": 175.0
+      },
+      {
+        "requestPath": "/forecast/atlantic-beach-nc",
+        "samples": 4,
+        "cumulativeLayoutShiftP75": 0.019,
+        "firstContentfulPaintP75_ms": 2716.0,
+        "interactionToNextPaintP75_ms": 144.0,
+        "largestContentfulPaintP75_ms": 3992.0,
+        "timeToFirstByteP75_ms": 2607.0
+      },
+      {
+        "requestPath": "/forecast/westport-wa",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0.001,
+        "firstContentfulPaintP75_ms": 392.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 1308.0,
+        "timeToFirstByteP75_ms": 53.0
+      },
+      {
+        "requestPath": "/forecast/jacksonville-beach-fl",
         "samples": 3,
         "cumulativeLayoutShiftP75": 0.08,
-        "firstContentfulPaintP75_ms": 232.0,
+        "firstContentfulPaintP75_ms": 308.0,
         "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 1176.0,
-        "timeToFirstByteP75_ms": 28.0
+        "largestContentfulPaintP75_ms": 1232.0,
+        "timeToFirstByteP75_ms": 40.0
       },
       {
         "requestPath": "/regions/long-island",
@@ -2103,6 +2129,15 @@
         "timeToFirstByteP75_ms": 467.0
       },
       {
+        "requestPath": "/forecast/port-aransas-tx",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0.001,
+        "firstContentfulPaintP75_ms": 754.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 1148.0,
+        "timeToFirstByteP75_ms": 411.0
+      },
+      {
         "requestPath": "/regions/great-lakes",
         "samples": 3,
         "cumulativeLayoutShiftP75": 0,
@@ -2113,48 +2148,12 @@
       },
       {
         "requestPath": "/about",
-        "samples": 3,
+        "samples": 2,
         "cumulativeLayoutShiftP75": 0,
         "firstContentfulPaintP75_ms": 317.0,
-        "interactionToNextPaintP75_ms": 72.0,
+        "interactionToNextPaintP75_ms": -0.0,
         "largestContentfulPaintP75_ms": 326.0,
-        "timeToFirstByteP75_ms": 331.0
-      },
-      {
-        "requestPath": "/forecast/port-aransas-tx",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": -1,
-        "firstContentfulPaintP75_ms": 855.0,
-        "interactionToNextPaintP75_ms": 16.0,
-        "largestContentfulPaintP75_ms": 1732.0,
-        "timeToFirstByteP75_ms": 490.0
-      },
-      {
-        "requestPath": "/compare/surfline",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": -1,
-        "firstContentfulPaintP75_ms": 516.0,
-        "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 516.0,
-        "timeToFirstByteP75_ms": 213.0
-      },
-      {
-        "requestPath": "/forecast/key-west-fl",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": 0.001,
-        "firstContentfulPaintP75_ms": 1344.0,
-        "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 2324.0,
-        "timeToFirstByteP75_ms": 784.0
-      },
-      {
-        "requestPath": "/regions/new-england",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": 0,
-        "firstContentfulPaintP75_ms": 84.0,
-        "interactionToNextPaintP75_ms": -0.0,
-        "largestContentfulPaintP75_ms": 84.0,
-        "timeToFirstByteP75_ms": 270.0
+        "timeToFirstByteP75_ms": 198.0
       },
       {
         "requestPath": "/forecast/ogunquit-beach-me",
@@ -2164,26 +2163,44 @@
         "interactionToNextPaintP75_ms": -0.0,
         "largestContentfulPaintP75_ms": 3932.0,
         "timeToFirstByteP75_ms": 1014.0
+      },
+      {
+        "requestPath": "/forecast/presque-isle-pa",
+        "samples": 2,
+        "cumulativeLayoutShiftP75": 0.08,
+        "firstContentfulPaintP75_ms": 236.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 1396.0,
+        "timeToFirstByteP75_ms": 24.0
+      },
+      {
+        "requestPath": "/regions/new-england",
+        "samples": 2,
+        "cumulativeLayoutShiftP75": 0,
+        "firstContentfulPaintP75_ms": 84.0,
+        "interactionToNextPaintP75_ms": -0.0,
+        "largestContentfulPaintP75_ms": 84.0,
+        "timeToFirstByteP75_ms": 270.0
       }
     ],
     "by_device_7d": [
       {
         "deviceType": "desktop",
-        "samples": 101,
-        "cumulativeLayoutShiftP75": 0.022,
-        "firstContentfulPaintP75_ms": 532.0,
-        "interactionToNextPaintP75_ms": 48.0,
-        "largestContentfulPaintP75_ms": 1920.0,
-        "timeToFirstByteP75_ms": 329.0
+        "samples": 107,
+        "cumulativeLayoutShiftP75": 0.026,
+        "firstContentfulPaintP75_ms": 784.0,
+        "interactionToNextPaintP75_ms": 80.0,
+        "largestContentfulPaintP75_ms": 2128.0,
+        "timeToFirstByteP75_ms": 373.0
       },
       {
         "deviceType": "mobile",
-        "samples": 61,
-        "cumulativeLayoutShiftP75": 0.003,
-        "firstContentfulPaintP75_ms": 855.0,
+        "samples": 55,
+        "cumulativeLayoutShiftP75": 0.002,
+        "firstContentfulPaintP75_ms": 1024.0,
         "interactionToNextPaintP75_ms": 72.0,
-        "largestContentfulPaintP75_ms": 2252.0,
-        "timeToFirstByteP75_ms": 359.0
+        "largestContentfulPaintP75_ms": 2332.0,
+        "timeToFirstByteP75_ms": 411.0
       },
       {
         "deviceType": "tablet",
@@ -2199,60 +2216,54 @@
       {
         "cumulativeLayoutShiftElement": "",
         "cumulativeLayoutShiftPath": "/",
-        "samples": 36,
-        "cumulativeLayoutShiftP75": 0
-      },
-      {
-        "cumulativeLayoutShiftElement": "",
-        "cumulativeLayoutShiftPath": "/learn/wave-period-explained",
-        "samples": 10,
+        "samples": 33,
         "cumulativeLayoutShiftP75": 0
       },
       {
         "cumulativeLayoutShiftElement": "",
         "cumulativeLayoutShiftPath": "/ig",
-        "samples": 6,
+        "samples": 7,
         "cumulativeLayoutShiftP75": -1
+      },
+      {
+        "cumulativeLayoutShiftElement": "",
+        "cumulativeLayoutShiftPath": "/learn/wave-period-explained",
+        "samples": 7,
+        "cumulativeLayoutShiftP75": 0
       },
       {
         "cumulativeLayoutShiftElement": "div.grid-stack-item-content>div.panel>div.panel-content>div.chart-wrap>div.wave-tooltip",
         "cumulativeLayoutShiftPath": "/forecast/virginia-beach",
-        "samples": 5,
-        "cumulativeLayoutShiftP75": 0.067
-      },
-      {
-        "cumulativeLayoutShiftElement": "",
-        "cumulativeLayoutShiftPath": "/forecast/cape-may-cove-nj",
         "samples": 4,
-        "cumulativeLayoutShiftP75": -1
-      },
-      {
-        "cumulativeLayoutShiftElement": "html>body>header.header-wrap>nav.header-toolbar>div.header-toolbar-right",
-        "cumulativeLayoutShiftPath": "/forecast/marquette-mi",
-        "samples": 3,
-        "cumulativeLayoutShiftP75": 0.001
-      },
-      {
-        "cumulativeLayoutShiftElement": "",
-        "cumulativeLayoutShiftPath": "/regions/long-island",
-        "samples": 3,
-        "cumulativeLayoutShiftP75": 0
-      },
-      {
-        "cumulativeLayoutShiftElement": "",
-        "cumulativeLayoutShiftPath": "/about",
-        "samples": 3,
-        "cumulativeLayoutShiftP75": 0
+        "cumulativeLayoutShiftP75": 0.067
       },
       {
         "cumulativeLayoutShiftElement": "html>body>header.header-wrap>nav.header-toolbar>div.header-toolbar-right",
         "cumulativeLayoutShiftPath": "/",
+        "samples": 4,
+        "cumulativeLayoutShiftP75": 0.001
+      },
+      {
+        "cumulativeLayoutShiftElement": "html>body>header.header-wrap>nav.header-toolbar>div.header-toolbar-right",
+        "cumulativeLayoutShiftPath": "/forecast/westport-wa",
         "samples": 3,
         "cumulativeLayoutShiftP75": 0.001
       },
       {
+        "cumulativeLayoutShiftElement": "div.grid-stack-item.ui-resizable-autohide>div.grid-stack-item-content>div.panel>div.panel-content",
+        "cumulativeLayoutShiftPath": "/",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0.019
+      },
+      {
         "cumulativeLayoutShiftElement": "",
         "cumulativeLayoutShiftPath": "/regions/great-lakes",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0
+      },
+      {
+        "cumulativeLayoutShiftElement": "",
+        "cumulativeLayoutShiftPath": "/forecast/carolina-beach",
         "samples": 3,
         "cumulativeLayoutShiftP75": 0
       },
@@ -2269,22 +2280,28 @@
         "cumulativeLayoutShiftP75": 0
       },
       {
+        "cumulativeLayoutShiftElement": "html>body>header.header-wrap>nav.header-toolbar>div.header-toolbar-right",
+        "cumulativeLayoutShiftPath": "/forecast/marquette-mi",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0.001
+      },
+      {
+        "cumulativeLayoutShiftElement": "",
+        "cumulativeLayoutShiftPath": "/forecast/cape-may-cove-nj",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": -1
+      },
+      {
+        "cumulativeLayoutShiftElement": "",
+        "cumulativeLayoutShiftPath": "/regions/long-island",
+        "samples": 3,
+        "cumulativeLayoutShiftP75": 0
+      },
+      {
         "cumulativeLayoutShiftElement": "div.grid-stack-item.ui-resizable-autohide>div.grid-stack-item-content>div.panel>div.panel-content",
         "cumulativeLayoutShiftPath": "/forecast/virginia-beach",
         "samples": 3,
         "cumulativeLayoutShiftP75": 0.021
-      },
-      {
-        "cumulativeLayoutShiftElement": "",
-        "cumulativeLayoutShiftPath": "/forecast/atlantic-beach-nc",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": 0
-      },
-      {
-        "cumulativeLayoutShiftElement": "html>body>header.header-wrap>nav.header-toolbar>div.header-toolbar-right",
-        "cumulativeLayoutShiftPath": "/forecast/carolina-beach",
-        "samples": 2,
-        "cumulativeLayoutShiftP75": 0.001
       }
     ]
   },
@@ -2301,7 +2318,7 @@
       "/static/og-image.png": {
         "label": "static asset",
         "statuses": [
-          "HIT",
+          "REVALIDATED",
           "HIT"
         ],
         "cached": true
@@ -2313,57 +2330,141 @@
     "checked": 15,
     "review": [
       {
-        "spot": "Daytona Beach FL",
-        "lat": 29.2108,
-        "lon": -81.0228,
-        "station": "8720954",
-        "station_name": "Ormond Beach, Halifax River",
-        "distance_km": 8.8,
-        "range_m": 0.108,
-        "reasons": [
-          "station name suggests enclosed water ('river')"
-        ]
-      },
-      {
-        "spot": "Ormond Beach FL",
-        "lat": 29.35,
-        "lon": -81.05,
-        "station": "8720954",
-        "station_name": "Ormond Beach, Halifax River",
-        "distance_km": 7.2,
-        "range_m": 0.108,
-        "reasons": [
-          "station name suggests enclosed water ('river')"
-        ]
-      },
-      {
-        "spot": "Flagler Beach FL",
-        "lat": 29.47,
-        "lon": -81.13,
-        "station": "8720833",
-        "station_name": "Smith Creek, Flagler Beach",
-        "distance_km": 1.1,
-        "range_m": 0.228,
+        "spot": "Tybee Island GA",
+        "lat": 32.0025,
+        "lon": -80.8456,
+        "station": "TEC3399",
+        "station_name": "Tybee Creek entrance",
+        "distance_km": 2.2,
+        "range_m": 2.165,
         "reasons": [
           "station name suggests enclosed water ('creek')"
         ]
       },
       {
-        "spot": "Panama City Beach FL",
-        "lat": 30.1766,
-        "lon": -85.8055,
-        "station": "8729152",
-        "station_name": "Alligator Bayou",
-        "distance_km": 4.9,
-        "range_m": 0.294,
+        "spot": "Hilton Head Island SC",
+        "lat": 32.22,
+        "lon": -80.75,
+        "station": "8669133",
+        "station_name": "Skull Creek, south entrance, Hilton Head Island",
+        "distance_km": 2.1,
+        "range_m": 2.299,
+        "reasons": [
+          "station name suggests enclosed water ('creek')"
+        ]
+      },
+      {
+        "spot": "Folly Beach SC",
+        "lat": 32.6552,
+        "lon": -79.9403,
+        "station": "8666652",
+        "station_name": "Folly River Bridge, Folly Island",
+        "distance_km": 0.8,
+        "range_m": 1.682,
+        "reasons": [
+          "station name suggests enclosed water ('river')"
+        ]
+      },
+      {
+        "spot": "Isle of Palms SC",
+        "lat": 32.7866,
+        "lon": -79.7948,
+        "station": "8665387",
+        "station_name": "Hamlin Creek, Isle of Palms",
+        "distance_km": 0.3,
+        "range_m": 1.6,
+        "reasons": [
+          "station name suggests enclosed water ('creek')"
+        ]
+      },
+      {
+        "spot": "San Diego - Pacific Beach CA",
+        "lat": 32.7947,
+        "lon": -117.253,
+        "station": "9410196",
+        "station_name": "Mission Bay, Campland",
+        "distance_km": 2.7,
+        "range_m": 1.382,
         "reasons": [
           "station name suggests enclosed water ('bay')"
+        ]
+      },
+      {
+        "spot": "Oceanside CA",
+        "lat": 33.1959,
+        "lon": -117.3795,
+        "station": "TWC0419",
+        "station_name": "San Clemente",
+        "distance_km": 33.0,
+        "range_m": 1.318,
+        "reasons": [
+          "33.0 km away"
+        ]
+      },
+      {
+        "spot": "Laguna Beach CA",
+        "lat": 33.5427,
+        "lon": -117.7854,
+        "station": "9410580",
+        "station_name": "Newport Bay Entrance, Corona del Mar",
+        "distance_km": 11.3,
+        "range_m": 1.332,
+        "reasons": [
+          "station name suggests enclosed water ('bay')"
+        ]
+      },
+      {
+        "spot": "Garden City Beach SC",
+        "lat": 33.61,
+        "lon": -79.0,
+        "station": "8661419",
+        "station_name": "Garden City Bridge, Main Creek",
+        "distance_km": 3.5,
+        "range_m": 1.244,
+        "reasons": [
+          "station name suggests enclosed water ('creek')"
+        ]
+      },
+      {
+        "spot": "Huntington Beach CA",
+        "lat": 33.6559,
+        "lon": -117.9991,
+        "station": "9410599",
+        "station_name": "Santa Ana River entrance (inside)",
+        "distance_km": 4.8,
+        "range_m": 0.813,
+        "reasons": [
+          "station name suggests enclosed water ('(inside)')"
+        ]
+      },
+      {
+        "spot": "Myrtle Beach SC",
+        "lat": 33.6891,
+        "lon": -78.8867,
+        "station": "8660854",
+        "station_name": "Myrtle Beach, Combination Bridge",
+        "distance_km": 4.2,
+        "range_m": 0.486,
+        "reasons": [
+          "station name suggests enclosed water ('bridge')"
+        ]
+      },
+      {
+        "spot": "Seal Beach CA",
+        "lat": 33.7414,
+        "lon": -118.1048,
+        "station": "TWC0427",
+        "station_name": "Los Patos (highway bridge)",
+        "distance_km": 5.8,
+        "range_m": 1.176,
+        "reasons": [
+          "station name suggests enclosed water ('bridge')"
         ]
       }
     ],
     "new": [],
     "seen_total": 58,
-    "cursor": 35,
+    "cursor": 50,
     "spots_total": 146
   }
 }
