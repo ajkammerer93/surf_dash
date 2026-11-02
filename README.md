@@ -11,11 +11,11 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 - **Next 6 Hours Hero** — Always-visible decision window with a **go/no-go verdict** (Go surf / Worth a paddle / Maybe / Skip it) for the current session plus the best upcoming window in the next 48 hours, above hour-by-hour wave height, period, wind, and condition color bars.
 - **Swell Map** — One zoom-adaptive map replaces separate basin/local panes. The global swell field renders as a smooth raster (perceptual color ramp, shoreline-masked, single image overlay per timestep — no per-frame vector work); the high-resolution local grid blends over it in the same scale. Zoomed out: swell-direction arrows, the spot's swell-window cone, groundswell arrival rings (1–4 days), and an estimated storm-origin marker. Zoomed in: nearby-spot labels with live heights (click to switch spots), camera markers, and buoy markers — all with hover tooltips. Animated wind particles at every zoom (high-res local wind when zoomed in), paused off-screen and on hidden tabs. Embedded time slider with play/speed controls and a cursor probe that reads out conditions under the pointer.
 - **Current Conditions** — Wave height/period/direction, wind, air and water temperature, tide stage, hover direction diagrams, tide sparkline, and a wetsuit recommendation.
-- **Wave & Wind Chart** — 7-day time-series built for at-a-glance reading: hourly stacked bars where height = surf size, the faded cap = wind chop, and the bar color = surf condition (colorblind-validated scale, green offshore → rose blown-out); a wind lane of direction arrows with speeds above the plot; a tide lane with high/low times below it; a swell period + direction row along the bottom; day/night bands; and a rich hover tooltip with a wind/swell direction diagram and per-hour forecast confidence.
+- **Wave & Wind Chart** — 16-day time-series (7 days by default, days 8-16 as a lower-confidence outlook) built for at-a-glance reading: hourly stacked bars where height = surf size, the faded cap = wind chop, and the bar color = surf condition (colorblind-validated scale, green offshore → rose blown-out); a wind lane of direction arrows with speeds above the plot; a tide lane with high/low times below it; a swell period + direction row along the bottom; day/night bands; and a rich hover tooltip with a wind/swell direction diagram and per-hour forecast confidence.
 - **Buoy Observations** — NDBC and CDIP real-time data with 1D and 2D spectra and a deep-water-buoy caveat beyond 100 km.
 - **Surf Cameras** — Nearest webcams with safe DOM-rendered attribution, preferring embeddable live streams over link-outs. YouTube live surf cams (owner-enabled embedding only, official privacy-enhanced player) are curated via a scanner + review pipeline; providers that opt out of embedding (e.g. SurfChex) render as designed link-out cards.
 - **Session Planner** — Scored 3-hour windows (0–100) factoring swell direction × beach orientation, period, wind, and tide. The "best window" highlight only appears when a window clears the Good (55+) bar.
-- **Any coastline, not just a spot list** — the 145 listed spots are a starting point, not the limit. Drop a pin anywhere on the map and you get the same 7-day wave, wind and swell forecast, plus nearby cams; tides and buoy observations are US-only, since they come from NOAA CO-OPS and NDBC/CDIP.
+- **Any coastline, not just a spot list** — the 145 listed spots are a starting point, not the limit. Drop a pin anywhere on the map and you get the same 16-day wave, wind and swell forecast, plus nearby cams; tides and buoy observations are US-only, since they come from NOAA CO-OPS and NDBC/CDIP.
 - **Geolocation** — "Use my location" snaps to the nearest of 145 spots; first-time visitors are offered it on the welcome card, never auto-prompted.
 - **Units** — Imperial/metric toggle (ft/mph ↔ m/km·h, °F ↔ °C) across every chart, map, table, and export; scoring is unit-independent.
 - **Condition Alerts** — Browser notifications gated on a user-set score threshold (Fair 35+ / Good 55+ / Prime 75+). No email required.
@@ -39,7 +39,7 @@ An open-source, data-forward surf forecast dashboard that aggregates wave, wind,
 
 | Data | Source | Cost |
 |---|---|---|
-| Wave height, peak period, direction | [Open-Meteo Marine API](https://open-meteo.com/) (point) / NOAA gfswave grib2 from [NODD S3](https://registry.opendata.aws/noaa-gfs-bdp-pds/) (grids), ERDDAP last resort | Free |
+| Wave height, peak period, direction | NOAA GFS-Wave via the [Open-Meteo Marine API](https://open-meteo.com/) (point, 16 days) / NOAA gfswave grib2 from [NODD S3](https://registry.opendata.aws/noaa-gfs-bdp-pds/) (grids), ERDDAP last resort | Free |
 | Swell partitions, gridded wind | NOAA gfswave (three partitioned swell trains + surface wind ride in the same files) | Free |
 | Wind columns, air temp | [Open-Meteo Weather API](https://open-meteo.com/) with wave-store and ERDDAP fallbacks | Free |
 | Tide predictions | [NOAA CO-OPS API](https://tidesandcurrents.noaa.gov/api/) (non-tidal waters flagged; open-coast station preferred over a nearer backwater one) | Free |
@@ -138,7 +138,7 @@ Old `/?lat=X&lon=Y&name=Z` URLs 301-redirect to `/forecast/<slug>`.
 | `GET /api/forecast?lat=&lon=` | Point forecast with per-hour confidence |
 | `GET /api/map-forecast?lat=&lon=` | Local gridded data for the Swell Map |
 | `GET /api/ocean-basin?lat=&lon=` | Global basin data for the Swell Map |
-| `GET /api/tides?lat=&lon=` | 7-day tide predictions (`non_tidal` flag for the Great Lakes) |
+| `GET /api/tides?lat=&lon=` | 16-day tide predictions (`non_tidal` flag for the Great Lakes) |
 | `GET /api/webcams?lat=&lon=` | Nearest cams (with coordinates for map markers) |
 | `GET /api/buoys?lat=&lon=` | Buoy observations + spectra |
 | `GET /api/beach-orientation?lat=&lon=` | Coastline facing direction |

@@ -137,8 +137,9 @@ class TestComputeConfidence:
 
     def test_nomads_outscores_open_meteo(self):
         n = _compute_confidence(self._mk(source='NOMADS'), 'test')
+        g = _compute_confidence(self._mk(source='GFS-Wave'), 'test')
         o = _compute_confidence(self._mk(source='Open-Meteo'), 'test')
-        assert n['score'] > o['score']
+        assert n['score'] > g['score'] > o['score']
 
     def test_unknown_source_gets_low_score(self):
         u = _compute_confidence(self._mk(source='Unknown'), 'test')

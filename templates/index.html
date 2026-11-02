@@ -2021,6 +2021,20 @@
             color: var(--status-error);
         }
 
+        /* Days 8-16 of the forecast table: the outlook. Dimmed, with one
+           divider row so the boundary reads at a glance. */
+        .data-table tr.row-outlook td { opacity: 0.62; }
+        .data-table tr.outlook-divider td {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 6px 8px;
+            border-top: 1px dashed var(--border);
+            border-bottom: 1px dashed var(--border);
+        }
+
         .cond-summary {
             font-size: 10px;
             color: var(--text-muted);
@@ -2788,7 +2802,7 @@
         }{% endif %},
         "amenityFeature": [
             { "@type": "LocationFeatureSpecification", "name": "Live surf cam", "value": true },
-            { "@type": "LocationFeatureSpecification", "name": "7-day forecast", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "16-day forecast", "value": true },
             { "@type": "LocationFeatureSpecification", "name": "Tide predictions", "value": true },
             { "@type": "LocationFeatureSpecification", "name": "Wind & wave data", "value": true }
         ]
@@ -2892,6 +2906,7 @@
                     </span>
                 </button>
                 <button class="header-btn mobile-collapse" id="units-toggle-btn" onclick="toggleUnits()" title="Switch between imperial and metric units" aria-label="Toggle units"><span id="units-toggle-label">ft</span></button>
+                <button class="header-btn mobile-collapse" id="horizon-toggle-btn" onclick="toggleForecastHorizon()" title="Forecast range: 7 days, or 16 days with a lower-confidence outlook" aria-label="Toggle forecast range" aria-pressed="false"><span id="horizon-toggle-label">7d</span></button>
                 <button class="header-btn mobile-collapse" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
                 <div class="more-menu">
                     <button class="header-btn more-menu-btn" id="more-menu-btn" onclick="toggleMoreMenu()" title="More options" aria-label="More options" aria-haspopup="true" aria-expanded="false">&#x22EE;</button>
@@ -2920,6 +2935,10 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
                             <span id="more-units-label">Units: ft / mph</span>
                         </button>
+                        <button class="more-item" role="menuitem" onclick="toggleForecastHorizon(); closeMoreMenu();" aria-label="Toggle forecast range between 7 and 16 days">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+                            <span id="more-horizon-label">Range: 7 days</span>
+                        </button>
                         <div class="more-divider" role="separator"></div>
                         <button class="more-item" role="menuitem" onclick="togglePageFullscreen(); closeMoreMenu();" aria-label="Toggle fullscreen mode">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -2938,7 +2957,7 @@
     <div id="onboarding-card" class="onboarding-overlay" style="display:none" role="dialog" aria-label="Welcome">
         <button class="onboarding-overlay-close" id="onboarding-close" aria-label="Dismiss welcome card">&times;</button>
         <h3>Welcome</h3>
-        <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows the full 7-day forecast.</p>
+        <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows 7 days by default; the range button in the toolbar extends it to 16, with days 8-16 drawn as a lower-confidence outlook.</p>
         <p>Toggle the skill-level icon for beginner-friendly labels, or use the panes menu (☰) to show/hide panels.</p>
         <button id="onboarding-geo-btn" class="onboarding-geo-btn" type="button">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -3015,7 +3034,7 @@
         <div style="max-width: 720px; margin: 40px auto; padding: 20px; color: #e8e8e8; font-family: sans-serif; line-height: 1.6;">
             <h2>Surf Forecast for {{ location_name }}</h2>
             <p>
-                Free Surf Forecast provides a 7-day surf forecast including wave height, wave period,
+                Free Surf Forecast provides a 16-day surf forecast including wave height, wave period,
                 wave direction, wind speed and direction, tide predictions, and live surf cameras for
                 {{ location_name }} and hundreds of other coastal locations.
             </p>
@@ -4215,7 +4234,7 @@
 
             ctx.font = (isPost ? 22 : 26) + 'px ' + fontStack;
             ctx.fillStyle = textDim;
-            ctx.fillText('Free 7-day surf forecast. No ads, no sign-up.', pad, footerY + (isPost ? 35 : 45));
+            ctx.fillText('Free 16-day surf forecast. No ads, no sign-up.', pad, footerY + (isPost ? 35 : 45));
 
             ctx.fillStyle = accent;
             ctx.font = 'bold ' + (isPost ? 24 : 28) + 'px ' + fontStack;
@@ -4843,6 +4862,42 @@
             try { localStorage.setItem('units', METRIC_UNITS ? 'imperial' : 'metric'); } catch (e) {}
             location.reload();
         }
+
+        // === Forecast horizon ===
+        // The server always sends the full 16 days (one cache entry, one
+        // response shape). The client shows the first FORECAST_CORE_HOURS by
+        // default and the whole thing on request, drawing everything past
+        // the core as an outlook: wave-model skill at day 10-16 is low, and
+        // the session planner never recommends a window out there.
+        const FORECAST_CORE_HOURS = 168;
+        const FORECAST_HORIZON_KEY = 'forecast-horizon';
+        function getForecastHorizon() {
+            try { return localStorage.getItem(FORECAST_HORIZON_KEY) === '16d' ? '16d' : '7d'; } catch (e) { return '7d'; }
+        }
+        function sliceForecastToHorizon(data) {
+            if (!Array.isArray(data)) return data;
+            return getForecastHorizon() === '16d' ? data : data.slice(0, FORECAST_CORE_HOURS);
+        }
+        function updateForecastHorizonLabels() {
+            var h = getForecastHorizon();
+            var btn = document.getElementById('horizon-toggle-btn');
+            var lbl = document.getElementById('horizon-toggle-label');
+            var more = document.getElementById('more-horizon-label');
+            if (lbl) lbl.textContent = h === '16d' ? '16d' : '7d';
+            if (btn) btn.setAttribute('aria-pressed', h === '16d' ? 'true' : 'false');
+            if (more) more.textContent = h === '16d' ? 'Range: 16 days' : 'Range: 7 days';
+        }
+        function toggleForecastHorizon() {
+            var next = getForecastHorizon() === '16d' ? '7d' : '16d';
+            try { localStorage.setItem(FORECAST_HORIZON_KEY, next); } catch (e) {}
+            updateForecastHorizonLabels();
+            // Re-run the forecast load: the response is edge- and
+            // server-cached, so this is a re-render, not a second upstream hit.
+            if (typeof loadPointForecast === 'function' && typeof currentLocation !== 'undefined' && currentLocation) {
+                loadPointForecast();
+            }
+        }
+        document.addEventListener('DOMContentLoaded', updateForecastHorizonLabels);
         // Static markup is authored with imperial labels; rewrite the few
         // fixed headers when the metric preference is active.
         document.addEventListener('DOMContentLoaded', function() {
@@ -5178,10 +5233,16 @@
                 tideLookup[key] = t.height;
             });
 
-            // Score each daylight hour
+            // Score each daylight hour. Hours in the outlook (past
+            // FORECAST_CORE_HOURS) are never scored: a "best window" twelve
+            // days out is noise with a confident label, and this one filter
+            // keeps the planner, the ICS export, the share card and the surf
+            // alerts all inside the forecast proper.
+            var outlookStart = window._outlookStartMs || null;
             var scored = [];
             window._forecastData.forEach(function(item) {
                 var d = new Date(item.time);
+                if (outlookStart && d.getTime() >= outlookStart) return;
                 var p = getLocationParts(d);
                 var hour = parseInt(p.hour);
                 if (hour < 5 || hour > 20) return;
@@ -6155,6 +6216,8 @@
             var lastKey = '';
             var prevPeriod = null;
             var prevHeightFt = null;
+            var outlookStart = window._outlookStartMs || null;
+            var outlookDividerDone = false;
             data.forEach(function(item) {
                 var d = new Date(item.time);
                 var h = getLocationHour(d);
@@ -6162,6 +6225,17 @@
                 var key = formatLocationTime(d, {year:'numeric',month:'2-digit',day:'2-digit'}) + '-' + h;
                 if (key === lastKey) return;
                 lastKey = key;
+                var inOutlook = !!(outlookStart && d.getTime() >= outlookStart);
+                if (inOutlook && !outlookDividerDone) {
+                    outlookDividerDone = true;
+                    var dtr = document.createElement('tr');
+                    dtr.className = 'outlook-divider';
+                    var dtd = document.createElement('td');
+                    dtd.colSpan = 7;
+                    dtd.textContent = 'Outlook: days 8-16, lower confidence';
+                    dtr.appendChild(dtd);
+                    tableBody.appendChild(dtr);
+                }
                 var cond = classifySurfConditionGlobal(item.wind_direction, item.wind_speed);
                 var windMph = item.wind_speed != null ? (item.wind_speed * D_SPEED).toFixed(1) : '-';
                 var windDir = item.wind_direction != null ? dc(item.wind_direction) + ' (' + item.wind_direction.toFixed(0) + '\u00B0)' : '-';
@@ -6175,7 +6249,7 @@
                 var periodVal = item.wave_period != null ? item.wave_period.toFixed(1) : '-';
                 var periodArrow = trendArrow(item.wave_period, prevPeriod, 1.5, 0.5);
                 var tr = document.createElement('tr');
-                tr.className = condMap[cond] || '';
+                tr.className = (condMap[cond] || '') + (inOutlook ? ' row-outlook' : '');
                 var cells = [
                     formatLocationTime(d, {weekday:'short',month:'short',day:'numeric'}),
                     formatLocationTime(d, {hour:'2-digit',minute:'2-digit',hour12:true}),
@@ -6881,6 +6955,47 @@
         // Tide lane — the tide curve in its own band below the bars, with
         // high/low markers and their local times. Replaces both the old y2
         // overlay on this chart and the standalone Tidal Predictions panel.
+        // Outlook band -- days 8-16 of the 16-day view. Dims everything past
+        // window._outlookStartMs and labels it, so a 12-day-out bar never
+        // reads with the same authority as tomorrow's. Draws nothing in the
+        // 7-day view (the boundary is past the axis).
+        const outlookPlugin = {
+            id: 'outlook',
+            afterDatasetsDraw(chart) {
+                const startMs = window._outlookStartMs;
+                const { ctx, chartArea, scales: { x } } = chart;
+                if (!startMs || !chartArea || !x || !x.max || startMs >= x.max) return;
+                const px = Math.max(chartArea.left, x.getPixelForValue(startMs));
+                if (!(px < chartArea.right)) return;
+                const _dk = isDarkTheme();
+                const isWaveChart = chart.canvas && chart.canvas.id === 'waveChart';
+                const bandBottom = chartArea.bottom + (isWaveChart ? TIDE_LANE_H : 0);
+                ctx.save();
+                ctx.fillStyle = _dk ? 'rgba(10, 10, 10, 0.42)' : 'rgba(255, 255, 255, 0.45)';
+                ctx.fillRect(px, chartArea.top, chartArea.right - px, bandBottom - chartArea.top);
+                ctx.strokeStyle = _dk ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.3)';
+                ctx.setLineDash([4, 3]);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(px + 0.5, chartArea.top);
+                ctx.lineTo(px + 0.5, bandBottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                const label = 'OUTLOOK \u00b7 lower confidence';
+                ctx.font = 'bold 10px sans-serif';
+                const tw = ctx.measureText(label).width;
+                if (chartArea.right - px > tw + 16) {
+                    ctx.fillStyle = _dk ? 'rgba(20, 20, 20, 0.85)' : 'rgba(255, 255, 255, 0.9)';
+                    ctx.fillRect(px + 6, chartArea.top + 4, tw + 10, 16);
+                    ctx.fillStyle = themeColors().chartText;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, px + 11, chartArea.top + 12);
+                }
+                ctx.restore();
+            }
+        };
+
         const tideLanePlugin = {
             id: 'tideLane',
             afterDraw(chart) {
@@ -7062,10 +7177,14 @@
             const ticks = [];
             const start = new Date(axis.min);
             start.setUTCMinutes(0, 0, 0);
+            // Past ~8 days the 6-hourly minor ticks collide even at 45
+            // degrees; keep only midnight between the noon majors.
+            const longSpan = (axis.max - axis.min) > 8 * 86400000;
             let t = start.getTime() - 3600000;
             while (t <= axis.max) {
                 const localHour = getLocationHour(new Date(t));
-                if (localHour === 0 || localHour === 6 || localHour === 12 || localHour === 18) {
+                const minor = longSpan ? (localHour === 0) : (localHour === 0 || localHour === 6 || localHour === 18);
+                if (minor || localHour === 12) {
                     ticks.push({ value: t, major: localHour === 12 });
                 }
                 t += 3600000;
@@ -7113,9 +7232,19 @@
                 })
             ]).then(staleGuard(([orientation, rawResponse]) => {
                     // Extract forecast list and location timezone from response
-                    const data = rawResponse.error ? rawResponse : rawResponse.forecast;
+                    let data = rawResponse.error ? rawResponse : rawResponse.forecast;
                     if (!rawResponse.error) {
                         window._locationTimezone = rawResponse.location_timezone || 'UTC';
+                        if (Array.isArray(data)) {
+                            window._forecastDataFull = data;
+                            data = sliceForecastToHorizon(data);
+                            // The outlook starts FORECAST_CORE_HOURS after the
+                            // first forecast hour (00Z today), so the boundary
+                            // sits at the same place in both views.
+                            window._outlookStartMs = data.length
+                                ? new Date(data[0].time).getTime() + FORECAST_CORE_HOURS * 3600000
+                                : null;
+                        }
                     }
                     // Update confidence badge (text label + per-hour sparkline)
                     var confBadge = document.getElementById('forecast-confidence-badge');
@@ -7127,17 +7256,21 @@
                         labelEl.textContent = confLabel;
                         confBadge.appendChild(labelEl);
                         var sparklineEl = null;
+                        var sparkHours = Array.isArray(data) ? data.length : 0;
                         if (Array.isArray(c.per_hour) && c.per_hour.length > 1) {
-                            sparklineEl = buildConfidenceSparkline(c.per_hour);
+                            sparklineEl = buildConfidenceSparkline(sparkHours ? c.per_hour.slice(0, sparkHours) : c.per_hour);
                             confBadge.appendChild(sparklineEl);
                         }
-                        var endScore = c.per_hour && c.per_hour.length ? c.per_hour[c.per_hour.length - 1] : c.score;
+                        var horizonHours = Array.isArray(data) ? data.length : (c.per_hour ? c.per_hour.length : 168);
+                        var horizonDays = Math.max(1, Math.round(horizonHours / 24));
+                        var perHourVisible = Array.isArray(c.per_hour) ? c.per_hour.slice(0, horizonHours) : [];
+                        var endScore = perHourVisible.length ? perHourVisible[perHourVisible.length - 1] : c.score;
                         confBadge.title = (
-                            'Forecast confidence over the next 7 days.\n' +
+                            'Forecast confidence over the next ' + horizonDays + ' days.\n' +
                             'The sparkline shows how reliable each hour\'s forecast is,\n' +
-                            'from now (left) to ~7 days out (right). It slopes down\n' +
+                            'from now (left) to ~' + horizonDays + ' days out (right). It slopes down\n' +
                             'because wave-model skill decays with lead time.\n\n' +
-                            'Now: ' + c.score + '%   ·   7 days out: ' + endScore + '%\n' +
+                            'Now: ' + c.score + '%   ·   ' + horizonDays + ' days out: ' + endScore + '%\n' +
                             'Source: ' + (c.source || rawResponse.source || '?') +
                             ' (skill ceiling ' + (c.factors ? c.factors.source_quality : '?') + '%)\n' +
                             'Field completeness: ' + (c.factors ? c.factors.completeness : '?') + '%'
@@ -7145,7 +7278,7 @@
                         if (sparklineEl) {
                             sparklineEl.setAttribute('role', 'img');
                             sparklineEl.setAttribute('aria-label',
-                                'Confidence sparkline: ' + c.score + '% now, falling to ' + endScore + '% at 7-day lead');
+                                'Confidence sparkline: ' + c.score + '% now, falling to ' + endScore + '% at ' + horizonDays + '-day lead');
                         }
                         confBadge.className = 'panel-badge' + (c.score >= 75 ? '' : c.score >= 50 ? ' warning' : ' error');
                         confBadge.style.display = '';
@@ -7562,7 +7695,7 @@
 
                     waveChart = new Chart(ctx, {
                         type: 'bar',
-                        plugins: [dayNightPlugin, windLanePlugin, tideLanePlugin, periodRowPlugin],
+                        plugins: [dayNightPlugin, windLanePlugin, tideLanePlugin, periodRowPlugin, outlookPlugin],
                         data: {
                             datasets: [
                                 {
