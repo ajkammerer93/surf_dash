@@ -2241,9 +2241,47 @@
         .cond-swatch.fair { background: #dc2626; }
         .cond-swatch.choppy { background: #c9245e; }
 
+        /* 7d / 16d range switch in the Wave & Wind Forecast header. Sized to
+           the badge row so the header never grows (see the CLS note above
+           .panel-header): one line, no wrap, fixed height. */
+        .horizon-switch {
+            display: inline-flex;
+            align-items: stretch;
+            flex-shrink: 0;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-left: 8px;
+            height: 18px;
+        }
+        .horizon-switch button {
+            font-family: var(--font-body);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            line-height: 1;
+            padding: 0 7px;
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+        .horizon-switch button + button { border-left: 1px solid var(--border); }
+        .horizon-switch button:hover { color: var(--text); }
+        .horizon-switch button[aria-pressed="true"] {
+            background: var(--text);
+            color: var(--bg);
+        }
+        .horizon-switch button:focus-visible { outline: 2px solid var(--status-live); outline-offset: -2px; }
+
         @media (max-width: 600px) {
             .conditions-legend .cond-label { display: none; }
             .conditions-legend { gap: 6px; }
+            .horizon-switch { margin-left: 4px; }
+            .horizon-switch button { padding: 0 5px; }
         }
 
         /* === Charts === */
@@ -2906,7 +2944,6 @@
                     </span>
                 </button>
                 <button class="header-btn mobile-collapse" id="units-toggle-btn" onclick="toggleUnits()" title="Switch between imperial and metric units" aria-label="Toggle units"><span id="units-toggle-label">ft</span></button>
-                <button class="header-btn mobile-collapse" id="horizon-toggle-btn" onclick="toggleForecastHorizon()" title="Forecast range: 7 days, or 16 days with a lower-confidence outlook" aria-label="Toggle forecast range" aria-pressed="false"><span id="horizon-toggle-label">7d</span></button>
                 <button class="header-btn mobile-collapse" id="page-fullscreen-btn" onclick="togglePageFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
                 <div class="more-menu">
                     <button class="header-btn more-menu-btn" id="more-menu-btn" onclick="toggleMoreMenu()" title="More options" aria-label="More options" aria-haspopup="true" aria-expanded="false">&#x22EE;</button>
@@ -2935,10 +2972,6 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
                             <span id="more-units-label">Units: ft / mph</span>
                         </button>
-                        <button class="more-item" role="menuitem" onclick="toggleForecastHorizon(); closeMoreMenu();" aria-label="Toggle forecast range between 7 and 16 days">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
-                            <span id="more-horizon-label">Range: 7 days</span>
-                        </button>
                         <div class="more-divider" role="separator"></div>
                         <button class="more-item" role="menuitem" onclick="togglePageFullscreen(); closeMoreMenu();" aria-label="Toggle fullscreen mode">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -2957,7 +2990,7 @@
     <div id="onboarding-card" class="onboarding-overlay" style="display:none" role="dialog" aria-label="Welcome">
         <button class="onboarding-overlay-close" id="onboarding-close" aria-label="Dismiss welcome card">&times;</button>
         <h3>Welcome</h3>
-        <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows 7 days by default; the range button in the toolbar extends it to 16, with days 8-16 drawn as a lower-confidence outlook.</p>
+        <p>Click the location pin in the toolbar to switch breaks. The Next 6 Hours card above shows your decision-relevant window; the wave chart below shows 7 days by default; the 7d / 16d switch in its header extends it to 16, with days 8-16 drawn as a lower-confidence outlook.</p>
         <p>Toggle the skill-level icon for beginner-friendly labels, or use the panes menu (☰) to show/hide panels.</p>
         <button id="onboarding-geo-btn" class="onboarding-geo-btn" type="button">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -3219,6 +3252,10 @@
                             <span class="cond-key" id="legend-cross-shore" title="Strong cross-shore wind. Moderate texture, still surfable."><span class="cond-swatch cross-shore"></span><span class="cond-label">Cross</span></span>
                             <span class="cond-key" id="legend-fair" title="Light onshore wind. Some bump, workable."><span class="cond-swatch fair"></span><span class="cond-label">Lt onshore</span></span>
                             <span class="cond-key" id="legend-choppy" title="Onshore wind. Bumpy, disorganized surface conditions."><span class="cond-swatch choppy"></span><span class="cond-label">Choppy</span></span>
+                        </div>
+                        <div class="horizon-switch" id="horizon-switch" role="group" aria-label="Forecast range">
+                            <button type="button" data-horizon="7d" aria-pressed="true" title="Next 7 days" onclick="setForecastHorizon('7d')">7d</button>
+                            <button type="button" data-horizon="16d" aria-pressed="false" title="16 days: days 8-16 are a lower-confidence outlook" onclick="setForecastHorizon('16d')">16d</button>
                         </div>
                     </div>
                     <div class="panel-content">
@@ -4880,15 +4917,15 @@
         }
         function updateForecastHorizonLabels() {
             var h = getForecastHorizon();
-            var btn = document.getElementById('horizon-toggle-btn');
-            var lbl = document.getElementById('horizon-toggle-label');
-            var more = document.getElementById('more-horizon-label');
-            if (lbl) lbl.textContent = h === '16d' ? '16d' : '7d';
-            if (btn) btn.setAttribute('aria-pressed', h === '16d' ? 'true' : 'false');
-            if (more) more.textContent = h === '16d' ? 'Range: 16 days' : 'Range: 7 days';
+            document.querySelectorAll('#horizon-switch button[data-horizon]').forEach(function(b) {
+                b.setAttribute('aria-pressed', b.getAttribute('data-horizon') === h ? 'true' : 'false');
+            });
         }
-        function toggleForecastHorizon() {
-            var next = getForecastHorizon() === '16d' ? '7d' : '16d';
+        // The 7d / 16d switch lives in the Wave & Wind Forecast header, next
+        // to what it changes, not in the global toolbar.
+        function setForecastHorizon(next) {
+            next = next === '16d' ? '16d' : '7d';
+            if (next === getForecastHorizon()) { updateForecastHorizonLabels(); return; }
             try { localStorage.setItem(FORECAST_HORIZON_KEY, next); } catch (e) {}
             updateForecastHorizonLabels();
             // Re-run the forecast load: the response is edge- and

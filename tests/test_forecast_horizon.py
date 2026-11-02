@@ -192,10 +192,17 @@ class TestClientHorizon:
         with open(os.path.join(REPO, 'templates', 'index.html')) as f:
             return f.read()
 
-    def test_toggle_exists_on_desktop_and_in_the_more_menu(self, html):
-        assert 'id="horizon-toggle-btn"' in html
-        assert 'id="more-horizon-label"' in html
-        assert 'function toggleForecastHorizon()' in html
+    def test_switch_lives_in_the_forecast_panel_header(self, html):
+        # The range control sits beside the chart it changes, inside the
+        # Wave & Wind Forecast panel header -- not in the global toolbar.
+        start = html.index('data-panel-id="wave-wind-chart"')
+        header = html[start:html.index('<div class="panel-content">', start)]
+        assert 'id="horizon-switch"' in header
+        assert 'data-horizon="7d" aria-pressed="true"' in header
+        assert 'data-horizon="16d" aria-pressed="false"' in header
+        assert 'function setForecastHorizon(' in html
+        assert 'horizon-toggle-btn' not in html
+        assert 'more-horizon-label' not in html
 
     def test_default_is_seven_days_and_the_core_is_168_hours(self, html):
         assert 'const FORECAST_CORE_HOURS = 168;' in html
