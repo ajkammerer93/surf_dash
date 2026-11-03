@@ -2340,6 +2340,33 @@
             height: 120px;
             flex-shrink: 0;
         }
+        /* Dismiss button: the one part of the tooltip that takes pointer
+           events. Touch-only; a hover tooltip closes itself on mouseout. */
+        .wave-tooltip .tt-close {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: inherit;
+            font-size: 20px;
+            line-height: 28px;
+            text-align: center;
+            cursor: pointer;
+            pointer-events: auto;
+            opacity: 0.75;
+        }
+        .wave-tooltip .tt-close:active { background: rgba(127, 127, 127, 0.25); }
+        .wave-tooltip.tt-hidden .tt-close { pointer-events: none; }
+        .wave-tooltip .tt-text { padding-right: 26px; }
+        @media (hover: hover) and (pointer: fine) {
+            .wave-tooltip .tt-close { display: none; }
+            .wave-tooltip .tt-text { padding-right: 0; }
+        }
         @media (max-width: 480px) {
             .wave-tooltip-diagram { display: none; }
             .wave-tooltip { max-width: 220px; }
@@ -7214,13 +7241,26 @@
             const ticks = [];
             const start = new Date(axis.min);
             start.setUTCMinutes(0, 0, 0);
-            // Past ~8 days the 6-hourly minor ticks collide even at 45
-            // degrees; keep only midnight between the noon majors.
-            const longSpan = (axis.max - axis.min) > 8 * 86400000;
+            // Tick density follows pixels per day, not the viewport. Chart.js
+            // runs autoSkip on every time scale (ticks.source 'auto') no
+            // matter what ticks.autoSkip says, keeping every Nth tick from
+            // the FIRST one -- on a phone that kept 06:00/18:00 and threw
+            // away every noon tick, so the axis showed no day of the week
+            // at all. Emit only what fits and the day labels survive:
+            //   < 90 px/day  : noon only, compact "Mon 2" labels
+            //   < 180 px/day : midnight + noon
+            //   otherwise    : 00 / 06 / 12 / 18
+            const spanDays = Math.max(1, (axis.max - axis.min) / 86400000);
+            const plotPx = Math.max(100, (axis.chart && axis.chart.width ? axis.chart.width : 800) - 60);
+            const pxPerDay = plotPx / spanDays;
+            axis._compactDayLabels = pxPerDay < 90;
             let t = start.getTime() - 3600000;
             while (t <= axis.max) {
                 const localHour = getLocationHour(new Date(t));
-                const minor = longSpan ? (localHour === 0) : (localHour === 0 || localHour === 6 || localHour === 18);
+                let minor;
+                if (pxPerDay < 90) minor = false;
+                else if (pxPerDay < 180) minor = (localHour === 0);
+                else minor = (localHour === 0 || localHour === 6 || localHour === 18);
                 if (minor || localHour === 12) {
                     ticks.push({ value: t, major: localHour === 12 });
                 }
@@ -7233,6 +7273,10 @@
             const tick = ticksArray[index];
             const d = new Date(tick.value);
             if (tick.major) {
+                if (this && this._compactDayLabels) {
+                    // Intl orders weekday+day as "3 Tue"; surfers read "Tue 3"
+                    return formatLocationTime(d, { weekday: 'short' }) + ' ' + parseInt(getLocationParts(d).day, 10);
+                }
                 return formatLocationTime(d, { weekday: 'short', month: 'short', day: 'numeric' });
             }
             var parts = getLocationParts(d);
@@ -7569,11 +7613,13 @@
 
                         if (tooltip.opacity === 0) {
                             el.style.opacity = '0';
+                            el.classList.add('tt-hidden');
                             return;
                         }
 
                         const index = tooltip.dataPoints ? tooltip.dataPoints[0].dataIndex : null;
-                        if (index === null) { el.style.opacity = '0'; return; }
+                        if (index === null) { el.style.opacity = '0'; el.classList.add('tt-hidden'); return; }
+                        el.classList.remove('tt-hidden');
 
                         // Build text section via DOM (safe, no innerHTML with untrusted data)
                         el.textContent = '';
@@ -7701,6 +7747,25 @@
                         el.appendChild(diagCanvas);
                         drawTooltipDiagram(diagCanvas, windDirections[index], waveDirections[index]);
 
+                        // On touch there is no mouseout, so a tapped tooltip
+                        // stays until the next tap lands on another bar. The
+                        // close button is the only part of the tooltip that
+                        // takes pointer events; it is hidden on hover devices.
+                        const closeBtn = document.createElement('button');
+                        closeBtn.type = 'button';
+                        closeBtn.className = 'tt-close';
+                        closeBtn.setAttribute('aria-label', 'Dismiss forecast details');
+                        closeBtn.textContent = '\u00d7';
+                        closeBtn.addEventListener('click', function(ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            el.style.opacity = '0';
+                            el.classList.add('tt-hidden');
+                            clearSyncedTooltip(chart);
+                            if (tideChart) clearSyncedTooltip(tideChart);
+                        });
+                        el.appendChild(closeBtn);
+
                         // Position tooltip using fixed (screen) coordinates to avoid panel clipping
                         const canvasRect = chart.canvas.getBoundingClientRect();
                         const elW = el.offsetWidth || 300;
@@ -7783,6 +7848,10 @@
                                         maxRotation: 45,
                                         minRotation: 45,
                                         autoSkip: false,
+                                        // Chart.js autoSkips time scales anyway;
+                                        // with majors enabled it keeps the noon
+                                        // (day-of-week) ticks and drops minors first.
+                                        major: { enabled: true },
                                         padding: TIDE_LANE_H,
                                         callback: formatLocalTimeTick,
                                         color: function(context) {
@@ -9829,6 +9898,7 @@
                                         maxRotation: 45,
                                         minRotation: 45,
                                         autoSkip: false,
+                                        major: { enabled: true },
                                         callback: formatLocalTimeTick,
                                         color: function(context) {
                                             var tc = themeColors();
