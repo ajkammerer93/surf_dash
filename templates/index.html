@@ -2243,25 +2243,29 @@
 
         /* 7d / 16d range switch in the Wave & Wind Forecast header. Sized to
            the badge row so the header never grows (see the CLS note above
-           .panel-header): one line, no wrap, fixed height. */
+           .panel-header): one line, no wrap, fixed height. The visible box
+           stays put; button::before pads the tap target out to 44px tall
+           with an invisible hit area, since a thumb on a 16px-tall control
+           misses as often as it hits. overflow:hidden moved off the switch
+           and onto per-button corner radii so that hit area isn't clipped. */
         .horizon-switch {
             display: inline-flex;
             align-items: stretch;
             flex-shrink: 0;
             border: 1px solid var(--border);
             border-radius: 3px;
-            overflow: hidden;
             margin-left: 8px;
             height: 18px;
         }
         .horizon-switch button {
+            position: relative;
             font-family: var(--font-body);
             font-size: 9px;
             font-weight: 600;
             letter-spacing: 0.5px;
             text-transform: uppercase;
             line-height: 1;
-            padding: 0 7px;
+            padding: 0 9px;
             background: transparent;
             color: var(--text-muted);
             border: none;
@@ -2269,6 +2273,16 @@
             white-space: nowrap;
             transition: background 0.15s, color 0.15s;
         }
+        .horizon-switch button::before {
+            content: '';
+            position: absolute;
+            top: -13px;
+            bottom: -13px;
+            left: 0;
+            right: 0;
+        }
+        .horizon-switch button:first-child { border-radius: 2px 0 0 2px; }
+        .horizon-switch button:last-child { border-radius: 0 2px 2px 0; }
         .horizon-switch button + button { border-left: 1px solid var(--border); }
         .horizon-switch button:hover { color: var(--text); }
         .horizon-switch button[aria-pressed="true"] {
@@ -2281,7 +2295,7 @@
             .conditions-legend .cond-label { display: none; }
             .conditions-legend { gap: 6px; }
             .horizon-switch { margin-left: 4px; }
-            .horizon-switch button { padding: 0 5px; }
+            .horizon-switch button { padding: 0 7px; }
         }
 
         /* === Charts === */
