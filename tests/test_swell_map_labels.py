@@ -74,7 +74,10 @@ class TestHiddenLabelSpotsStayReachable:
         start = html.index('function updateLocalCamMarkers(')
         body = html[start:html.index('function updateSwellBuoyMarkers(', start)]
         assert "sw.textContent = 'Switch to this spot';" in body
-        assert 'Math.abs(sp.lat - cam.lat) < 1e-3' in body
+        # nearest spot at the camera's own coordinates, never first-in-range:
+        # four spot pairs sit within 1e-3 degrees of each other
+        assert 'Math.hypot(sp.lat - cam.lat, sp.lon - cam.lon)' in body
+        assert 'dd < 1e-4 && dd < twinD' in body
 
     def test_mid_zoom_animation_is_skipped(self, resolver):
         assert 'if (mapSwell._animatingZoom) return;' in resolver

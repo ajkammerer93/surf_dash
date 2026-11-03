@@ -8811,9 +8811,19 @@
                 // 22px camera icon sits over the spot's 7px dot. When the
                 // spot's label is hidden (co-located cluster), this popup is
                 // what a tap lands on, so it must also offer the spot.
-                const twin = (window._knownSpots || []).find(function(sp) {
-                    return Math.abs(sp.lat - cam.lat) < 1e-3 && Math.abs(sp.lon - cam.lon) < 1e-3 &&
-                        !(Math.abs(sp.lat - currentLocation.lat) < 1e-4 && Math.abs(sp.lon - currentLocation.lon) < 1e-4);
+                // Spots are built from this same camera list, so the twin
+                // shares the camera's coordinates exactly; take the NEAREST
+                // within 1e-4 deg, not the first within range. Four pairs of
+                // spots (Wrightsville Beach / WB Mercers Pier among them)
+                // sit within 1e-3 of each other, and a first-match there sent
+                // the Mercers Pier camera's button to Wrightsville Beach.
+                let twin = null, twinD = Infinity;
+                (window._knownSpots || []).forEach(function(sp) {
+                    const dd = Math.hypot(sp.lat - cam.lat, sp.lon - cam.lon);
+                    if (dd < 1e-4 && dd < twinD &&
+                        !(Math.abs(sp.lat - currentLocation.lat) < 1e-4 && Math.abs(sp.lon - currentLocation.lon) < 1e-4)) {
+                        twin = sp; twinD = dd;
+                    }
                 });
                 if (twin) {
                     pop.appendChild(document.createElement('br'));
