@@ -30,7 +30,11 @@ class TestDayLabelsOnNarrowAxes:
     def test_tick_density_follows_pixels_per_day(self, html):
         body = _fn(html, 'buildLocalTimeTicks')
         assert 'pxPerDay' in body
-        assert 'axis._compactDayLabels = pxPerDay < 90' in body
+        assert 'axis._compactDayLabels = pxPerDay < 60' in body
+        # Density thresholds are sized to a rotated label (~27px per tick),
+        # not the viewport: four ticks a day from 110 px/day, two from 55.
+        assert 'if (pxPerDay < 55) minor = false;' in body
+        assert 'else if (pxPerDay < 110) minor = (localHour === 0);' in body
         # Noon (the day label) is emitted at every density
         assert "localHour === 12" in body
 
@@ -51,9 +55,17 @@ class TestTooltipDismiss:
         assert "closeBtn.className = 'tt-close'" in body
         assert "clearSyncedTooltip(chart)" in body
         assert "el.classList.add('tt-hidden')" in body
+        # The canvas mouseleave path must set the same hidden state
+        ml = html[html.index("getElementById('waveChart').addEventListener('mouseleave'"):]
+        assert "ttEl.classList.add('tt-hidden')" in ml[:400]
+        # No stopPropagation: the document's outside-click closers must still run
+        assert 'ev.stopPropagation()' not in body[body.index("closeBtn.addEventListener"):body.index("el.appendChild(closeBtn)")]
 
     def test_close_button_is_touch_only_and_the_only_hit_target(self, html):
         assert '.wave-tooltip .tt-close {' in html
-        assert '.wave-tooltip.tt-hidden .tt-close { pointer-events: none; }' in html
+        # Hidden is visibility: hidden, so the button is neither a hit
+        # target nor a focus stop while the tooltip is faded out.
+        hidden = html[html.index('.wave-tooltip.tt-hidden {'):]
+        assert 'visibility: hidden;' in hidden[:120]
         hover_rule = html[html.index('@media (hover: hover) and (pointer: fine)'):]
         assert '.wave-tooltip .tt-close { display: none; }' in hover_rule[:300]

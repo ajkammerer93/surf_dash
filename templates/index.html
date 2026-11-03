@@ -2375,11 +2375,20 @@
             opacity: 0.75;
         }
         .wave-tooltip .tt-close:active { background: rgba(127, 127, 127, 0.25); }
-        .wave-tooltip.tt-hidden .tt-close { pointer-events: none; }
-        .wave-tooltip .tt-text { padding-right: 26px; }
+        /* Hidden means hidden: no hit target, no focus stop, no screen-reader
+           entry. visibility flips after the opacity fade completes. */
+        .wave-tooltip.tt-hidden {
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0s linear 0.15s;
+        }
+        /* Touch: the corner belongs to the tooltip's own padding, so the
+           button never sits on the title (which may wrap) or the diagram. */
+        .wave-tooltip { padding-right: 32px; }
+        .wave-tooltip .tt-title { white-space: normal; }
         @media (hover: hover) and (pointer: fine) {
             .wave-tooltip .tt-close { display: none; }
-            .wave-tooltip .tt-text { padding-right: 0; }
+            .wave-tooltip { padding-right: 10px; }
+            .wave-tooltip .tt-title { white-space: nowrap; }
         }
         @media (max-width: 480px) {
             .wave-tooltip-diagram { display: none; }
@@ -7260,20 +7269,27 @@
             // matter what ticks.autoSkip says, keeping every Nth tick from
             // the FIRST one -- on a phone that kept 06:00/18:00 and threw
             // away every noon tick, so the axis showed no day of the week
-            // at all. Emit only what fits and the day labels survive:
-            //   < 90 px/day  : noon only, compact "Mon 2" labels
-            //   < 180 px/day : midnight + noon
+            // at all. Emit only what fits and the day labels survive. A
+            // 45-degree "06:00" label needs ~27px of axis, so four a day
+            // need ~110 px/day; two need ~55.
+            //   < 55 px/day  : noon only
+            //   < 110 px/day : midnight + noon
             //   otherwise    : 00 / 06 / 12 / 18
+            // The LABEL length is a separate decision: "Tue, Nov 3" at 45
+            // degrees needs ~60px, so below that the day label drops the
+            // month ("Tue 3"). Coupling the two starved 1024-1280px desktops
+            // of their 06/18 ticks and stripped the month from a 16-day
+            // desktop axis that had room for it.
             const spanDays = Math.max(1, (axis.max - axis.min) / 86400000);
             const plotPx = Math.max(100, (axis.chart && axis.chart.width ? axis.chart.width : 800) - 60);
             const pxPerDay = plotPx / spanDays;
-            axis._compactDayLabels = pxPerDay < 90;
+            axis._compactDayLabels = pxPerDay < 60;
             let t = start.getTime() - 3600000;
             while (t <= axis.max) {
                 const localHour = getLocationHour(new Date(t));
                 let minor;
-                if (pxPerDay < 90) minor = false;
-                else if (pxPerDay < 180) minor = (localHour === 0);
+                if (pxPerDay < 55) minor = false;
+                else if (pxPerDay < 110) minor = (localHour === 0);
                 else minor = (localHour === 0 || localHour === 6 || localHour === 18);
                 if (minor || localHour === 12) {
                     ticks.push({ value: t, major: localHour === 12 });
@@ -7772,7 +7788,6 @@
                         closeBtn.textContent = '\u00d7';
                         closeBtn.addEventListener('click', function(ev) {
                             ev.preventDefault();
-                            ev.stopPropagation();
                             el.style.opacity = '0';
                             el.classList.add('tt-hidden');
                             clearSyncedTooltip(chart);
@@ -7930,7 +7945,7 @@
                     document.getElementById('waveChart').addEventListener('mouseleave', () => {
                         clearSyncedTooltip(tideChart);
                         const ttEl = document.getElementById('waveChart').parentNode.querySelector('.wave-tooltip');
-                        if (ttEl) ttEl.style.opacity = '0';
+                        if (ttEl) { ttEl.style.opacity = '0'; ttEl.classList.add('tt-hidden'); }
                     });
 
                     syncChartTimeAxes();
