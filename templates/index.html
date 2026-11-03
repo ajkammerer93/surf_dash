@@ -1241,6 +1241,14 @@
         /* See addBasemap(): dims the basemap only, never the labels. */
         .basemap-muted { filter: brightness(0.62) saturate(0.7); }
 
+        /* A spot marker's icon box is the dot plus the label at their NATURAL
+           position, and Leaflet z-orders southern markers on top. Once a
+           label is pushed into a neighbour's box, a click on the legible
+           text would open the neighbour's popup. Only the dot and the label
+           themselves are hit targets; the empty box is transparent. */
+        .leaflet-marker-icon.spot-marker.leaflet-interactive { pointer-events: none; }
+        .spot-marker .spot-marker-dot,
+        .spot-marker .spot-marker-label { pointer-events: auto; }
         .spot-marker-dot {
             display: inline-block;
             width: 7px; height: 7px;
@@ -8634,42 +8642,110 @@
                     m.addTo(localSpotLayer);
                 });
             localSpotLayer.addTo(mapSwell);
+            wireSpotLabelRerun(mapSwell);
             requestAnimationFrame(resolveSpotLabelCollisions);
+        }
+
+        // Panning and zooming move every spot label's screen position even
+        // when the local/basin mode doesn't change, so the collision fix has
+        // to be redone after either settles. Wired from the marker builder,
+        // once per map instance, so it covers BOTH ways a map comes to
+        // exist: renderSwellMap() and the basin-failure path through
+        // swellMapDataError(), which is the map every visitor gets between a
+        // deploy and the basin warming.
+        function wireSpotLabelRerun(map) {
+            if (!map || map._spotLabelRerunWired) return;
+            map._spotLabelRerunWired = true;
+            map.on('zoomend moveend', function() {
+                if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
+            });
         }
 
         // The up to 12 spot labels are placed independently at their own
         // lat/lon with no awareness of each other, so any cluster of
         // close-together breaks stacks its labels into an unreadable pile.
-        // This nudges colliding labels straight down (dots stay put) just
-        // enough to clear the label above them, re-run whenever the labels'
-        // screen positions can have changed.
+        //
+        // Placement is greedy in the layer's own order (nearest spot first,
+        // which is also the order the builder sliced to 12), and each label
+        // gets a short list of slots: its natural spot (the divIcon has no
+        // width, so the label wraps to sit just under its dot), then one or
+        // two label heights down, then one or two up. A slot is taken if it
+        // clears every label already placed, every camera marker, the map's
+        // edges and the storm-watch narrative bar. A label with no free slot
+        // is hidden rather than pushed further: a label 150px from its dot
+        // belongs to no dot, and a text box under the narrative bar reads as
+        // a spot with no label at all. The dot stays, and so does the popup.
+        // Dots never move. Co-located spots (two cams on one pier) share a
+        // dot's worth of map, so at a wide zoom one of them goes unlabelled
+        // until the user zooms in; nearest-first order decides which.
+        const SPOT_LABEL_GAP = 2;
+        const SPOT_LABEL_SLOTS = [0, 1, 2, -1, -2];   // in label heights
+        function _rectsIntersect(a, b) {
+            return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        }
         function resolveSpotLabelCollisions() {
             if (!localSpotLayer || !mapSwell) return;
-            const items = [];
+            // A rebuild during a zoom animation measures scaled boxes; the
+            // zoomend that follows re-runs this on settled geometry.
+            if (mapSwell._animatingZoom) return;
+            const container = mapSwell.getContainer();
+            if (!container) return;
+
+            // Writes first (reset), then every read, then every write: one
+            // forced layout instead of one per previously-offset label.
+            const labels = [];
             localSpotLayer.eachLayer(function(m) {
                 const el = m.getElement();
                 const label = el && el.querySelector('.spot-marker-label');
                 if (!label) return;
                 label.style.transform = '';
-                const r = label.getBoundingClientRect();
-                items.push({ label: label, top: r.top, bottom: r.bottom, left: r.left, right: r.right, offset: 0 });
+                label.style.visibility = '';
+                labels.push(label);
             });
-            items.sort(function(a, b) { return a.top - b.top; });
-            const GAP = 2;
-            for (let i = 0; i < items.length; i++) {
-                const b = items[i];
-                let need = 0;
-                for (let j = 0; j < i; j++) {
-                    const a = items[j];
-                    const overlapsX = b.left < a.right && b.right > a.left;
-                    if (!overlapsX) continue;
-                    const req = (a.bottom + a.offset) + GAP - b.top;
-                    if (req > need) need = req;
-                }
-                b.offset = need;
+            if (!labels.length) return;
+
+            const bounds = container.getBoundingClientRect();
+            let maxBottom = bounds.bottom;
+            const narrative = container.querySelector('.basin-narrative');
+            if (narrative && narrative.style.display !== 'none') {
+                const nr = narrative.getBoundingClientRect();
+                if (nr.height > 0 && nr.top < maxBottom) maxBottom = nr.top;
             }
+            const obstacles = [];
+            if (localCamLayer) {
+                localCamLayer.eachLayer(function(m) {
+                    const el = m.getElement();
+                    if (el) obstacles.push(el.getBoundingClientRect());
+                });
+            }
+            const items = labels.map(function(label) {
+                const r = label.getBoundingClientRect();
+                return { label: label, left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+                         height: r.height, dy: null };
+            });
+
+            const placed = obstacles.slice();
             items.forEach(function(it) {
-                if (it.offset > 0) it.label.style.transform = 'translateY(' + Math.round(it.offset) + 'px)';
+                const step = it.height + SPOT_LABEL_GAP;
+                for (let k = 0; k < SPOT_LABEL_SLOTS.length; k++) {
+                    const dy = SPOT_LABEL_SLOTS[k] * step;
+                    const cand = { left: it.left, right: it.right, top: it.top + dy, bottom: it.bottom + dy };
+                    // Off the map (or under the bar) is not a slot; a label
+                    // whose natural spot is already outside stays hidden
+                    // until the map moves, which re-runs this.
+                    if (cand.top < bounds.top || cand.bottom > maxBottom ||
+                        cand.left < bounds.left || cand.right > bounds.right) continue;
+                    let clear = true;
+                    for (let j = 0; j < placed.length; j++) {
+                        if (_rectsIntersect(cand, placed[j])) { clear = false; break; }
+                    }
+                    if (clear) { it.dy = dy; placed.push(cand); break; }
+                }
+            });
+
+            items.forEach(function(it) {
+                if (it.dy === null) it.label.style.visibility = 'hidden';
+                else if (it.dy !== 0) it.label.style.transform = 'translateY(' + Math.round(it.dy) + 'px)';
             });
         }
 
@@ -9050,12 +9126,7 @@
                 }
             });
 
-            // Panning and zooming move every spot label's screen position
-            // even when the local/basin mode doesn't change, so the label
-            // collision fix above needs to be redone after either settles.
-            mapSwell.on('zoomend moveend', function() {
-                if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
-            });
+            wireSpotLabelRerun(mapSwell);
 
             setTimeout(() => { mapSwell.invalidateSize(); }, 100);
             onMapDataReady();
