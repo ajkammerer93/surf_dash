@@ -409,6 +409,19 @@ _cache_lock = threading.Lock()
 _cache_key_locks = {}
 _cache_bytes = 0
 CACHE_TTL = 900  # 15 minutes
+
+# Point-forecast horizon. Open-Meteo serves GFS-Wave and GFS wind to 16 days
+# (384 h); NOAA tide predictions take any window. The first 7 days are the
+# forecast proper; the client draws days 8-16 as a lower-confidence outlook
+# and keeps the session planner inside FORECAST_CORE_HOURS.
+FORECAST_DAYS = 16
+FORECAST_CORE_HOURS = 168
+# Open-Meteo's best_match resolves to MFWAM on most coasts: it stops at day
+# 10 and carried no long-period swell train on 2026-09-02 (issue #88). GFS-Wave
+# is the same model the swell map and tiles are built from, runs the full 16
+# days, and its wave_period IS the spectral peak (verified against our own
+# gfswave tile PERPW to 0.05 s). best_match stays as the fallback.
+OPEN_METEO_WAVE_MODEL = "ncep_gfswave025"
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
 
 # TWO bounds, because entries here differ in size by four orders of magnitude.
@@ -455,7 +468,7 @@ def _deep_size(obj, _seen=None):
     return size
 # How old a forecast we will still serve when every upstream wave source is
 # down (observed 2026-07-16: Open-Meteo rate limit + NOMADS gap + degraded
-# ERDDAP simultaneously). A day-old 7-day forecast beats a blank dashboard.
+# ERDDAP simultaneously). A day-old forecast beats a blank dashboard.
 STALE_FORECAST_MAX_AGE = 24 * 3600
 # Same reasoning for the two grid endpoints: a day-old swell map is a swell
 # map; a 500 is a blank panel. Served with stale/stale_at so the client can
@@ -645,12 +658,12 @@ def get_point_weather_data(latitude, longitude):
         except Exception as e:
             logger.warning(f"NOMADS point forecast failed, falling back to Open-Meteo Marine: {e}")
             traceback.print_exc()
-    result = _get_point_from_open_meteo(latitude, longitude)
+    result, source = _get_point_from_open_meteo(latitude, longitude)
     if result:
         location_tz = _enrich_in_parallel(result, latitude, longitude)
         if location_tz == 'UTC':
             location_tz = _fallback_timezone(latitude, longitude)
-        return {"forecast": result, "location_timezone": location_tz, "source": "Open-Meteo"}
+        return {"forecast": result, "location_timezone": location_tz, "source": source}
 
     # Open-Meteo Marine returned nothing — typically Render's shared egress IP
     # is over Open-Meteo's per-IP rate limit (a fast 4xx, not a timeout). Fall
@@ -710,7 +723,7 @@ def _enrich_with_temperatures(forecast, latitude, longitude):
     try:
         # Air temperature (also resolves IANA timezone via timezone=auto).
         # This one call is EXEMPT from the 429 cooldown, deliberately: the
-        # cooldown exists to stop the 7-day hourly wind call paying ~10s per
+        # cooldown exists to stop the 16-day hourly wind call paying ~10s per
         # cold forecast, but this current-conditions request costs ~0.5s
         # even when it 429s (_retry_request never retries 4xx), and the rate
         # limit is intermittent -- gating it behind the cooldown turned
@@ -775,7 +788,7 @@ def _enrich_with_wind(forecast, latitude, longitude):
                 "hourly": "wind_speed_10m,wind_direction_10m",
                 "wind_speed_unit": "kmh",
                 "timezone": "UTC",
-                "forecast_days": 7,
+                "forecast_days": FORECAST_DAYS,
             },
             timeout=10,
         ))
@@ -1043,52 +1056,88 @@ def _enrich_wind_from_erddap(forecast, latitude, longitude):
         logger.warning(f"  ERDDAP wind fallback failed (non-critical): {e}")
 
 
+def _trim_trailing_null_hours(forecast):
+    """Drop the tail of hours with no wave height. Open-Meteo pads best_match
+    to the requested horizon with nulls once its model runs out (MFWAM stops
+    at day 10); a null tail would draw as a cliff to zero on the chart."""
+    end = len(forecast)
+    while end > 0 and forecast[end - 1].get("wave_height") is None:
+        end -= 1
+    return forecast[:end]
+
+
+def _open_meteo_marine_hourly(latitude, longitude, model=None):
+    """One Open-Meteo Marine call. Returns the parsed hourly dict or None.
+
+    Fail fast: when Open-Meteo throttles Render's IP it answers with a quick
+    4xx, but during upstream incidents it can also hang -- and an independent
+    ERDDAP fallback is waiting, so don't burn the request budget on timeouts
+    here (12s x 2 attempts max per call).
+    """
+    if model:
+        # GFS-Wave has no peak-period field; its wave_period is the peak.
+        fields = ("wave_height,wave_period,wave_direction,"
+                  "wind_wave_height,wind_wave_period,wind_wave_direction")
+    else:
+        fields = ("wave_height,wave_peak_period,wave_period,wave_direction,"
+                  "wind_wave_height,wind_wave_peak_period,wind_wave_period,"
+                  "wind_wave_direction")
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": fields,
+        "forecast_days": FORECAST_DAYS,
+        "timezone": "UTC",
+    }
+    if model:
+        params["models"] = model
+    resp = _retry_request(lambda: requests.get(
+        "https://marine-api.open-meteo.com/v1/marine",
+        params=params,
+        timeout=12,
+    ), max_retries=1)
+    if not resp.ok:
+        logger.info(f"  Open-Meteo Marine ({model or 'best_match'}) HTTP {resp.status_code}")
+        return None
+    hourly = resp.json().get("hourly", {}) or {}
+    times = hourly.get("time", [])
+    wh = hourly.get("wave_height", []) or []
+    if not times or not any(v is not None for v in wh):
+        logger.info(f"  Open-Meteo Marine ({model or 'best_match'}) returned no wave data")
+        return None
+    return hourly
+
+
 def _get_point_from_open_meteo(latitude, longitude):
     """
-    Fetches wave forecast for a single point using Open-Meteo Marine API.
-    Returns forecast list with wave data, or None on failure.
+    Fetches the point wave forecast from Open-Meteo Marine: GFS-Wave first
+    (OPEN_METEO_WAVE_MODEL, the full FORECAST_DAYS horizon), then the default
+    best_match model. Returns (forecast list, source label) or (None, None).
     Wind speed/direction are left as None (filled later by _enrich_with_wind).
     """
     try:
         logger.info(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
-        # Fail fast: when Open-Meteo throttles Render's IP it answers with a
-        # quick 4xx, but during upstream incidents it can also hang — and an
-        # independent ERDDAP fallback is waiting, so don't burn 90s of the
-        # request budget on timeouts here (12s x 2 attempts max).
-        resp = _retry_request(lambda: requests.get(
-            "https://marine-api.open-meteo.com/v1/marine",
-            params={
-                "latitude": latitude,
-                "longitude": longitude,
-                "hourly": "wave_height,wave_peak_period,wave_period,wave_direction,wind_wave_height,wind_wave_peak_period,wind_wave_period,wind_wave_direction",
-                "forecast_days": 7,
-                "timezone": "UTC",
-            },
-            timeout=12,
-        ), max_retries=1)
-        if not resp.ok:
-            logger.info(f"  Open-Meteo Marine HTTP {resp.status_code}")
-            return None
-
-        data = resp.json()
-        hourly = data.get("hourly", {})
+        source = "GFS-Wave"
+        hourly = _open_meteo_marine_hourly(latitude, longitude, model=OPEN_METEO_WAVE_MODEL)
+        if hourly is None:
+            source = "Open-Meteo"
+            hourly = _open_meteo_marine_hourly(latitude, longitude)
+        if hourly is None:
+            return None, None
         times = hourly.get("time", [])
-        if not times:
-            logger.info("  Open-Meteo Marine returned no hourly data")
-            return None
 
         wh = hourly.get("wave_height", [])
-        # Prefer peak period (Tp) to match NOMADS/WW3. Open-Meteo sometimes
+        # Prefer peak period (Tp) to match NOMADS/WW3. best_match sometimes
         # returns null peak period for individual hours, so fall back to the
         # mean period array element-wise rather than letting the whole hour
-        # go missing.
-        wp_peak = hourly.get("wave_peak_period", [])
-        wp_mean = hourly.get("wave_period", [])
-        wd = hourly.get("wave_direction", [])
-        wwh = hourly.get("wind_wave_height", [])
-        wwp_peak = hourly.get("wind_wave_peak_period", [])
-        wwp_mean = hourly.get("wind_wave_period", [])
-        wwd = hourly.get("wind_wave_direction", [])
+        # go missing. GFS-Wave sends no peak arrays; its wave_period is Tp.
+        wp_peak = hourly.get("wave_peak_period", []) or []
+        wp_mean = hourly.get("wave_period", []) or []
+        wd = hourly.get("wave_direction", []) or []
+        wwh = hourly.get("wind_wave_height", []) or []
+        wwp_peak = hourly.get("wind_wave_peak_period", []) or []
+        wwp_mean = hourly.get("wind_wave_period", []) or []
+        wwd = hourly.get("wind_wave_direction", []) or []
 
         # Compute sunrise/sunset for each unique date
         sunrise_map = {}
@@ -1128,14 +1177,15 @@ def _get_point_from_open_meteo(latitude, longitude):
                 "sunrise": sunrise_map.get(date_key),
                 "sunset": sunset_map.get(date_key),
             })
+        forecast = _trim_trailing_null_hours(forecast)
 
-        logger.info(f"  Open-Meteo Marine: {len(forecast)} hourly entries")
-        return forecast
+        logger.info(f"  Open-Meteo Marine ({source}): {len(forecast)} hourly entries")
+        return forecast, source
 
     except Exception as e:
         logger.error(f"Error fetching point forecast from Open-Meteo Marine: {e}")
         traceback.print_exc()
-        return None
+        return None, None
 
 
 def _get_point_from_erddap(latitude, longitude):
@@ -3339,7 +3389,7 @@ def _render_dashboard(lat, lon, name, canonical_url, location_slug=None,
     else:
         coverage_phrase = "Wave height, period, wind, tides, and live surf cameras."
     meta_description = (
-        f"Free 7-day surf forecast for {name}{state_suffix}.{facing_phrase}"
+        f"Free 16-day surf forecast for {name}{state_suffix}.{facing_phrase}"
         f"{coverage_phrase} No ads, no sign-up."
     )
 
@@ -3721,7 +3771,7 @@ def _render_og_image(slug, location):
             face_text = f"{_deg_to_cardinal(deg)}-facing beach ({round(deg)}°)"
             draw.text((48, 240), face_text, fill=TEXT, font=f_facing)
         f_tagline = _load_og_font('sans', 30)
-        draw.text((48, 330), 'Free 7-day surf forecast. No ads, no sign-up.', fill=TEXT_DIM, font=f_tagline)
+        draw.text((48, 330), 'Free 16-day surf forecast. No ads, no sign-up.', fill=TEXT_DIM, font=f_tagline)
 
     # Footer
     f_foot = _load_og_font('sans', 20)
@@ -4038,7 +4088,7 @@ def _social_card_data(region_slug):
         wind = f"{t['wind_mph']}mph {t['wind_dir']}".strip()
         lines.append(f"{t['name']}: {t['height_ft']}ft @ {t['period_s']}s, {wind} wind")
     lines.append('')
-    lines.append('Full 7-day forecasts, buoys, tides and cams - free, no account.')
+    lines.append('Full 16-day forecasts, buoys, tides and cams - free, no account.')
     if accuracy_mae_ft:
         lines.append(f'We grade every forecast against NOAA buoys: '
                      f'{accuracy_mae_ft}ft average error over the last 30 days.')
@@ -4215,7 +4265,7 @@ def _render_social_card(data, fmt='PNG', story=False):
                   cta, fill=ACCENT, font=f_cta)
         # The API cannot attach a link sticker to a story, so the only route
         # off the image is the profile link -- say so explicitly.
-        sub = 'Link in bio - 7-day forecasts, buoys, tides, cams. Free.'
+        sub = 'Link in bio - 16-day forecasts, buoys, tides, cams. Free.'
         draw.text(((W - draw.textlength(sub, font=f_cta_sub)) / 2, cta_y + 62),
                   sub, fill=TEXT_DIM, font=f_cta_sub)
 
@@ -4224,7 +4274,7 @@ def _render_social_card(data, fmt='PNG', story=False):
     draw.rectangle([(0, foot_top), (W, H)], fill=SURFACE)
     draw.line([(0, foot_top), (W, foot_top)], fill=BORDER)
     if not story:
-        foot = 'freesurfforecast.com  -  free 7-day forecasts, no account'
+        foot = 'freesurfforecast.com  -  free 16-day forecasts, no account'
         foot_w = draw.textlength(foot, font=f_foot)
         draw.text(((W - foot_w) / 2, foot_top + 22), foot, fill=TEXT, font=f_foot)
     if accuracy_ft:
@@ -5177,7 +5227,7 @@ def _highlight_card_data(kind=None):
                  'not modelled. We check our own forecasts against these same '
                  'buoys and publish the error.')
     lines.append('')
-    lines.append('Free 7-day forecasts for any coastline, plus live buoys, '
+    lines.append('Free 16-day forecasts for any coastline, plus live buoys, '
                  'tides and cams: freesurfforecast.com')
     lines.append('')
     lines.append(f'{SOCIAL_BASE_HASHTAGS} #buoy #ndbc #swell #oceanography')
@@ -5908,6 +5958,10 @@ def _compute_confidence(data, cache_key):
     if source == "NOMADS":
         base = 0.85
         source_label = "NOMADS GFS-Wave"
+    elif source == "GFS-Wave":
+        # Same model as NOMADS served, via Open-Meteo's interpolation
+        base = 0.8
+        source_label = "GFS-Wave (Open-Meteo)"
     elif source == "Open-Meteo":
         base = 0.65
         source_label = "Open-Meteo Marine"
@@ -6724,7 +6778,7 @@ def _fetch_tide_predictions(station_id, interval):
     today = datetime.now(timezone.utc)
     params = {
         "begin_date": (today - timedelta(days=1)).strftime("%Y%m%d"),
-        "end_date": (today + timedelta(days=7)).strftime("%Y%m%d"),
+        "end_date": (today + timedelta(days=FORECAST_DAYS)).strftime("%Y%m%d"),
         "station": station_id,
         "product": "predictions",
         "datum": "MLLW",             # Mean Lower Low Water

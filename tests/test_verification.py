@@ -53,6 +53,61 @@ class TestNdbcParsing:
         assert fv.parse_ndbc_stdmet("#YY MM\n#yr mo\nnot numbers") == []
 
 
+class TestSnapshotFetch:
+    """fetch_forecast_snapshot() against /api/forecast's stale contract."""
+
+    STATION = {"id": "46042", "lat": 36.785, "lon": -122.398}
+
+    def _fresh_entry(self, hour):
+        return {"time": f"2026-07-17T{hour:02d}:00:00Z",
+                "wave_height_raw": 1.1, "wave_period": 9.0}
+
+    def _resp(self, payload):
+        class _R:
+            ok = True
+
+            @staticmethod
+            def json():
+                return payload
+
+        return _R()
+
+    def test_stale_response_is_retried_not_accepted(self, monkeypatch):
+        """A 200 with stale=True must not be scored on the first try --
+        retrying is what makes a transient 'all wave sources down' blip on
+        the live site recoverable instead of silently losing the cycle."""
+        calls = {"n": 0}
+        fresh = {"forecast": [self._fresh_entry(h) for h in range(0, 24, 3)],
+                 "source": "gfswave"}
+        stale = dict(fresh, stale=True)
+
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            return self._resp(stale if calls["n"] == 1 else fresh)
+
+        monkeypatch.setattr(fv.requests, "get", fake_get)
+        monkeypatch.setattr(fv, "_utcnow",
+                             lambda: datetime(2026, 7, 17, 0, 0, tzinfo=timezone.utc))
+        monkeypatch.setattr(fv.time, "sleep", lambda s: None)
+
+        result = fv.fetch_forecast_snapshot("https://example.test", self.STATION)
+        assert calls["n"] == 2
+        assert result is not None
+        assert result["station"] == "46042"
+
+    def test_persistently_stale_gives_up_after_retries(self, monkeypatch):
+        stale = {"forecast": [self._fresh_entry(h) for h in range(0, 24, 3)],
+                  "stale": True, "source": "gfswave"}
+
+        def fake_get(url, params=None, timeout=None):
+            return self._resp(stale)
+
+        monkeypatch.setattr(fv.requests, "get", fake_get)
+        monkeypatch.setattr(fv.time, "sleep", lambda s: None)
+
+        assert fv.fetch_forecast_snapshot("https://example.test", self.STATION) is None
+
+
 class TestPairing:
     def _series(self):
         return fv.parse_ndbc_stdmet(NDBC_FIXTURE)
