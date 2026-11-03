@@ -37,7 +37,9 @@ class TestHitTesting:
 
 class TestPlacement:
     def test_slots_are_bounded_in_label_heights(self, html):
-        assert 'const SPOT_LABEL_SLOTS = [0, 1, 2, -1, -2];   // in label heights' in html
+        assert re.search(r'const SPOT_LABEL_SLOTS = \[\[0, 1\], \[0, -1\], \[1, 1\], \[1, -1\], \[2, 1\], \[-2, 1\], \[-2, -1\]\];', html)
+        # one row up is never a slot: it lands on the dot itself
+        assert '[-1, 1]' not in html[html.index('const SPOT_LABEL_SLOTS'):][:120]
 
     def test_unplaceable_labels_hide_instead_of_drifting(self, resolver):
         assert "it.label.style.visibility = 'hidden'" in resolver
@@ -45,13 +47,34 @@ class TestPlacement:
         assert "label.style.visibility = '';" in resolver
         assert "label.style.transform = '';" in resolver
 
-    def test_narrative_bar_and_map_edges_are_obstacles(self, resolver):
-        assert "container.querySelector('.basin-narrative')" in resolver
-        assert 'cand.top < bounds.top || cand.bottom > maxBottom' in resolver
+    def test_controls_narrative_and_map_edges_are_obstacles(self, resolver):
+        assert "container.querySelectorAll('.leaflet-control, .basin-narrative')" in resolver
+        assert 'cand.top < bounds.top || cand.bottom > bounds.bottom' in resolver
         assert 'cand.left < bounds.left || cand.right > bounds.right' in resolver
 
-    def test_camera_markers_are_obstacles(self, resolver):
-        assert 'localCamLayer.eachLayer' in resolver
+    def test_every_other_marker_is_an_obstacle(self, resolver):
+        # cameras, buoys and the current-spot star, by the class Leaflet
+        # gives every marker icon -- not a hand-kept list of layers
+        assert "container.querySelectorAll('.leaflet-marker-icon:not(.spot-marker)')" in resolver
+        assert 'SPOT_OBSTACLE_INSET' in resolver
+
+    def test_narrative_show_and_hide_rerun_the_resolver(self, html):
+        start = html.index("closeBtn.className = 'basin-narrative-close'")
+        assert 'requestAnimationFrame(resolveSpotLabelCollisions)' in html[start:start + 400]
+        shown = html.index("// The bar is an obstacle for the spot labels")
+        assert 'requestAnimationFrame(resolveSpotLabelCollisions)' in html[shown:shown + 300]
+
+
+class TestHiddenLabelSpotsStayReachable:
+    def test_spot_dot_paints_above_its_camera(self, html):
+        start = html.index("className: 'spot-marker',")
+        assert 'zIndexOffset: 1000' in html[start - 400:start]
+
+    def test_camera_popup_offers_the_co_located_spot(self, html):
+        start = html.index('function updateLocalCamMarkers(')
+        body = html[start:html.index('function updateSwellBuoyMarkers(', start)]
+        assert "sw.textContent = 'Switch to this spot';" in body
+        assert 'Math.abs(sp.lat - cam.lat) < 1e-3' in body
 
     def test_mid_zoom_animation_is_skipped(self, resolver):
         assert 'if (mapSwell._animatingZoom) return;' in resolver
