@@ -1241,6 +1241,14 @@
         /* See addBasemap(): dims the basemap only, never the labels. */
         .basemap-muted { filter: brightness(0.62) saturate(0.7); }
 
+        /* A spot marker's icon box is the dot plus the label at their NATURAL
+           position, and Leaflet z-orders southern markers on top. Once a
+           label is pushed into a neighbour's box, a click on the legible
+           text would open the neighbour's popup. Only the dot and the label
+           themselves are hit targets; the empty box is transparent. */
+        .leaflet-marker-icon.spot-marker.leaflet-interactive { pointer-events: none; }
+        .spot-marker .spot-marker-dot,
+        .spot-marker .spot-marker-label { pointer-events: auto; }
         .spot-marker-dot {
             display: inline-block;
             width: 7px; height: 7px;
@@ -8488,7 +8496,10 @@
                     closeBtn.className = 'basin-narrative-close';
                     closeBtn.textContent = '\u00D7';
                     closeBtn.title = 'Dismiss';
-                    closeBtn.onclick = function() { el.style.display = 'none'; };
+                    closeBtn.onclick = function() {
+                        el.style.display = 'none';
+                        if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
+                    };
                     el.appendChild(closeBtn);
                     el.appendChild(document.createTextNode(narr.narrative));
                     // Incoming swell trains from the partitioned model
@@ -8530,6 +8541,9 @@
                         el.appendChild(wrow);
                     }
                     el.style.display = '';
+                    // The bar is an obstacle for the spot labels; on the
+                    // basin-failure map there is no decor rebuild to re-run them
+                    if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
                     // Rebuild decor so the estimated swell-origin marker appears
                     window._swellNarrative = narr;
                     if (mapSwell && basinGridData) refreshSwellDecor();
@@ -8606,6 +8620,9 @@
                     const label = escDisplay(s.name) +
                         (wh != null ? ' \u00b7 ' + (wh * D_HEIGHT).toFixed(1) + U_HEIGHT : '');
                     const m = L.marker([s.lat, s.lon], {
+                        // Above the camera icon that shares this lat/lon, so
+                        // the dot is the top hit target when its label is hidden
+                        zIndexOffset: 1000,
                         icon: L.divIcon({
                             className: 'spot-marker',
                             html: '<span class="spot-marker-dot"></span><span class="spot-marker-label">' + label + '</span>',
@@ -8634,6 +8651,130 @@
                     m.addTo(localSpotLayer);
                 });
             localSpotLayer.addTo(mapSwell);
+            wireSpotLabelRerun(mapSwell);
+            requestAnimationFrame(resolveSpotLabelCollisions);
+        }
+
+        // Panning and zooming move every spot label's screen position even
+        // when the local/basin mode doesn't change, so the collision fix has
+        // to be redone after either settles. Wired from the marker builder,
+        // once per map instance, so it covers BOTH ways a map comes to
+        // exist: renderSwellMap() and the basin-failure path through
+        // swellMapDataError(), which is the map every visitor gets between a
+        // deploy and the basin warming.
+        function wireSpotLabelRerun(map) {
+            if (!map || map._spotLabelRerunWired) return;
+            map._spotLabelRerunWired = true;
+            map.on('zoomend moveend', function() {
+                if (localSpotLayer) requestAnimationFrame(resolveSpotLabelCollisions);
+            });
+        }
+
+        // The up to 12 spot labels are placed independently at their own
+        // lat/lon with no awareness of each other, so any cluster of
+        // close-together breaks stacks its labels into an unreadable pile.
+        //
+        // Placement is greedy in the layer's own order (nearest spot first,
+        // which is also the order the builder sliced to 12), and each label
+        // gets a short list of slots. The divIcon has no width, so a label
+        // wraps to sit just under its dot, hanging to the right; each slot
+        // comes in that form and mirrored to hang left (for dots near the
+        // map's right edge), at the natural row, one and two rows down, and
+        // two rows up. One row up would sit on the dot itself. A slot is
+        // taken if it clears every label already placed, every other marker
+        // (cameras, buoys, the current-spot star), every map control (zoom,
+        // legend, banners), the narrative bar and the map's edges. A label
+        // with no free slot is hidden rather than pushed further: a label
+        // 150px from its dot belongs to no dot. The dot stays, painted above
+        // its camera icon, and the camera popup at the same point also
+        // offers the spot, so the spot stays reachable by mouse and touch.
+        // Dots never move. Co-located spots (two cams on one pier) share a
+        // dot's worth of map at every zoom, so one of them stays unlabelled;
+        // nearest-first order decides which.
+        const SPOT_LABEL_GAP = 2;
+        // [rows in label heights, side]: side 1 hangs right of the dot (natural), -1 hangs left
+        const SPOT_LABEL_SLOTS = [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [-2, 1], [-2, -1]];
+        // Camera icons are 22px boxes around a 14px glyph; measuring the box
+        // blocked the natural slot of most spots for a few transparent pixels.
+        // 4px is the glyph box itself: a label may touch it, never cross it.
+        // (2px was tried: the spot's own camera then blocked the natural
+        // slot through sub-pixel offsets and a third of the labels vanished.)
+        const SPOT_OBSTACLE_INSET = 4;
+        function _insetRect(r, by) {
+            return { left: r.left + by, right: r.right - by, top: r.top + by, bottom: r.bottom - by };
+        }
+        function _rectsIntersect(a, b) {
+            return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        }
+        function resolveSpotLabelCollisions() {
+            if (!localSpotLayer || !mapSwell) return;
+            // A rebuild during a zoom animation measures scaled boxes; the
+            // zoomend that follows re-runs this on settled geometry.
+            if (mapSwell._animatingZoom) return;
+            const container = mapSwell.getContainer();
+            if (!container) return;
+
+            // Writes first (reset), then every read, then every write: one
+            // forced layout instead of one per previously-offset label.
+            const labels = [];
+            localSpotLayer.eachLayer(function(m) {
+                const el = m.getElement();
+                const label = el && el.querySelector('.spot-marker-label');
+                if (!label) return;
+                label.style.transform = '';
+                label.style.visibility = '';
+                labels.push(label);
+            });
+            if (!labels.length) return;
+
+            const bounds = container.getBoundingClientRect();
+            const obstacles = [];
+            // Every other marker (cameras, buoys, the current-spot star),
+            // every map control (zoom, legend, error banner, stale note) and
+            // the narrative bar. Hidden ones measure 0x0 and never intersect.
+            container.querySelectorAll('.leaflet-marker-icon:not(.spot-marker)').forEach(function(el) {
+                obstacles.push(_insetRect(el.getBoundingClientRect(), SPOT_OBSTACLE_INSET));
+            });
+            container.querySelectorAll('.leaflet-control, .basin-narrative').forEach(function(el) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) obstacles.push(r);
+            });
+            const items = labels.map(function(label) {
+                const r = label.getBoundingClientRect();
+                const dotEl = label.parentNode.querySelector('.spot-marker-dot');
+                const d = dotEl ? dotEl.getBoundingClientRect() : r;
+                // Mirrored: the label's right edge ends where its left edge
+                // starts in the natural slot, measured from the dot.
+                const mirrorDx = (d.right - (r.left - d.left)) - r.right;
+                return { label: label, left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+                         height: r.height, mirrorDx: mirrorDx, dx: null, dy: null };
+            });
+
+            const placed = obstacles.slice();
+            items.forEach(function(it) {
+                const step = it.height + SPOT_LABEL_GAP;
+                for (let k = 0; k < SPOT_LABEL_SLOTS.length; k++) {
+                    const dy = SPOT_LABEL_SLOTS[k][0] * step;
+                    const dx = SPOT_LABEL_SLOTS[k][1] < 0 ? it.mirrorDx : 0;
+                    const cand = { left: it.left + dx, right: it.right + dx, top: it.top + dy, bottom: it.bottom + dy };
+                    // Off the map is not a slot; a label whose every slot is
+                    // outside stays hidden until the map moves, which re-runs this.
+                    if (cand.top < bounds.top || cand.bottom > bounds.bottom ||
+                        cand.left < bounds.left || cand.right > bounds.right) continue;
+                    let clear = true;
+                    for (let j = 0; j < placed.length; j++) {
+                        if (_rectsIntersect(cand, placed[j])) { clear = false; break; }
+                    }
+                    if (clear) { it.dx = dx; it.dy = dy; placed.push(cand); break; }
+                }
+            });
+
+            items.forEach(function(it) {
+                if (it.dy === null) it.label.style.visibility = 'hidden';
+                else if (it.dx !== 0 || it.dy !== 0) {
+                    it.label.style.transform = 'translate(' + Math.round(it.dx) + 'px, ' + Math.round(it.dy) + 'px)';
+                }
+            });
         }
 
         function updateLocalCamMarkers(visible) {
@@ -8666,6 +8807,35 @@
                 a.rel = 'noopener';
                 a.textContent = 'Watch live \u2197';
                 pop.appendChild(a);
+                // Every listed spot is a camera at the same lat/lon, and the
+                // 22px camera icon sits over the spot's 7px dot. When the
+                // spot's label is hidden (co-located cluster), this popup is
+                // what a tap lands on, so it must also offer the spot.
+                // Spots are built from this same camera list, so the twin
+                // shares the camera's coordinates exactly; take the NEAREST
+                // within 1e-4 deg, not the first within range. Four pairs of
+                // spots (Wrightsville Beach / WB Mercers Pier among them)
+                // sit within 1e-3 of each other, and a first-match there sent
+                // the Mercers Pier camera's button to Wrightsville Beach.
+                let twin = null, twinD = Infinity;
+                (window._knownSpots || []).forEach(function(sp) {
+                    const dd = Math.hypot(sp.lat - cam.lat, sp.lon - cam.lon);
+                    if (dd < 1e-4 && dd < twinD &&
+                        !(Math.abs(sp.lat - currentLocation.lat) < 1e-4 && Math.abs(sp.lon - currentLocation.lon) < 1e-4)) {
+                        twin = sp; twinD = dd;
+                    }
+                });
+                if (twin) {
+                    pop.appendChild(document.createElement('br'));
+                    const sw = document.createElement('button');
+                    sw.className = 'spot-popup-btn';
+                    sw.type = 'button';
+                    sw.textContent = 'Switch to this spot';
+                    sw.addEventListener('click', function() {
+                        applyLocation({ lat: twin.lat, lon: twin.lon, name: twin.name });
+                    });
+                    pop.appendChild(sw);
+                }
                 m.bindPopup(pop);
                 m.addTo(localCamLayer);
             });
@@ -9012,6 +9182,8 @@
                     updateSwellMap(parseInt(slider.value) || 0);
                 }
             });
+
+            wireSpotLabelRerun(mapSwell);
 
             setTimeout(() => { mapSwell.invalidateSize(); }, 100);
             onMapDataReady();
