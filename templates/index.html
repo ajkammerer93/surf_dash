@@ -2299,11 +2299,48 @@
         }
         .horizon-switch button:focus-visible { outline: 2px solid var(--status-live); outline-offset: -2px; }
 
+        /* Lets .conditions-legend-chart sit above the chart inside the same
+           fixed-height panel box instead of stretching it: .chart-wrap's
+           height:100% above is for every OTHER chart panel, which have no
+           sibling, so it's untouched; here it's overridden to take whatever
+           space the legend row (shown only below 600px) leaves behind. */
+        .wave-chart-body {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+        }
+        .wave-chart-body .chart-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+            height: auto;
+        }
+        .conditions-legend-chart {
+            display: none;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            padding: 0 2px 8px;
+            font-size: 10px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .conditions-legend-chart .cond-key {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .conditions-legend-chart .cond-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+
         @media (max-width: 600px) {
-            .conditions-legend .cond-label { display: none; }
-            .conditions-legend { gap: 6px; }
+            .conditions-legend { display: none; }
             .horizon-switch { margin-left: 4px; }
             .horizon-switch button { padding: 0 7px; }
+            .conditions-legend-chart { display: flex; }
         }
 
         /* === Charts === */
@@ -3317,8 +3354,23 @@
                         </div>
                     </div>
                     <div class="panel-content">
-                        <div class="chart-wrap">
-                            <canvas id="waveChart"></canvas>
+                        <div class="wave-chart-body">
+                            <!-- Mobile-only color key (#114): the header legend
+                                 above hides its text labels below 600px since the
+                                 title/badge/horizon-switch row is already tight,
+                                 leaving bare swatches with only a title tooltip,
+                                 which never fires on touch. This copy lives in the
+                                 chart's own content area instead, full labels. -->
+                            <div class="conditions-legend-chart">
+                                <span class="cond-key"><span class="cond-swatch clean"></span>Clean</span>
+                                <span class="cond-key"><span class="cond-swatch cross-light"></span>Light cross</span>
+                                <span class="cond-key"><span class="cond-swatch cross-shore"></span>Cross</span>
+                                <span class="cond-key"><span class="cond-swatch fair"></span>Lt onshore</span>
+                                <span class="cond-key"><span class="cond-swatch choppy"></span>Choppy</span>
+                            </div>
+                            <div class="chart-wrap">
+                                <canvas id="waveChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
