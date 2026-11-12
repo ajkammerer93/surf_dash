@@ -2259,10 +2259,16 @@
         /* 7d / 16d range switch in the Wave & Wind Forecast header. Sized to
            the badge row so the header never grows (see the CLS note above
            .panel-header): one line, no wrap, fixed height. The visible box
-           stays put; button::before pads the tap target out to 44px tall
-           with an invisible hit area, since a thumb on a 16px-tall control
-           misses as often as it hits. overflow:hidden moved off the switch
-           and onto per-button corner radii so that hit area isn't clipped. */
+           stays put; button::before pads the tap target out with an invisible
+           hit area, since a thumb on a 16px-tall control misses as often as
+           it hits. overflow:hidden moved off the switch and onto per-button
+           corner radii so the hit area isn't clipped there -- but .panel
+           itself is still overflow:hidden (see the .panel-title note above),
+           and the header's 6px top padding only leaves ~7px of room above
+           the button before that boundary clips it. The split below is
+           asymmetric on purpose: 7px above is all the room there is, so the
+           rest of the 44px target is made up below the button, where the
+           chart area gives it plenty of room. */
         .horizon-switch {
             display: inline-flex;
             align-items: stretch;
@@ -2291,8 +2297,8 @@
         .horizon-switch button::before {
             content: '';
             position: absolute;
-            top: -13px;
-            bottom: -13px;
+            top: -6px;
+            bottom: -22px;
             left: 0;
             right: 0;
         }
