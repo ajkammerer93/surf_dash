@@ -1102,7 +1102,12 @@ def _open_meteo_marine_hourly(latitude, longitude, model=None):
     hourly = resp.json().get("hourly", {}) or {}
     times = hourly.get("time", [])
     wh = hourly.get("wave_height", []) or []
-    if not times or not any(v is not None for v in wh):
+    present = [v for v in wh if v is not None]
+    # A nearshore point can land on a land-masked grid cell: the model then
+    # answers 0.0 at every hour instead of null (Waimea Bay, HI has done this
+    # since 2026-11-02). Open ocean wave height is never flat zero for a full
+    # forecast horizon, so an all-zero response is treated the same as no data.
+    if not times or not present or not any(v > 0 for v in present):
         logger.info(f"  Open-Meteo Marine ({model or 'best_match'}) returned no wave data")
         return None
     return hourly
