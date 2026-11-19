@@ -1,11 +1,14 @@
-"""The 16-day forecast horizon and the GFS-Wave point source.
+"""The 16-day forecast horizon and the Open-Meteo point sources.
 
 Open-Meteo's default best_match resolves to MFWAM on most coasts: it stops
 at day 10 (every wave field null from hour 240) and on 2026-09-02 carried no
 long-period swell train at any lead (issue #88). GFS-Wave runs the full 16
 days, is the model the swell map is built from, and its wave_period is the
-spectral peak. These tests pin the routing, the fallback, the horizon on every
-upstream call, and the copy that advertises it.
+spectral peak, but against our buoys it scored about 2.5x best_match's error
+once v0.11.123 put it first for the whole horizon. So best_match carries the
+hours it covers and GFS-Wave only the tail past them. These tests pin that
+splice, the fallbacks, the horizon on every upstream call, and the copy that
+advertises it.
 """
 import os
 import re
@@ -82,65 +85,106 @@ class TestConstants:
 class TestMarineRouting:
     @patch('app.time.sleep')
     @patch('app.requests.get')
-    def test_gfswave_first_for_the_full_horizon(self, mock_get, _sleep):
-        mock_get.return_value = make_response(200, _hourly(384))
+    def test_best_match_first_with_a_gfswave_tail(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            make_response(200, _hourly(384, null_from=240, peak=True)),  # best_match
+            make_response(200, _hourly(384, height=0.9)),                # gfswave
+        ]
         forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
-        assert source == 'GFS-Wave'
+        # The label names the model behind the scored near-term hours
+        assert source == 'Open-Meteo'
         assert len(forecast) == 384
-        assert mock_get.call_count == 1
-        params = mock_get.call_args.kwargs['params']
-        assert params['models'] == 'ncep_gfswave025'
-        assert params['forecast_days'] == 16
+        assert mock_get.call_count == 2
+        first = mock_get.call_args_list[0].kwargs['params']
+        assert 'models' not in first
+        assert first['forecast_days'] == 16
+        assert 'wave_peak_period' in first['hourly']
+        second = mock_get.call_args_list[1].kwargs['params']
+        assert second['models'] == 'ncep_gfswave025'
+        assert second['forecast_days'] == 16
         # GFS-Wave has no peak-period field; wave_period IS the peak
-        assert 'wave_peak_period' not in params['hourly']
-        assert forecast[0]['wave_period'] == 9.5
+        assert 'wave_peak_period' not in second['hourly']
+        # best_match for days 1-10, peak period preferred over mean
+        assert all(e['wave_height'] == 1.2 for e in forecast[:240])
+        assert forecast[0]['wave_period'] == 11.0
+        # GFS-Wave from the first hour best_match left empty
+        assert forecast[240]['time'] == '2026-11-12T00:00Z'
+        assert all(e['wave_height'] == 0.9 for e in forecast[240:])
+        assert forecast[240]['wave_period'] == 9.5
         assert forecast[-1]['time'] == '2026-11-17T23:00Z'
+        times = [e['time'] for e in forecast]
+        assert times == sorted(times) and len(set(times)) == len(times)
 
     @patch('app.time.sleep')
     @patch('app.requests.get')
-    def test_best_match_fallback_when_gfswave_errors(self, mock_get, _sleep):
+    def test_no_gfswave_call_when_best_match_covers_the_horizon(self, mock_get, _sleep):
+        mock_get.return_value = make_response(200, _hourly(384, peak=True))
+        forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
+        assert source == 'Open-Meteo'
+        assert len(forecast) == 384
+        assert mock_get.call_count == 1
+
+    @patch('app.time.sleep')
+    @patch('app.requests.get')
+    def test_best_match_alone_when_gfswave_errors(self, mock_get, _sleep):
         mock_get.side_effect = [
-            make_response(400),                                  # gfswave
-            make_response(200, _hourly(384, null_from=240, peak=True)),  # best_match
+            make_response(200, _hourly(384, null_from=240, peak=True)),
+            make_response(400),
         ]
         forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
         assert source == 'Open-Meteo'
         # MFWAM's null tail past day 10 is trimmed, not drawn as a cliff
         assert len(forecast) == 240
         assert all(e['wave_height'] is not None for e in forecast)
-        second = mock_get.call_args_list[1].kwargs['params']
-        assert 'models' not in second
-        assert second['forecast_days'] == 16
-        assert 'wave_peak_period' in second['hourly']
-        # best_match keeps the peak-over-mean preference
-        assert forecast[0]['wave_period'] == 11.0
 
     @patch('app.time.sleep')
     @patch('app.requests.get')
-    def test_best_match_fallback_when_gfswave_is_all_null(self, mock_get, _sleep):
+    def test_all_zero_gfswave_tail_is_dropped(self, mock_get, _sleep):
+        # Waimea Bay: GFS-Wave answers a land-masked 0.0 at every hour
         mock_get.side_effect = [
-            make_response(200, _hourly(384, null_from=0)),
-            make_response(200, _hourly(240)),
-        ]
-        forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
-        assert source == 'Open-Meteo'
-        assert len(forecast) == 240
-
-    @patch('app.time.sleep')
-    @patch('app.requests.get')
-    def test_best_match_fallback_when_gfswave_is_all_zero(self, mock_get, _sleep):
-        mock_get.side_effect = [
+            make_response(200, _hourly(384, null_from=240, peak=True)),
             make_response(200, _hourly(384, height=0.0)),
-            make_response(200, _hourly(240)),
         ]
         forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
         assert source == 'Open-Meteo'
         assert len(forecast) == 240
+
+    @patch('app.time.sleep')
+    @patch('app.requests.get')
+    def test_gfswave_alone_when_best_match_errors(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            make_response(400),                    # best_match
+            make_response(200, _hourly(384)),      # gfswave
+        ]
+        forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
+        assert source == 'GFS-Wave'
+        assert len(forecast) == 384
+        assert forecast[0]['wave_period'] == 9.5
+
+    @patch('app.time.sleep')
+    @patch('app.requests.get')
+    def test_gfswave_alone_when_best_match_is_all_null(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            make_response(200, _hourly(384, null_from=0, peak=True)),
+            make_response(200, _hourly(384)),
+        ]
+        forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
+        assert source == 'GFS-Wave'
+        assert len(forecast) == 384
 
     @patch('app.time.sleep')
     @patch('app.requests.get')
     def test_both_models_failing_yields_none_pair(self, mock_get, _sleep):
         mock_get.return_value = make_response(429)
+        assert surf_app._get_point_from_open_meteo(34.43, -77.55) == (None, None)
+
+    @patch('app.time.sleep')
+    @patch('app.requests.get')
+    def test_best_match_error_and_zero_gfswave_yields_none_pair(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            make_response(400),
+            make_response(200, _hourly(384, height=0.0)),
+        ]
         assert surf_app._get_point_from_open_meteo(34.43, -77.55) == (None, None)
 
     def test_trailing_null_trim_keeps_interior_gaps(self):
