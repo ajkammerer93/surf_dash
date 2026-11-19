@@ -420,7 +420,11 @@ FORECAST_CORE_HOURS = 168
 # 10 and carried no long-period swell train on 2026-09-02 (issue #88). GFS-Wave
 # is the same model the swell map and tiles are built from, runs the full 16
 # days, and its wave_period IS the spectral peak (verified against our own
-# gfswave tile PERPW to 0.05 s). best_match stays as the fallback.
+# gfswave tile PERPW to 0.05 s). But against our buoys GFS-Wave scored about
+# 0.50 m MAE with a -0.40 m bias, against best_match's 0.20 m / -0.09 m, after
+# v0.11.123 put it first for the whole horizon (Nov 2026 audits). So the point
+# forecast takes best_match for the hours it covers and GFS-Wave only for the
+# tail past them, the outlook days it was added for.
 OPEN_METEO_WAVE_MODEL = "ncep_gfswave025"
 BASIN_CACHE_TTL = 1800  # 30 minutes (WW3 model updates ~every 6 hours)
 
@@ -1113,76 +1117,98 @@ def _open_meteo_marine_hourly(latitude, longitude, model=None):
     return hourly
 
 
+def _open_meteo_rows(hourly, latitude, longitude):
+    """Turn one Open-Meteo Marine hourly block into forecast rows, with the
+    null tail trimmed. Wind speed/direction are left as None (filled later by
+    _enrich_with_wind)."""
+    times = hourly.get("time", [])
+
+    wh = hourly.get("wave_height", [])
+    # Prefer peak period (Tp) to match NOMADS/WW3. best_match sometimes
+    # returns null peak period for individual hours, so fall back to the
+    # mean period array element-wise rather than letting the whole hour
+    # go missing. GFS-Wave sends no peak arrays; its wave_period is Tp.
+    wp_peak = hourly.get("wave_peak_period", []) or []
+    wp_mean = hourly.get("wave_period", []) or []
+    wd = hourly.get("wave_direction", []) or []
+    wwh = hourly.get("wind_wave_height", []) or []
+    wwp_peak = hourly.get("wind_wave_peak_period", []) or []
+    wwp_mean = hourly.get("wind_wave_period", []) or []
+    wwd = hourly.get("wind_wave_direction", []) or []
+
+    # Compute sunrise/sunset for each unique date
+    sunrise_map = {}
+    sunset_map = {}
+    for t_str in times:
+        date_key = t_str[:10]  # "YYYY-MM-DD"
+        if date_key not in sunrise_map:
+            dt = datetime.strptime(date_key, "%Y-%m-%d")
+            sr, ss = _sunrise_sunset(latitude, longitude, dt.date())
+            sunrise_map[date_key] = sr
+            sunset_map[date_key] = ss
+
+    def _val(arr, idx):
+        if idx < len(arr) and arr[idx] is not None:
+            return round(float(arr[idx]), 2)
+        return None
+
+    def _period_val(peak_arr, mean_arr, idx):
+        v = _val(peak_arr, idx)
+        return v if v is not None else _val(mean_arr, idx)
+
+    forecast = []
+    for i, t_str in enumerate(times):
+        date_key = t_str[:10]
+        # Open-Meteo times are "YYYY-MM-DDTHH:MM" in UTC; append Z suffix
+        time_str = t_str + "Z"
+        forecast.append({
+            "time": time_str,
+            "wave_height": _val(wh, i),
+            "wave_period": _period_val(wp_peak, wp_mean, i),
+            "wave_direction": _val(wd, i),
+            "wind_wave_height": _val(wwh, i),
+            "wind_wave_period": _period_val(wwp_peak, wwp_mean, i),
+            "wind_wave_direction": _val(wwd, i),
+            "wind_speed": None,
+            "wind_direction": None,
+            "sunrise": sunrise_map.get(date_key),
+            "sunset": sunset_map.get(date_key),
+        })
+    return _trim_trailing_null_hours(forecast)
+
+
 def _get_point_from_open_meteo(latitude, longitude):
     """
-    Fetches the point wave forecast from Open-Meteo Marine: GFS-Wave first
-    (OPEN_METEO_WAVE_MODEL, the full FORECAST_DAYS horizon), then the default
-    best_match model. Returns (forecast list, source label) or (None, None).
-    Wind speed/direction are left as None (filled later by _enrich_with_wind).
+    Fetches the point wave forecast from Open-Meteo Marine. best_match covers
+    the hours it has (about days 1-10); GFS-Wave (OPEN_METEO_WAVE_MODEL)
+    carries the rest of the FORECAST_DAYS horizon. Either model alone is the
+    fallback when the other returns nothing. Returns (forecast list, source
+    label) or (None, None). The label names the model behind the first hours,
+    the ones the verification pipeline scores.
     """
     try:
         logger.info(f"Open-Meteo Marine point forecast for ({latitude}, {longitude})...")
-        source = "GFS-Wave"
-        hourly = _open_meteo_marine_hourly(latitude, longitude, model=OPEN_METEO_WAVE_MODEL)
-        if hourly is None:
+        best = _open_meteo_marine_hourly(latitude, longitude)
+        forecast = _open_meteo_rows(best, latitude, longitude) if best else []
+        # The trim only drops a null tail, so an untrimmed block reached the
+        # end of the requested horizon and GFS-Wave has nothing to add.
+        covers_horizon = bool(forecast) and len(forecast) == len(best["time"])
+
+        tail = []
+        if not covers_horizon:
+            gfs = _open_meteo_marine_hourly(latitude, longitude, model=OPEN_METEO_WAVE_MODEL)
+            tail = _open_meteo_rows(gfs, latitude, longitude) if gfs else []
+
+        if forecast:
             source = "Open-Meteo"
-            hourly = _open_meteo_marine_hourly(latitude, longitude)
-        if hourly is None:
+            last = forecast[-1]["time"]
+            # ISO-8601 UTC strings of one format sort as times
+            forecast = forecast + [row for row in tail if row["time"] > last]
+        elif tail:
+            source = "GFS-Wave"
+            forecast = tail
+        else:
             return None, None
-        times = hourly.get("time", [])
-
-        wh = hourly.get("wave_height", [])
-        # Prefer peak period (Tp) to match NOMADS/WW3. best_match sometimes
-        # returns null peak period for individual hours, so fall back to the
-        # mean period array element-wise rather than letting the whole hour
-        # go missing. GFS-Wave sends no peak arrays; its wave_period is Tp.
-        wp_peak = hourly.get("wave_peak_period", []) or []
-        wp_mean = hourly.get("wave_period", []) or []
-        wd = hourly.get("wave_direction", []) or []
-        wwh = hourly.get("wind_wave_height", []) or []
-        wwp_peak = hourly.get("wind_wave_peak_period", []) or []
-        wwp_mean = hourly.get("wind_wave_period", []) or []
-        wwd = hourly.get("wind_wave_direction", []) or []
-
-        # Compute sunrise/sunset for each unique date
-        sunrise_map = {}
-        sunset_map = {}
-        for t_str in times:
-            date_key = t_str[:10]  # "YYYY-MM-DD"
-            if date_key not in sunrise_map:
-                dt = datetime.strptime(date_key, "%Y-%m-%d")
-                sr, ss = _sunrise_sunset(latitude, longitude, dt.date())
-                sunrise_map[date_key] = sr
-                sunset_map[date_key] = ss
-
-        def _val(arr, idx):
-            if idx < len(arr) and arr[idx] is not None:
-                return round(float(arr[idx]), 2)
-            return None
-
-        def _period_val(peak_arr, mean_arr, idx):
-            v = _val(peak_arr, idx)
-            return v if v is not None else _val(mean_arr, idx)
-
-        forecast = []
-        for i, t_str in enumerate(times):
-            date_key = t_str[:10]
-            # Open-Meteo times are "YYYY-MM-DDTHH:MM" in UTC; append Z suffix
-            time_str = t_str + "Z"
-            forecast.append({
-                "time": time_str,
-                "wave_height": _val(wh, i),
-                "wave_period": _period_val(wp_peak, wp_mean, i),
-                "wave_direction": _val(wd, i),
-                "wind_wave_height": _val(wwh, i),
-                "wind_wave_period": _period_val(wwp_peak, wwp_mean, i),
-                "wind_wave_direction": _val(wwd, i),
-                "wind_speed": None,
-                "wind_direction": None,
-                "sunrise": sunrise_map.get(date_key),
-                "sunset": sunset_map.get(date_key),
-            })
-        forecast = _trim_trailing_null_hours(forecast)
 
         logger.info(f"  Open-Meteo Marine ({source}): {len(forecast)} hourly entries")
         return forecast, source
