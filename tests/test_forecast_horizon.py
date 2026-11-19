@@ -39,7 +39,7 @@ def make_response(status=200, json_data=None):
     return resp
 
 
-def _hourly(n_hours, null_from=None, peak=False):
+def _hourly(n_hours, null_from=None, peak=False, height=1.2):
     """An Open-Meteo Marine hourly block of n_hours, optionally null after
     null_from (what best_match does past MFWAM's day 10)."""
     t0 = datetime(2026, 11, 2, tzinfo=timezone.utc)
@@ -50,7 +50,7 @@ def _hourly(n_hours, null_from=None, peak=False):
                 for i in range(n_hours)]
     block = {
         'time': times,
-        'wave_height': col(1.2),
+        'wave_height': col(height),
         'wave_period': col(9.5),
         'wave_direction': col(90.0),
         'wind_wave_height': col(0.4),
@@ -120,6 +120,17 @@ class TestMarineRouting:
     def test_best_match_fallback_when_gfswave_is_all_null(self, mock_get, _sleep):
         mock_get.side_effect = [
             make_response(200, _hourly(384, null_from=0)),
+            make_response(200, _hourly(240)),
+        ]
+        forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
+        assert source == 'Open-Meteo'
+        assert len(forecast) == 240
+
+    @patch('app.time.sleep')
+    @patch('app.requests.get')
+    def test_best_match_fallback_when_gfswave_is_all_zero(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            make_response(200, _hourly(384, height=0.0)),
             make_response(200, _hourly(240)),
         ]
         forecast, source = surf_app._get_point_from_open_meteo(34.43, -77.55)
