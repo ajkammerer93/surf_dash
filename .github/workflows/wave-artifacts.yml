@@ -57,7 +57,9 @@ jobs:
       - run: pip install numpy eccodes
 
       - name: Build artifacts for the newest complete cycle
-        run: python scripts/build_wave_artifacts.py --out wdata | tee /tmp/build.txt
+        run: |
+          set -o pipefail
+          python scripts/build_wave_artifacts.py --out wdata | tee /tmp/build.txt
 
       - name: Publish as a single fresh commit
         run: |
